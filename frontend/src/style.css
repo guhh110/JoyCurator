@@ -879,7 +879,7 @@ small {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 12px 1px;
+  padding: 12px 10px;
   border-bottom: 1px solid #f3f0f7;
   min-height: 65px;
 }
@@ -894,8 +894,8 @@ small {
   width: 30px;
   height: 32px;
   border-radius: 7px;
-  background: #f6f4f9;
-  color: #b8adc8;
+  background: #f0f1f5;
+  color: #626978;
   font: 10px monospace;
 }
 .episode-row > div {
@@ -904,7 +904,7 @@ small {
 }
 .episode-row h4 {
   font-size: 12px;
-  color: #7c728c;
+  color: #505767;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -914,7 +914,7 @@ small {
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  color: #9685a4;
+  color: #737987;
   margin-top: 5px;
   overflow: hidden;
   white-space: nowrap;
@@ -924,24 +924,31 @@ small {
 .episode-row p > svg {
   flex-shrink: 0;
 }
+.episode-row.matched {
+  background: #edf8f2;
+  border-bottom-color: #d6eadd;
+  box-shadow: inset 3px 0 #27835d;
+}
 .episode-row.matched .episode-number {
-  background: #f0ebfa;
-  color: #a18dbd;
+  background: #237a56;
+  color: #fff;
+  font-weight: 600;
 }
 .episode-row.matched h4 {
-  color: #5f546f;
+  color: #20533c;
+  font-weight: 600;
 }
 .episode-row.matched p {
-  color: #8c73a8;
+  color: #3b7358;
 }
 .match-check {
-  color: #b1a1cc;
+  color: #237a56;
   flex-shrink: 0;
 }
 .unmatched-dot {
   width: 7px;
   height: 7px;
-  border: 1px solid #ded7e8;
+  border: 1px dashed #9299a6;
   border-radius: 50%;
   margin: 0 5px;
   flex-shrink: 0;
@@ -2208,7 +2215,7 @@ small {
   }
   .episode-row {
     min-height: 64px;
-    padding: 10px 0;
+    padding: 10px;
     gap: 10px;
   }
   .episode-row h4 {

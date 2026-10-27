@@ -926,7 +926,8 @@ onUnmounted(() => {
                       v-if="assigned(ep.number).length"
                       :size="17"
                       class="match-check"
-                    /><span v-else class="unmatched-dot" />
+                      aria-label="已匹配"
+                    /><span v-else class="unmatched-dot" role="img" aria-label="未匹配" />
                   </article>
                   <div v-if="!episodes.length" class="empty">
                     <p>当前季暂无集列表</p>
