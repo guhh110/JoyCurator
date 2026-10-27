@@ -1,0 +1,24 @@
+{
+  "name": "joycurator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.28.5",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "vue": "3.5.43",
+    "@lucide/vue": "1.55.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.10",
+    "vite": "8.3.4",
+    "typescript": "6.0.3",
+    "vue-tsc": "3.3.13",
+    "vitest": "5.0.5",
+    "@types/node": "26.6.5"
+  }
+}

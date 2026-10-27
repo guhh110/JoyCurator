@@ -1,0 +1,2 @@
+storeDir: ../local/cache/pnpm
+cacheDir: ../local/cache/pnpm-meta

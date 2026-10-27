@@ -1,0 +1,152 @@
+export interface MediaFile {
+  path: string
+  size: number
+  mtime: string
+  season: number
+  episodes: number[]
+  probe: { resolution: string; codec: string; warning?: string }
+}
+export interface Entry {
+  tmdbId: number
+  type: 'tv' | 'movie'
+  title: string
+  originalTitle: string
+  year: number
+  overview: string
+  posterPath: string
+}
+export interface Season {
+  number: number
+  name: string
+  count: number
+}
+export interface Episode {
+  number: number
+  name: string
+  season: number
+  airDate: string
+}
+export interface Category {
+  name: string
+  type?: string
+  countries: string[]
+  genres: string[]
+  yearMin?: number
+  yearMax?: number
+}
+export interface Settings {
+  version: number
+  sources: string[]
+  movieRoot: string
+  tvRoot: string
+  proxyURL: string
+  language: string
+  nfo: boolean
+  images: boolean
+  hasToken: boolean
+  roots: string[]
+  rules: {
+    movieFolder: string
+    movieFile: string
+    tvFolder: string
+    tvFile: string
+    categories: Category[]
+  }
+}
+export interface PreviewRow {
+  source: string
+  target: string
+  season: number
+  episodes: number[]
+  artifacts: string[]
+  issues: string[]
+}
+export interface Preview {
+  id: string
+  title: string
+  mode: string
+  rows: PreviewRow[]
+  required: number
+  issues: string[]
+}
+export interface Operation {
+  kind: string
+  source: string
+  target: string
+  status: string
+  error: string
+  owner: string
+}
+export interface Run {
+  id: string
+  title: string
+  mode: string
+  state: string
+  created: string
+  error: string
+  completed: number
+  total: number
+  undo: boolean
+  ops?: Operation[]
+}
+export async function api<T>(
+  path: string,
+  body?: unknown,
+  method = 'POST',
+): Promise<T> {
+  const response = await fetch(`/api${path}`, {
+    credentials: 'same-origin',
+    ...(body === undefined
+      ? {}
+      : {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+  })
+  const value = await response
+    .json()
+    .catch(() => ({ message: '服务暂时不可用，请检查后端是否启动' }))
+  if (!response.ok) {
+    if (response.status === 401)
+      window.dispatchEvent(new Event('session-expired'))
+    throw new Error(value.message || '请求失败')
+  }
+  return value
+}
+export function name(path: string) {
+  return path.split('/').pop() || path
+}
+export function bytes(n: number) {
+  return n < 1024
+    ? `${n} B`
+    : n < 1024 ** 2
+      ? `${(n / 1024).toFixed(1)} KB`
+      : n < 1024 ** 3
+        ? `${(n / 1024 ** 2).toFixed(1)} MB`
+        : `${(n / 1024 ** 3).toFixed(1)} GB`
+}
+export function parseEpisodes(text: string): number[] {
+  const result: number[] = []
+  for (const part of text
+    .trim()
+    .split(/[,，\s]+/)
+    .filter(Boolean)) {
+    const match = /^(\d+)(?:-(\d+))?$/.exec(part)
+    if (!match) throw new Error('集数使用数字、逗号或范围，例如 1,3-5')
+    const first = Number(match[1]),
+      last = Number(match[2] || match[1])
+    if (first < 1 || last > 9999 || last < first || last - first > 999)
+      throw new Error('集数范围无效')
+    for (let n = first; n <= last; n++) {
+      if (result.includes(n) || result.length >= 1000)
+        throw new Error('集数重复或超过 1000 集')
+      result.push(n)
+    }
+  }
+  if (!result.length) throw new Error('请填写集数')
+  return result.sort((a, b) => a - b)
+}
+export function episodeCode(season: number, episodes: number[]) {
+  return `S${String(season).padStart(2, '0')}${episodes.map((n) => `E${String(n).padStart(2, '0')}`).join(' · ')}`
+}
