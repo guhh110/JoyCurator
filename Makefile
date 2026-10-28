@@ -8,7 +8,7 @@ export PYTHONDONTWRITEBYTECODE := 1
 VERSION ?= dev
 export VERSION
 prepare:
-	mkdir -p local/tmp local/cache/go-mod local/cache/go-build local/data local/logs local/media/inbox local/media/movies local/media/tv
+	mkdir -p local/tmp local/cache/go-mod local/cache/go-build local/data local/logs local/source local/target
 install: prepare
 	cd frontend && pnpm install --frozen-lockfile
 	cd backend && go mod download

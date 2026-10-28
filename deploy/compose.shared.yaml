@@ -1,0 +1,19 @@
+# 源和目标位于同一文件系统、需要硬链接时，使用一次共同父目录挂载。
+services:
+  joycurator:
+    image: ghcr.io/guhh110/joycurator:${JOYCURATOR_VERSION:-latest}
+    restart: unless-stopped
+    user: "${JOYCURATOR_UID:-1000}:${JOYCURATOR_GID:-1000}"
+    ports:
+      - "${WEB_PORT:-8081}:8081"
+    environment:
+      TZ: Asia/Shanghai
+      JOYCURATOR_ADDR: 0.0.0.0:8081
+      JOYCURATOR_DATA_DIR: /data
+      JOYCURATOR_SOURCE_DIR: /media/source
+      JOYCURATOR_TARGET_DIR: /media/target
+      JOYCURATOR_SECURE_COOKIE: "false"
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+      - ${MEDIA_DIR:-./media}:/media
+    stop_grace_period: 30s

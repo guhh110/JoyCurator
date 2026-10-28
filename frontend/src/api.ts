@@ -36,9 +36,8 @@ export interface Category {
 }
 export interface Settings {
   version: number
-  sources: string[]
-  movieRoot: string
-  tvRoot: string
+  sourceRoot: string
+  targetRoot: string
   proxyURL: string
   language: string
   nfo: boolean

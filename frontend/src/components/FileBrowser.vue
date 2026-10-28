@@ -26,7 +26,7 @@ async function open(next: string) {
   error.value = ''
   try {
     const result = await api<typeof items.value>(
-      `/browse?path=${encodeURIComponent(next)}`,
+      `/browse?path=${encodeURIComponent(next)}${props.directory ? '&scope=roots' : ''}`,
     )
     if (!next) roots.value = result.map((item) => item.path)
     items.value = result.filter((item) => !props.directory || item.dir)
@@ -55,7 +55,7 @@ onMounted(() => open(''))
 </script>
 <template>
   <Modal
-    :title="directory ? '选择目标目录' : '添加本地文件'"
+    :title="directory ? '选择目录' : '添加本地文件'"
     @close="emit('close')"
   >
     <p class="muted">
@@ -81,7 +81,7 @@ onMounted(() => open(''))
       ><input
         v-model="typed"
         aria-label="目录路径"
-        placeholder="授权媒体根目录"
+        placeholder="源目录路径"
       /><button class="button small" :disabled="loading">前往</button>
     </form>
     <p v-if="error" role="alert" class="notice error">{{ error }}</p>

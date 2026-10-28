@@ -18,12 +18,12 @@ func fixture(t *testing.T) (*App, string) {
 	t.Helper()
 	base := t.TempDir()
 	media := filepath.Join(base, "media")
-	for _, dir := range []string{"inbox", "movies", "tv"} {
+	for _, dir := range []string{"source", "target"} {
 		if err := os.MkdirAll(filepath.Join(media, dir), 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	a, err := Open(filepath.Join(base, "data"), []string{media}, false)
+	a, err := Open(filepath.Join(base, "data"), []string{filepath.Join(media, "source"), filepath.Join(media, "target")}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func fixture(t *testing.T) (*App, string) {
 }
 func mediaFile(t *testing.T, a *App, root, name string) File {
 	t.Helper()
-	path := filepath.Join(root, "inbox", name)
+	path := filepath.Join(root, "source", name)
 	if err := os.WriteFile(path, bytes.Repeat([]byte("test-video"), 64), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -313,9 +313,9 @@ func TestScanExcludesTargetsSymlinksAndPreservesUnknownSeason(t *testing.T) {
 	}
 	outside := filepath.Join(t.TempDir(), "outside.mp4")
 	_ = os.WriteFile(outside, []byte("test"), 0644)
-	_ = os.Symlink(outside, filepath.Join(root, "inbox", "link.mp4"))
-	_ = os.WriteFile(filepath.Join(root, "movies", "output.mp4"), []byte("test"), 0644)
-	files, err := a.scan(context.Background(), []string{root})
+	_ = os.Symlink(outside, filepath.Join(root, "source", "link.mp4"))
+	_ = os.WriteFile(filepath.Join(root, "target", "output.mp4"), []byte("test"), 0644)
+	files, err := a.scan(context.Background(), []string{filepath.Join(root, "source")})
 	if err != nil || len(files) != 2 {
 		t.Fatalf("%v %v", files, err)
 	}

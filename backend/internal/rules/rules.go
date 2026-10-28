@@ -48,14 +48,25 @@ func Validate(r model.Rules) error {
 		return errors.New("文件名模板不能包含目录")
 	}
 	for _, c := range r.Categories {
-		if c.Name == "" || Clean(c.Name) != c.Name || c.Name == ".." {
-			return errors.New("分类名称必须是有效目录名")
+		if err := categoryPath(c.Name); err != nil {
+			return err
 		}
 		if c.Type != "" && c.Type != "movie" && c.Type != "tv" {
 			return errors.New("分类媒体类型无效")
 		}
 		if c.YearMin < 0 || c.YearMax < 0 || (c.YearMax != 0 && c.YearMax < c.YearMin) {
 			return errors.New("分类年份范围无效")
+		}
+	}
+	return nil
+}
+func categoryPath(name string) error {
+	if name == "" || len(name) > 1024 || !filepath.IsLocal(name) || strings.Contains(name, "\\") {
+		return errors.New("分类子目录必须是相对路径")
+	}
+	for _, part := range strings.Split(name, "/") {
+		if part == "" || part == "." || part == ".." || Clean(part) != part || len(part) > 240 {
+			return errors.New("分类子目录包含无效目录名")
 		}
 	}
 	return nil
@@ -145,6 +156,13 @@ func Render(template string, values map[string]string, optionalQuality bool) (st
 			}
 			value = fmt.Sprintf("%02d", n)
 		}
+		if m[1] == "category" {
+			if err := categoryPath(value); err != nil {
+				failure = err
+				return ""
+			}
+			return value
+		}
 		return Clean(value)
 	})
 	if failure != nil {
@@ -165,18 +183,18 @@ func Target(file model.Source, settings model.Settings) (string, error) {
 		return "", errors.New("尚未确认 TMDB 条目")
 	}
 	r := settings.Rules
-	root, folder, filename := settings.MovieRoot, r.MovieFolder, r.MovieFile
+	root, folder, filename := settings.TargetRoot, r.MovieFolder, r.MovieFile
 	defaults := model.DefaultSettings().Rules
 	optional := r.MovieFile == defaults.MovieFile
 	if file.Entry.Type == "tv" {
-		root, folder, filename = settings.TVRoot, r.TVFolder, r.TVFile
+		folder, filename = r.TVFolder, r.TVFile
 		optional = r.TVFile == defaults.TVFile
 		if len(file.Episodes) == 0 {
 			return "", errors.New("剧集尚未指定季集")
 		}
 	}
 	if root == "" {
-		return "", errors.New("尚未配置对应媒体的目标根目录")
+		return "", errors.New("尚未配置目标目录")
 	}
 	v := values(file, r)
 	dir, err := Render(folder, v, false)
@@ -186,6 +204,9 @@ func Target(file model.Source, settings model.Settings) (string, error) {
 	base, err := Render(filename, v, optional)
 	if err != nil {
 		return "", err
+	}
+	if filepath.Base(base) != base {
+		return "", errors.New("文件名模板生成了多级路径")
 	}
 	if !strings.EqualFold(filepath.Ext(base), filepath.Ext(file.Path)) {
 		return "", errors.New("文件名模板必须保留原视频扩展名")
@@ -221,5 +242,5 @@ func ShowRoot(file model.Source, settings model.Settings) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(settings.TVRoot, path), nil
+	return filepath.Join(settings.TargetRoot, path), nil
 }

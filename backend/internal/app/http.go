@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"joycurator/internal/auth"
+	"joycurator/internal/fsops"
 	"joycurator/internal/model"
 	"joycurator/internal/rules"
 	"joycurator/internal/scanner"
@@ -119,8 +120,23 @@ func (a *App) Handler(frontend fs.FS) http.Handler {
 		}
 		items := []item{}
 		path := r.URL.Query().Get("path")
+		scope := r.URL.Query().Get("scope")
+		if scope != "" && scope != "roots" {
+			return errors.New("目录浏览范围无效")
+		}
+		settings, err := a.settings()
+		if err != nil {
+			return err
+		}
+		roots := []string{settings.SourceRoot}
+		if scope == "roots" {
+			roots = a.access.Roots
+		}
+		if path != "" && scope != "roots" && !a.sourceAllowed(path, settings) {
+			return errors.New("只能浏览源目录")
+		}
 		if path == "" {
-			for _, p := range a.access.Roots {
+			for _, p := range roots {
 				items = append(items, item{p, true})
 			}
 		} else {
@@ -143,7 +159,7 @@ func (a *App) Handler(frontend fs.FS) http.Handler {
 				return err
 			}
 			for _, e := range entries {
-				if strings.HasPrefix(e.Name(), ".") || e.Type()&os.ModeSymlink != 0 {
+				if strings.HasPrefix(e.Name(), ".") || e.Type()&os.ModeSymlink != 0 || scope != "roots" && !a.sourceAllowed(filepath.Join(path, e.Name()), settings) {
 					continue
 				}
 				if e.IsDir() || scanner.IsVideo(e.Name()) {
@@ -379,15 +395,32 @@ func (a *App) updateSettings(w http.ResponseWriter, r *http.Request) error {
 	if _, err = a.client(input.Settings); err != nil {
 		return err
 	}
-	for _, p := range append(append([]string{}, input.Sources...), input.MovieRoot, input.TVRoot) {
-		if p == "" {
-			continue
+	for _, p := range []string{input.SourceRoot, input.TargetRoot} {
+		if p == "" || !filepath.IsAbs(p) {
+			return errors.New("源目录和目标目录必须填写绝对路径")
 		}
 		info, e := a.access.Stat(p)
 		if e != nil || !info.IsDir() {
 			return errors.New("目录不存在或未授权：" + p)
 		}
 	}
+	input.SourceRoot, err = filepath.EvalSymlinks(a.access.Canonical(input.SourceRoot))
+	if err != nil {
+		return errors.New("无法解析源目录")
+	}
+	input.TargetRoot, err = filepath.EvalSymlinks(a.access.Canonical(input.TargetRoot))
+	if err != nil {
+		return errors.New("无法解析目标目录")
+	}
+	for _, path := range []string{input.SourceRoot, input.TargetRoot} {
+		if _, err := a.access.Stat(path); err != nil {
+			return errors.New("目录解析后超出授权范围")
+		}
+	}
+	if fsops.Within(input.TargetRoot, input.SourceRoot) {
+		return errors.New("源目录不能位于目标目录内或与其相同")
+	}
+
 	input.Token = old.Token
 	if input.TMDBToken != nil {
 		input.Token = strings.TrimSpace(*input.TMDBToken)

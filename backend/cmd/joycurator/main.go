@@ -44,14 +44,16 @@ func main() {
 		base = filepath.Join(filepath.Dir(executable), "local")
 	}
 	base, _ = filepath.Abs(base)
-	for _, d := range []string{"data", "media/inbox", "media/movies", "media/tv"} {
-		if err := os.MkdirAll(filepath.Join(base, d), 0755); err != nil {
+	dataDir := env("JOYCURATOR_DATA_DIR", filepath.Join(base, "data"))
+	sourceDir := env("JOYCURATOR_SOURCE_DIR", filepath.Join(base, "source"))
+	targetDir := env("JOYCURATOR_TARGET_DIR", filepath.Join(base, "target"))
+	for _, dir := range []string{sourceDir, targetDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
 			slog.Error("创建目录失败", "error", err)
 			os.Exit(1)
 		}
 	}
-	roots := filepath.SplitList(env("JOYCURATOR_MEDIA_ROOTS", filepath.Join(base, "media")))
-	a, err := app.Open(env("JOYCURATOR_DATA_DIR", filepath.Join(base, "data")), roots, strings.EqualFold(os.Getenv("JOYCURATOR_SECURE_COOKIE"), "true"))
+	a, err := app.Open(dataDir, []string{sourceDir, targetDir}, strings.EqualFold(os.Getenv("JOYCURATOR_SECURE_COOKIE"), "true"))
 	if err != nil {
 		slog.Error("启动失败", "error", err)
 		os.Exit(1)

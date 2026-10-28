@@ -11,7 +11,7 @@
 | `POST /logout` | 注销会话 |
 | `GET /settings` | 设置、授权 `roots`、凭据存在标志 `hasToken`；不返回 Token |
 | `PUT /settings` | 设置及当前 `version`，可选 `tmdbToken`；版本过期拒绝保存 |
-| `GET /browse?path=` | 浏览授权目录；空路径返回授权根目录，跳过隐藏文件和符号链接 |
+| `GET /browse?path=` | 默认仅浏览已配置源目录；目录设置选择器可用 `scope=roots` 浏览授权根目录，跳过隐藏文件和符号链接 |
 | `POST /scan` | `{paths}`，递归扫描，返回视频数组 |
 | `GET /search?type=&q=&year=` | 搜索 TMDB，`type` 为 `movie` 或 `tv` |
 | `GET /seasons?id=` | 作品的季列表 |
@@ -31,3 +31,13 @@
 任务状态为 `running`、`completed`、`failed`、`cancelled`、`interrupted`、`undone`。前端轮询详情获取进度；服务重启后运行中的批次标为中断，操作的临时路径、文件身份与校验值仍持久化，便于重试或撤销。
 
 每次只运行一个整理或撤销任务。浏览器保存工作区；服务器内存只保存短期预览，SQLite 保存管理员、会话、配置、TMDB 缓存和整理批次。旧版数据库会被拒绝，避免混用。
+
+## 目录与分类
+
+设置使用 `sourceRoot`、`targetRoot` 两个绝对路径，替代 `sources`、`movieRoot`、`tvRoot`。容器默认分别为 `/source`、`/target`，数据库路径为 `/data`。返回的 `roots` 表示启动时授权的目录范围；设置只能选择该范围内已存在的目录。源与目标不能相同，源也不能位于目标目录内部。
+
+分类规则的 `name` 是目标目录下的相对子目录，允许多级路径，例如 `电影/华语电影`、`剧集/国产剧`。规则按顺序匹配，首个命中规则的路径填入 `{category}`；最终文件路径统一以 `targetRoot` 为根。禁止绝对路径、`.`、`..`、空路径段和非法目录名。
+
+扫描及预览均校验来源必须位于 `sourceRoot` 内且不在 `targetRoot` 内。显式提交目标文件也会被拒绝。`scope=roots` 只供设置目录浏览，不会放宽扫描或预览权限。
+
+数据库版本 2 会将旧目录配置迁移至启动时提供的目录、转换分类路径、增加设置版本。迁移保留凭据和操作历史，不移动已有媒体。后续启动不会重复转换。

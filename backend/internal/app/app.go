@@ -91,7 +91,7 @@ func Open(dir string, roots []string, secure bool) (*App, error) {
 		db.Close()
 		return nil, err
 	}
-	if legacy != 0 || version > 1 {
+	if legacy != 0 || version > 2 {
 		db.Close()
 		return nil, errors.New("此数据目录属于其他版本，请使用独立的数据目录")
 	}
@@ -100,8 +100,7 @@ func Open(dir string, roots []string, secure bool) (*App, error) {
  CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,administrator_id INTEGER NOT NULL REFERENCES administrators(id),expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS config(id INTEGER PRIMARY KEY CHECK(id=1),value TEXT NOT NULL,token TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS tmdb_cache(key TEXT PRIMARY KEY,value BLOB NOT NULL,expires_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,value TEXT NOT NULL);
- PRAGMA user_version=1;`)
+ CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,value TEXT NOT NULL);`)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -111,16 +110,28 @@ func Open(dir string, roots []string, secure bool) (*App, error) {
 		return nil, err
 	}
 	setting := model.DefaultSettings()
-	if len(roots) > 0 {
-		setting.Sources = []string{filepath.Join(roots[0], "inbox")}
-		setting.MovieRoot = filepath.Join(roots[0], "movies")
-		setting.TVRoot = filepath.Join(roots[0], "tv")
+	if len(access.Roots) == 0 {
+		db.Close()
+		return nil, errors.New("请配置源目录和目标目录")
+	}
+	if len(access.Roots) >= 2 {
+		setting.SourceRoot, setting.TargetRoot = access.Roots[0], access.Roots[1]
+	} else {
+		setting.SourceRoot, setting.TargetRoot = filepath.Join(access.Roots[0], "source"), filepath.Join(access.Roots[0], "target")
+	}
+	if fsops.Within(setting.TargetRoot, setting.SourceRoot) {
+		db.Close()
+		return nil, errors.New("源目录不能位于目标目录内或与其相同")
 	}
 	_, err = db.Exec("INSERT OR IGNORE INTO config VALUES(1,?, '')", jsonText(setting))
+	if err == nil {
+		err = migrateDirectories(db, setting)
+	}
 	if err != nil {
 		db.Close()
 		return nil, err
 	}
+
 	a := &App{db: db, access: access, auth: &auth.Service{DB: db}, plans: map[string]*Plan{}, secure: secure}
 	// Persisted operation states contain staging paths and hashes for recovery.
 	rows, err := db.Query("SELECT value FROM runs")

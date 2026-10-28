@@ -22,13 +22,14 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -tags pro
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /app/local/data /media/inbox /media/movies /media/tv \
-    && chown -R 1000:1000 /app /media
+    && mkdir -p /app /data /source /target \
+    && chown -R 1000:1000 /app /data /source /target
 WORKDIR /app
 COPY --from=backend /out/joycurator /app/joycurator
 ENV JOYCURATOR_ADDR=0.0.0.0:8081 \
-    JOYCURATOR_DATA_DIR=/app/local/data \
-    JOYCURATOR_MEDIA_ROOTS=/media
+    JOYCURATOR_DATA_DIR=/data \
+    JOYCURATOR_SOURCE_DIR=/source \
+    JOYCURATOR_TARGET_DIR=/target
 USER 1000:1000
 EXPOSE 8081
 ENTRYPOINT ["/app/joycurator"]

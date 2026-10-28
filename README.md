@@ -1,152 +1,189 @@
 # JoyCurator
 
-面向个人媒体收藏的本地整理工具。Go + SQLite 后端，Vue 3 前端，元数据来自 TMDB。
+JoyCurator 是面向个人媒体收藏的文件整理工具，使用 TMDB 元数据，为电影和剧集生成规范目录、文件名及配套刮削文件。
 
 **添加文件 → 选择作品 → 修正季集 → 预览路径 → 确认整理。**
 
-正式源码位于根目录的 `frontend/` 与 `backend/`。原 `rewrite/` 已提升为正式版本；旧版源码、数据库及测试媒体归档于本机的 `local/archive/legacy-20261027/`，不参与构建、不提交 Git。旧数据库不直接导入新版本。
+## 功能
 
-## 本地开发
+- 手动搜索并绑定 TMDB 作品，支持电影、剧集、特别篇和合并集。
+- 自定义命名模板与分类规则，执行前预览目标路径、空间需求和文件冲突。
+- 支持复制、移动和硬链接，不覆盖已有视频或自动删除重复版本。
+- 生成 NFO、下载海报和背景图，关联整理已有同名字幕。
+- 查看逐文件操作记录，支持取消、失败重试、中断后重试和整批撤销。
+- 桌面双栏对照、手机分区操作，固定导航，页面与列表独立滚动。
+- 采用单管理员账号管理。
 
-需要 Go 1.24+、Node.js 22.19+、pnpm 11.28.5。构建与检查还需要 Python 3（仅标准库）。ffprobe 可选；缺失时仍能整理，分辨率、编码等探测字段为空。
-
-首次安装：
-
-```sh
-cd frontend
-pnpm install --frozen-lockfile
-```
-
-分别在两个终端启动：
-
-```sh
-cd backend
-go run ./cmd/joycurator
-```
-
-```sh
-cd frontend
-pnpm dev
-```
-
-访问 **http://localhost:5175**。API 默认监听 `127.0.0.1:8081`，由 Vite 同源代理；生产构建也可直接通过 Go 服务访问。开发不需要 Docker。
-
-首次进入创建管理员，密码为 12–72 字节；在设置页填写 TMDB **API Read Access Token**。凭据只保存在后端，留空保留已保存的 Token，勾选清除才会删除。
-
-也可以在项目根目录运行 `make install`、`make backend`、`make frontend`；保留 `make dev-backend`、`make dev-frontend` 别名。Makefile 将 Go 缓存与临时文件集中到项目 `local/`。
-
-## 测试媒体与配置
-
-默认授权 `local/media/`，首次启动会创建：
-
-```text
-local/media/
-├── inbox/     # 在这里手动创建文件夹、放入视频及字幕
-├── movies/    # 电影目标目录
-└── tv/        # 剧集目标目录
-```
-
-在工作台添加文件或文件夹，目录会递归展开为视频，跳过隐藏文件、符号链接及目标目录。每次最多导入 200 项、2000 个视频，单次整理最多 1000 个视频。
-
-| 环境变量 | 默认值 | 用途 |
-| --- | --- | --- |
-| `JOYCURATOR_ADDR` | `127.0.0.1:8081` | HTTP 地址 |
-| `JOYCURATOR_DATA_DIR` | 项目 `local/data` | SQLite 数据目录 |
-| `JOYCURATOR_MEDIA_ROOTS` | 项目 `local/media` | 授权根目录，macOS/Linux 用冒号分隔 |
-| `JOYCURATOR_SECURE_COOKIE` | `false` | HTTPS 部署启用安全 Cookie |
-
-目标根目录需预先存在，下层分类、作品和季目录自动创建。默认复制，也可选择移动或硬链接。剧集整理当前季可完整对上的文件；电影整理当前工作区全部来源，文件名筛选只影响显示。特别篇季号为 `0`；合并集支持 `1-3`、`1,3,5`。
-
-## 构建与检查
-
-```sh
-make check
-make build
-./local/bin/joycurator
-```
-
-`make check` 运行 Go vet、竞态测试、前端单元测试、类型检查和生产构建。`make build` 将前端嵌入 Go 二进制，输出 `local/bin/joycurator`，部署时只需复制这一个文件，不需要携带前端目录。开发命令仍然使用 Vite，不依赖内嵌资源。
+项目不包含媒体播放、转码、字幕下载或下载器联动。
 
 ## 单文件部署
 
-从 [Releases](https://github.com/guhh110/JoyCurator/releases) 下载对应系统和架构的程序，例如 Linux x86_64 使用 `joycurator_v0.1.0_linux_amd64`，Apple Silicon 使用 `darwin_arm64`。当前支持 Linux/macOS 的 amd64、arm64；Windows 暂不支持。
+支持以下平台：
 
-把下载的程序放入独立、可写的安装目录，重命名为 `joycurator`：
+| 系统 | 架构 | 文件名后缀 |
+| --- | --- | --- |
+| Linux | x86_64 | `linux_amd64` |
+| Linux | ARM64 | `linux_arm64` |
+| macOS | Intel | `darwin_amd64` |
+| macOS | Apple Silicon | `darwin_arm64` |
+
+从 [Releases](https://github.com/guhh110/JoyCurator/releases) 下载对应程序，放入可写的安装目录并重命名为 `joycurator`。发布程序已包含前端页面、Go 服务和 SQLite 驱动，无需安装 Go、Node.js 或数据库服务。Windows 暂不支持。
 
 ```sh
 chmod +x joycurator
-./joycurator --version
 ./joycurator
 ```
 
-访问 **http://localhost:8081** 创建管理员。程序已包含页面、API 和 SQLite 驱动，无需安装 Go、Node.js、pnpm 或 SQLite。ffprobe 可选；安装 FFmpeg 并将 ffprobe 放入 PATH 后可获取分辨率、编码等信息。
+打开 **http://localhost:8081**，按页面提示创建管理员。首次启动会在程序所在目录创建 `local/data/` 保存数据库，以及 `local/source/`、`local/target/` 作为默认源目录和目标目录。
 
-默认在**程序所在目录**创建可见的 `local/data/` 和 `local/media/{inbox,movies,tv}/`，从其他工作目录启动也使用同一位置。本仓库的 `local/bin/joycurator` 特别使用项目已有的 `local/`。更新前停止服务、备份整个 `local/data/`，替换程序后重新启动；保留媒体与数据目录。SHA256 校验值随 Release 提供，macOS 下载后如受系统安全策略拦截，需在系统设置中允许该程序运行。
+可通过 `./joycurator --version` 查看版本，使用 Release 附带的 `SHA256SUMS` 核对下载文件。macOS 如提示程序无法打开，可在系统设置中检查并允许运行。
 
-需要通过局域网访问时设置 `JOYCURATOR_ADDR=0.0.0.0:8081`；可使用上表的环境变量指定数据位置和授权媒体根目录。访问 HTTPS 反向代理时设置 `JOYCURATOR_SECURE_COOKIE=true`，代理需保留原始 Host。长期运行可交给 systemd 或其他进程管理器，使用有媒体读写权限的普通用户。
+ffprobe 为可选依赖。需要识别分辨率、编码和时长时，请安装 FFmpeg，并确保 `ffprobe` 在 PATH 中；未安装时仍可进行文件整理。
 
-## Docker 部署（服务器）
+## Docker Compose 部署
 
-开发电脑不需要 Docker。镜像包含单文件程序、CA 证书、时区数据和 ffprobe，支持 Linux amd64/arm64。
+镜像支持 Linux amd64 和 arm64，包含 ffprobe、CA 证书和时区数据：
 
-将 [deploy/compose.yaml](deploy/compose.yaml) 放入服务器上的独立部署目录，在该目录执行：
+```text
+ghcr.io/guhh110/joycurator:latest
+```
+
+发布包和镜像随版本发布生成，可用版本以 [Releases](https://github.com/guhh110/JoyCurator/releases) 为准。
+
+将 [deploy/compose.yaml](deploy/compose.yaml) 保存为部署目录中的 `compose.yaml`，在该目录执行：
 
 ```sh
-mkdir -p data media/inbox media/movies media/tv
-# 让容器使用当前用户访问挂载目录；NAS 可改成实际媒体所有者的 UID/GID。
+mkdir -p data source target
 export JOYCURATOR_UID=$(id -u)
 export JOYCURATOR_GID=$(id -g)
 docker compose pull
 docker compose up -d
 ```
 
-访问 `http://服务器IP:8081`。SQLite 和凭据持久化在宿主机 `data/`，媒体位于 `media/`。容器内授权根目录为 `/media`；添加文件、设置目标路径时使用 `/media/inbox`、`/media/movies`、`/media/tv`。已有媒体可将 `./media:/media` 改为实际绝对路径挂载；源和目标应位于同一文件系统以使用硬链接。
+访问 `http://服务器IP:8081`；若修改了 `WEB_PORT`，使用对应的端口。默认目录映射如下：
 
-默认使用镜像的 `latest` 稳定版；可在部署目录的 `.env` 设置 `JOYCURATOR_VERSION=0.1.0` 固定版本。容器默认 UID/GID 为 1000，挂载目录需允许相应用户读写；不要用公开权限解决写入问题。升级时备份 `data/`，再运行 `docker compose pull && docker compose up -d`。首次发布后 GHCR 包需设为 Public 才能匿名拉取，私有包需先登录 GHCR。
+| 宿主机目录 | 容器内目录 | 用途 |
+| --- | --- | --- |
+| `${DATA_DIR:-./data}` | `/data` | 数据库、配置和操作记录 |
+| `${SOURCE_DIR:-./source}` | `/source` | 待整理的视频及字幕 |
+| `${TARGET_DIR:-./target}` | `/target` | 整理结果及刮削文件 |
 
-## 发布版本
+容器内端口固定为 `8081`，通过 `WEB_PORT` 调整对外端口。可以在部署目录的 `.env` 中设置宿主机路径和端口，例如：
 
-[GitHub Actions](.github/workflows/release.yml) 在推送 main、提交 PR 或手动触发时运行检查、构建四个平台的二进制，并分别使用原生 Linux amd64/arm64 runner 构建容器、检查启动、页面和 ffprobe；这些触发不会发布版本。
-
-确认代码已推送后，创建版本标签触发正式发布：
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
+```dotenv
+WEB_PORT=8081
+DATA_DIR=./data
+SOURCE_DIR=/srv/media/incoming
+TARGET_DIR=/srv/media/library
 ```
 
-检查通过后，工作流自动创建 GitHub Release，上传四个单文件程序和 `SHA256SUMS`，同时发布 `ghcr.io/guhh110/joycurator:0.1.0`。稳定版本更新 `latest`，带连字符的预发布版本（例如 `v0.2.0-rc.1`）不更新它。程序版本可通过 `--version` 查看。
+应用内使用容器路径：源目录 `/source`、目标目录 `/target`，数据库保存在 `/data`。电影与剧集没有独立挂载，其子目录由分类规则生成。
 
-镜像发布使用仓库自带 `GITHUB_TOKEN` 的 `packages: write` 权限，Release 使用 `contents: write`，无需配置 Docker Hub 密钥。仓库需允许运行 Actions 和相应权限；首次发布后在 GitHub Packages 的包设置中选择 Public。构建与发布日志均在仓库 Actions 页面查看。
-
-也可本地执行 `make release VERSION=v0.1.0` 生成同样的四个平台程序及校验文件，输出到 `local/releases/`；仅构建，不联网发布、不运行 Docker。此目标额外需要 Python 3 生成校验文件。生产构建使用 `production` 标签，必须先构建前端并复制内嵌资源，推荐通过 Makefile 完成，不要直接用普通 `go build` 制作发布包。
-
-## 功能与数据
-
-- 整理工作台、整理记录、设置三个视图；桌面双列对照，手机分区切换。
-- 手动搜索 TMDB、逐文件季集修正、命名模板与按顺序匹配的分类规则。
-- 后端生成并保存预览，执行仅提交预览 ID。预览有效期 15 分钟；设置变更、文件变化或重启后需重新生成。
-- 复制、移动、硬链接，带文件校验、防覆盖及授权目录限制；不自动删除重复版本。
-- NFO、海报、背景图及同名字幕全部纳入预览；共享产物去重，已有产物保留，视频和字幕重名时报冲突。
-- 单任务串行运行，轮询进度，支持取消、失败重试、中断恢复和整批撤销。目标被替换、修改或原路径被占用时停止对应操作。
-- SQLite 保存账号、设置、TMDB 缓存和整理记录；操作状态先持久化，再改动文件。浏览器保存当前工作区，刷新保留，退出清空。
-
-运行数据、日志、媒体、构建产物和缓存统一放在可见的 `local/` 下，不提交 Git。若直接运行 Go 命令，也可先在项目根目录设置缓存路径：
+需要硬链接时，将 [deploy/compose.shared.yaml](deploy/compose.shared.yaml) 保存为部署目录中的 `compose.shared.yaml`，使用共同父目录挂载：
 
 ```sh
-export GOMODCACHE="$PWD/local/cache/go-mod"
-export GOCACHE="$PWD/local/cache/go-build"
-export GOTMPDIR="$PWD/local/tmp"
-export TMPDIR="$PWD/local/tmp"
+mkdir -p data media/source media/target
+docker compose -f compose.shared.yaml up -d
 ```
 
-接口见 [docs/API.md](docs/API.md)。文件安全、解析、TMDB、命名和 NFO 模块沿用原有测试；业务编排与 UI 已重新实现。
+此示例将 `${MEDIA_DIR:-./media}` 一次挂载到 `/media`，程序的源、目标目录分别为 `/media/source` 和 `/media/target`。它们仍需位于同一文件系统；两个独立挂载即使来自同一磁盘，也可能无法互相创建硬链接。
 
-## 隐私与发布边界
+容器默认使用 UID/GID `1000:1000`；可通过 `JOYCURATOR_UID`、`JOYCURATOR_GID` 调整为媒体目录所有者的身份，挂载目录需允许该用户读写。首次启动时会创建默认目录；已有挂载目录的权限需由宿主机管理。需要长期保留 UID/GID 设置时，将它们写入部署目录的 `.env`。需要固定版本时，在该文件中设置 `JOYCURATOR_VERSION` 为已发布的镜像版本号。
 
-- `local/` 下的 SQLite、媒体、归档、日志、截图及缓存不提交 Git，也不进入 Docker 构建上下文。数据库、备份、环境文件和私钥即使误放到源码目录，也有额外排除规则。不要用 `git add -f` 绕过这些规则。
-- Docker 上下文仅开放构建必需的源码与清单；最终镜像只复制编译后的单文件程序，不复制开发电脑的数据库、媒体或配置。GitHub Actions 使用云端全新检出，不读取开发电脑的 `local/`。
-- 发布上传明确限定为四个平台程序和 `SHA256SUMS`，不会将整个 `local/` 或发布目录打包上传。前端禁用 public 目录自动复制和 source map；程序只内嵌构建的首页及 assets。
-- `python3 scripts/check-release.py --assets` 检查已跟踪文件及前端产物中的私有文件、SQLite 内容、常见密钥格式和个人绝对路径；发现问题只输出文件和规则，不输出敏感值。构建、检查和 CI 会自动执行此检查。规则扫描不能保证识别所有形式的秘密，新增凭据应通过后端配置输入。
-- TMDB Token 不返回前端、不写入浏览器存储、不出现在上游请求错误中。管理员密码以 bcrypt 哈希保存，会话凭据在数据库中保存 SHA256 哈希。**TMDB Token 在本地数据库中以明文保存**，因此数据库及备份属于敏感文件，不要公开上传或分享。
-- 程序没有遥测或媒体上传接口。联网行为用于 TMDB 元数据查询和图片下载；搜索词、作品/季集 ID 会发送给 TMDB，前端海报也直接请求 TMDB 图片域名。浏览器本地存储会保存工作区文件路径，退出登录时清空，不存储 TMDB Token 或密码。
+## 首次配置与使用
+
+1. 创建管理员账号，密码长度为 12–72 字节。
+2. 在设置中填写 TMDB **API Read Access Token**，按需设置网络代理。
+3. 配置已授权范围内的源目录和目标目录，并检查分类规则。
+4. 添加文件或文件夹，选择对应作品，检查并修正季集信息。
+5. 生成预览，处理冲突后确认执行；进度和操作结果可在整理记录中查看。
+
+浏览器中的目录均位于运行 JoyCurator 的设备上；从手机访问时，同样操作服务端文件。
+
+源目录和目标目录需预先存在，启动时会创建默认目录。作品、分类和季目录会在整理时自动创建。默认使用复制，也支持移动和硬链接。
+
+分类规则按顺序匹配，首个命中的规则生成目标目录下的相对路径。默认将电影、剧集纳入分类，例如：
+
+```text
+目标目录/
+├── 电影/
+│   ├── 华语电影/作品目录/
+│   └── 动画电影/作品目录/
+└── 剧集/
+    ├── 国产剧/作品目录/Season 01/
+    └── 动漫/作品目录/Season 01/
+```
+
+分类子目录可自定义，使用 `/` 创建层级；不允许绝对路径、空路径段或 `..`。扫描和预览只能使用源目录内的文件，目标目录会被排除。源和目标不能相同，源目录也不能位于目标目录内部。
+
+目录扫描会递归导入视频，跳过隐藏文件、符号链接和已配置的目标目录。每次最多导入 200 个路径、2000 个视频，单次整理最多 1000 个视频。
+
+剧集整理当前季中能够完整对应的文件；特别篇季号为 `0`，合并集支持 `1-3`、`1,3,5` 等写法。电影整理当前工作区中的全部来源文件，文件名筛选仅影响显示。预览有效期为 15 分钟，配置变更、文件变化或服务重启后需重新生成。
+
+## 环境变量
+
+以下为独立程序的默认配置，Compose 示例已覆盖容器内的监听地址和目录。
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `JOYCURATOR_ADDR` | `127.0.0.1:8081` | HTTP 监听地址 |
+| `JOYCURATOR_DATA_DIR` | 程序目录下的 `local/data` | SQLite 数据目录 |
+| `JOYCURATOR_SOURCE_DIR` | 程序目录下的 `local/source` | 源目录及其授权范围 |
+| `JOYCURATOR_TARGET_DIR` | 程序目录下的 `local/target` | 目标目录及其授权范围 |
+| `JOYCURATOR_SECURE_COOKIE` | `false` | 通过 HTTPS 访问时设置为 `true` |
+
+需要局域网访问时，可将监听地址设置为 `0.0.0.0:8081`。使用 HTTPS 反向代理时，代理应保留原始 Host，并启用安全 Cookie。长期运行可使用 systemd 等进程管理工具。
+
+## 数据与隐私
+
+账号、设置、TMDB 缓存和整理记录保存在 SQLite 中。管理员密码使用 bcrypt 哈希，会话凭据使用 SHA256 哈希；TMDB Token 不返回前端，也不写入浏览器存储。
+
+**TMDB Token 在数据库中以明文保存，因此数据库及备份应作为敏感文件保管。** 浏览器会保存当前工作区及文件路径，退出登录时清空。
+
+程序没有遥测或媒体上传接口。TMDB 查询会发送搜索词及作品、季集 ID，海报和背景图通过 TMDB 图片服务获取。
+
+升级前停止服务并备份数据目录。单文件部署替换程序即可；Compose 部署可执行：
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+保留数据库和媒体挂载目录。撤销操作会检查目标文件是否被修改或替换，以及原始路径是否被占用，遇到冲突会停止对应操作。
+
+更改源目录、目标目录或容器挂载时，已有媒体不会自动搬迁。历史任务仍引用原始绝对路径，重试或撤销前需确保这些路径仍存在且处于授权范围内。
+
+## 源码开发与构建
+
+技术栈为 Go、SQLite、Vue 3 和 TypeScript。
+
+开发依赖：Go 1.24+、Node.js 22.19+、pnpm 11.28.5、Python 3。ffprobe 可选。
+
+```sh
+git clone https://github.com/guhh110/JoyCurator.git
+cd JoyCurator
+make install
+```
+
+分别在两个终端启动后端和前端：
+
+```sh
+make backend
+```
+
+```sh
+make frontend
+```
+
+开发页面位于 **http://localhost:5175**，API 默认监听 `127.0.0.1:8081`，由 Vite 代理。
+
+```sh
+make check                         # 检查、测试与前端构建
+make build                         # 构建内嵌前端的单文件程序
+./local/bin/joycurator
+make release VERSION=v0.0.1       # 交叉编译四个平台的程序与校验文件
+```
+
+单平台程序输出到 `local/bin/`，多平台产物输出到 `local/releases/`。从源码运行或使用上述 `local/bin/` 布局时，数据目录默认位于项目的 `local/` 下。
+
+接口说明见 [docs/API.md](docs/API.md)，自动构建与发布流程见 [GitHub Actions](.github/workflows/release.yml)。

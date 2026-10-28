@@ -17,9 +17,60 @@
   --green: #35947b;
   --red: #bf5260;
   --shadow: 0 4px 22px #29204404;
+  --scrollbar-thumb: #b3abc1;
+  --scrollbar-hover: #91849f;
+  --scrollbar-active: #766589;
 }
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+/* Use one inset scrollbar skin for pages, panels, dialogs and horizontal scrolling. */
+@supports selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    min-width: 32px;
+    min-height: 32px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: var(--scrollbar-thumb);
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-hover);
+  }
+  *::-webkit-scrollbar-thumb:active {
+    background-color: var(--scrollbar-active);
+  }
+  *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+.page-scroll,
+.pane-scroll,
+.modal-body,
+.browser-list,
+.global-notice {
+  scrollbar-gutter: stable;
+}
+@supports not (scrollbar-gutter: stable) {
+  .page-scroll {
+    overflow-y: scroll;
+  }
 }
 body {
   margin: 0;
@@ -334,9 +385,19 @@ small {
   color: var(--purple);
 }
 .app-shell {
-  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+.page-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .topbar {
+  flex-shrink: 0;
   height: 61px;
   padding: 0 34px;
   display: flex;
@@ -527,8 +588,6 @@ small {
   overscroll-behavior: contain;
   flex: 1;
   min-height: 0;
-  scrollbar-width: thin;
-  scrollbar-color: #ddd7ec transparent;
 }
 .pane-foot {
   display: flex;
@@ -625,7 +684,8 @@ small {
   overflow-x: auto;
   scrollbar-width: none;
 }
-.file-name::-webkit-scrollbar {
+.file-name::-webkit-scrollbar,
+.file-meta::-webkit-scrollbar {
   display: none;
 }
 .file-meta {
@@ -1392,8 +1452,6 @@ small {
   overscroll-behavior: contain;
   min-height: 0;
   padding: 22px 25px;
-  scrollbar-width: thin;
-  scrollbar-color: #ddd7ec transparent;
 }
 .modal-body > .muted {
   font-size: 11px;
@@ -1433,7 +1491,6 @@ small {
 .browser-list {
   height: min(380px, 48dvh);
   overflow-y: auto;
-  scrollbar-width: thin;
 }
 .browser-row {
   display: flex;
@@ -1972,8 +2029,11 @@ small {
   .account .icon-button {
     margin-left: 0;
   }
+  .page-scroll {
+    padding-bottom: calc(61px + env(safe-area-inset-bottom));
+  }
   .main {
-    padding: 19px 15px 100px;
+    padding: 19px 15px 39px;
   }
   .main.workspace {
     height: calc(100dvh - 59px - 61px - env(safe-area-inset-bottom));

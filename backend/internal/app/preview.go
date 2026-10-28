@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"joycurator/internal/fsops"
 	"joycurator/internal/metadata"
 	"joycurator/internal/model"
 	"joycurator/internal/organizer"
@@ -43,8 +44,13 @@ func (a *App) scan(ctx context.Context, paths []string) ([]File, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, path := range paths {
+		if !a.sourceAllowed(path, s) {
+			return nil, errors.New("只能添加源目录内的文件或文件夹，目标目录不能作为来源")
+		}
+	}
 	items := []File{}
-	err = scanner.Walk(ctx, a.access, paths, []string{s.MovieRoot, s.TVRoot}, func(path string, info os.FileInfo) error {
+	err = scanner.Walk(ctx, a.access, paths, []string{s.TargetRoot}, func(path string, info os.FileInfo) error {
 		if len(items) >= 2000 {
 			return errors.New("单次最多导入 2000 个视频，请分批添加")
 		}
@@ -71,6 +77,11 @@ func (a *App) preview(ctx context.Context, in PreviewRequest) (*Plan, error) {
 	s, err := a.settings()
 	if err != nil {
 		return nil, err
+	}
+	for _, file := range in.Files {
+		if !a.sourceAllowed(file.Path, s) {
+			return nil, errors.New("预览包含源目录之外或目标目录内的文件，请重新添加")
+		}
 	}
 	client, err := a.client(s)
 	if err != nil {
@@ -347,4 +358,13 @@ func (a *App) validateOps(ops []Work) error {
 		}
 	}
 	return nil
+}
+
+func (a *App) sourceAllowed(path string, s model.Settings) bool {
+	path = a.access.Canonical(path)
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil || real != path {
+		return false
+	}
+	return s.SourceRoot != "" && fsops.Within(a.access.Canonical(s.SourceRoot), path) && (s.TargetRoot == "" || !fsops.Within(a.access.Canonical(s.TargetRoot), path))
 }

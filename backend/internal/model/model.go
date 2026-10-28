@@ -18,20 +18,19 @@ type Rules struct {
 	Categories  []Category `json:"categories"`
 }
 type Settings struct {
-	Version   int      `json:"version"`
-	Sources   []string `json:"sources"`
-	MovieRoot string   `json:"movieRoot"`
-	TVRoot    string   `json:"tvRoot"`
-	Token     string   `json:"-"`
-	ProxyURL  string   `json:"proxyURL"`
-	Language  string   `json:"language"`
-	NFO       bool     `json:"nfo"`
-	Images    bool     `json:"images"`
-	Rules     Rules    `json:"rules"`
+	Version    int    `json:"version"`
+	SourceRoot string `json:"sourceRoot"`
+	TargetRoot string `json:"targetRoot"`
+	Token      string `json:"-"`
+	ProxyURL   string `json:"proxyURL"`
+	Language   string `json:"language"`
+	NFO        bool   `json:"nfo"`
+	Images     bool   `json:"images"`
+	Rules      Rules  `json:"rules"`
 }
 
 func DefaultSettings() Settings {
-	return Settings{Version: 1, Sources: []string{}, Language: "zh-CN", NFO: true, Images: true, Rules: Rules{
+	return Settings{Version: 1, Language: "zh-CN", NFO: true, Images: true, Rules: Rules{
 		MovieFolder: "{category}/{title} ({year}) [tmdb-{tmdb_id}]", MovieFile: "{title} ({year}) - {resolution}.{ext}",
 		TVFolder: "{category}/{title} ({year}) [tmdb-{tmdb_id}]/Season {season:02}", TVFile: "{title} - {episode_range} - {resolution}.{ext}", Categories: DefaultCategories(),
 	}}
@@ -45,17 +44,18 @@ func DefaultCategories() []Category {
 	east := []string{"CN", "HK", "TW", "SG"}
 	west := []string{"US", "GB", "FR", "DE", "IT", "ES", "CA", "AU", "NZ"}
 	return []Category{
-		{Name: "纪录片", Countries: []string{}, Genres: []string{"纪录片", "Documentary"}},
-		{Name: "动画电影", Type: "movie", Countries: []string{}, Genres: []string{"动画", "Animation"}},
-		{Name: "华语电影", Type: "movie", Countries: east, Genres: []string{}},
-		{Name: "日韩电影", Type: "movie", Countries: []string{"JP", "KR"}, Genres: []string{}},
-		{Name: "欧美电影", Type: "movie", Countries: west, Genres: []string{}},
-		{Name: "其他电影", Type: "movie", Countries: []string{}, Genres: []string{}},
-		{Name: "动漫", Type: "tv", Countries: []string{}, Genres: []string{"动画", "Animation"}},
-		{Name: "国产剧", Type: "tv", Countries: east, Genres: []string{}},
-		{Name: "日韩剧", Type: "tv", Countries: []string{"JP", "KR"}, Genres: []string{}},
-		{Name: "欧美剧", Type: "tv", Countries: west, Genres: []string{}},
-		{Name: "其他剧集", Type: "tv", Countries: []string{}, Genres: []string{}},
+		{Name: "电影/纪录片", Type: "movie", Countries: []string{}, Genres: []string{"纪录片", "Documentary"}},
+		{Name: "剧集/纪录片", Type: "tv", Countries: []string{}, Genres: []string{"纪录片", "Documentary"}},
+		{Name: "电影/动画电影", Type: "movie", Countries: []string{}, Genres: []string{"动画", "Animation"}},
+		{Name: "电影/华语电影", Type: "movie", Countries: east, Genres: []string{}},
+		{Name: "电影/日韩电影", Type: "movie", Countries: []string{"JP", "KR"}, Genres: []string{}},
+		{Name: "电影/欧美电影", Type: "movie", Countries: west, Genres: []string{}},
+		{Name: "电影/其他电影", Type: "movie", Countries: []string{}, Genres: []string{}},
+		{Name: "剧集/动漫", Type: "tv", Countries: []string{}, Genres: []string{"动画", "Animation"}},
+		{Name: "剧集/国产剧", Type: "tv", Countries: east, Genres: []string{}},
+		{Name: "剧集/日韩剧", Type: "tv", Countries: []string{"JP", "KR"}, Genres: []string{}},
+		{Name: "剧集/欧美剧", Type: "tv", Countries: west, Genres: []string{}},
+		{Name: "剧集/其他剧集", Type: "tv", Countries: []string{}, Genres: []string{}},
 	}
 }
 

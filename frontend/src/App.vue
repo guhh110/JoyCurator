@@ -41,6 +41,7 @@ import type {
 import Modal from './components/Modal.vue'
 import FileBrowser from './components/FileBrowser.vue'
 
+const pageScroll = ref<HTMLElement>()
 const view = ref('work'),
   sessionReady = ref(false),
   initialized = ref(true),
@@ -61,7 +62,7 @@ const filter = ref(''),
   panel = ref('files'),
   mode = ref('copy'),
   browser = ref(false),
-  directoryTarget = ref<'movieRoot' | 'tvRoot' | null>(null)
+  directoryTarget = ref<'sourceRoot' | 'targetRoot' | null>(null)
 const searchOpen = ref(false),
   query = ref(''),
   kind = ref<'tv' | 'movie'>('tv'),
@@ -184,6 +185,7 @@ watch(
   { deep: true },
 )
 watch(view, (value) => {
+  pageScroll.value?.scrollTo({ top: 0, left: 0 })
   message.value = ''
   if (value === 'records') void loadRecords()
   if (value === 'settings') void act(loadSettings)
@@ -644,6 +646,7 @@ onUnmounted(() => {
         </button>
       </div>
     </header>
+    <div ref="pageScroll" class="page-scroll">
     <main :class="['main', { workspace: view === 'work' }]">
       <div v-if="message" class="notice error global-notice" role="alert">
         <span>{{ message }}</span
@@ -1123,24 +1126,24 @@ onUnmounted(() => {
             <template v-if="settingsSection === 'folders'"
               ><h2>让每份收藏各归其位</h2>
               <p class="muted">
-                目录是 Go 服务所在设备上的路径。目标根目录需预先存在。
+                源目录用于添加文件，目标目录保存整理结果。电影、剧集等子目录由分类规则生成。
               </p>
               <label
-                >电影目标目录
+                >源目录
                 <div class="input-action">
-                  <input v-model="settings.movieRoot" /><button
+                  <input v-model="settings.sourceRoot" /><button
                     class="button small"
-                    @click="directoryTarget = 'movieRoot'"
+                    @click="directoryTarget = 'sourceRoot'"
                   >
                     <FolderOpen :size="16" />选择
                   </button>
                 </div></label
               ><label
-                >剧集目标目录
+                >目标目录
                 <div class="input-action">
-                  <input v-model="settings.tvRoot" /><button
+                  <input v-model="settings.targetRoot" /><button
                     class="button small"
-                    @click="directoryTarget = 'tvRoot'"
+                    @click="directoryTarget = 'targetRoot'"
                   >
                     <FolderOpen :size="16" />选择
                   </button>
@@ -1153,7 +1156,7 @@ onUnmounted(() => {
                     v-for="root in settings.roots"
                     :key="root"
                     >{{ root }}</code
-                  ><small>可通过 JOYCURATOR_MEDIA_ROOTS 添加授权目录。</small>
+                  ><small>通过 JOYCURATOR_SOURCE_DIR 和 JOYCURATOR_TARGET_DIR 配置授权范围。</small>
                 </div>
               </div></template
             >
@@ -1211,7 +1214,7 @@ onUnmounted(() => {
                 ><code>{category}</code><code>{tmdb_id}</code
                 ><code>{season:02}</code><code>{episode_range}</code
                 ><code>{resolution}</code><code>{codec}</code
-                ><code>{original_name}</code><code>{ext}</code>
+                ><code>{original_stem}</code><code>{ext}</code>
               </p>
               <div class="section-heading">
                 <h3>分类规则</h3>
@@ -1229,6 +1232,7 @@ onUnmounted(() => {
                   <Plus :size="14" />添加规则
                 </button>
               </div>
+              <p class="muted">按顺序匹配，首个命中的规则决定目标目录下的分类路径。使用 / 创建多级目录，例如电影/华语电影、剧集/国产剧。</p>
               <details
                 v-for="(category, index) in settings.rules.categories"
                 :key="index"
@@ -1241,7 +1245,7 @@ onUnmounted(() => {
                   >{{ category.name || '未命名分类' }}<ChevronDown :size="15" />
                 </summary>
                 <div class="category-fields">
-                  <label>目录名称<input v-model="category.name" /></label
+                  <label>分类子目录<input v-model="category.name" placeholder="电影/华语电影" /></label
                   ><label
                     >媒体类型<select v-model="category.type">
                       <option value="">全部</option>
@@ -1335,6 +1339,7 @@ onUnmounted(() => {
           </button></div
       ></template>
     </main>
+    </div>
     <div v-if="active" class="task-toast" :class="{ finished: !running }">
       <LoaderCircle v-if="running" class="spin purple" :size="19" /><CircleCheck
         v-else-if="active.state === 'completed' || active.state === 'undone'"
