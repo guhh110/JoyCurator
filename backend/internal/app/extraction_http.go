@@ -17,7 +17,7 @@ type extractionRequest struct {
 
 func (a *App) extractionRoutes(add func(string, endpoint)) {
 	add("GET /api/extraction/rules", func(w http.ResponseWriter, r *http.Request) error {
-		reply(w, map[string]any{"rules": a.currentExtractor().Rules(), "defaults": recognition.DefaultRules(), "catalog": recognition.Catalog(), "targets": recognition.Targets(), "sources": recognition.Sources()})
+		reply(w, map[string]any{"rules": a.currentExtractor().Rules(), "defaults": recognition.DefaultRules(), "catalog": recognition.Catalog(), "targets": recognition.Targets(), "sources": recognition.Sources(), "sourceScripts": recognition.SourceScripts(), "scriptLanguage": "starlark"})
 		return nil
 	})
 	add("PUT /api/extraction/rules", func(w http.ResponseWriter, r *http.Request) error {

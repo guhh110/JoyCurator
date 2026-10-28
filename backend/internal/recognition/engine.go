@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go.starlark.net/starlark"
 	"regexp"
 	"sort"
 	"strings"
@@ -12,12 +13,19 @@ import (
 )
 
 type compiledRule struct {
-	rule    Rule
-	regex   *regexp.Regexp
-	capture int
-	params  yearParams
+	rule          Rule
+	regex         *regexp.Regexp
+	capture       int
+	program       *starlark.Program
+	sourceProgram *starlark.Program
 }
 type Engine struct{ rules []compiledRule }
+type matchValue struct {
+	value    any
+	text     string
+	captures map[string]string
+	trace    []ScriptEvent
+}
 
 func Compile(rules []Rule) (*Engine, error) {
 	// Deep-copy configuration once: callers cannot mutate a compiled invocation.
@@ -51,40 +59,44 @@ func Compile(rules []Rule) (*Engine, error) {
 		if !validTarget || !validSource {
 			return nil, fmt.Errorf("规则 %s 的目标或来源无效", rule.Name)
 		}
-		c := compiledRule{rule: rule, params: yearParams{1900, 2099}}
+		if rule.Source == CleanFilename && rule.Config.SourceCode == "" {
+			rule.Config.SourceCode = cleanFilenameScript
+		}
+		c := compiledRule{rule: rule}
+		if rule.Source == CleanFilename {
+			c.sourceProgram, err = compileScript(rule.ID+"-source.star", rule.Config.SourceCode)
+			if err != nil {
+				return nil, fmt.Errorf("规则 %s 的来源脚本无效：%w", rule.Name, err)
+			}
+		} else if rule.Config.SourceCode != "" {
+			return nil, errors.New("来源脚本仅适用于清理后文件名来源")
+		}
 		switch rule.Kind {
-		case "builtin":
-			d, ok := descriptor(rule.Config.Handler)
-			if !ok || d.Target != rule.Target {
-				return nil, fmt.Errorf("规则 %s 的内置处理器与目标不匹配", rule.Name)
+		case "script":
+			if rule.Config.Handler != "" || rule.Config.Pattern != "" || rule.Config.Capture != "" || rule.Config.Value != nil {
+				return nil, errors.New("脚本规则不能包含内置处理器或正则规则配置")
 			}
-			if rule.Config.Pattern != "" || rule.Config.Capture != "" || rule.Config.Value != nil {
-				return nil, errors.New("内置规则不能包含正则配置")
-			}
-			supported := false
-			for _, source := range d.Sources {
-				supported = supported || source == rule.Source
-			}
-			if !supported {
-				return nil, fmt.Errorf("规则 %s 不支持此输入来源", rule.Name)
+			if len(rule.Config.Params) > 16384 {
+				return nil, errors.New("脚本参数过长")
 			}
 			if len(rule.Config.Params) > 0 {
-				if rule.Config.Handler == "year" {
-					decoder := json.NewDecoder(strings.NewReader(string(rule.Config.Params)))
-					decoder.DisallowUnknownFields()
-					if err := decoder.Decode(&c.params); err != nil || c.params.Min < 1 || c.params.Max < c.params.Min || c.params.Max > 9999 {
-						return nil, errors.New("年份参数 min/max 无效")
-					}
-				} else if string(rule.Config.Params) != "{}" && string(rule.Config.Params) != "null" {
-					var params map[string]json.RawMessage
-					if json.Unmarshal(rule.Config.Params, &params) != nil || len(params) > 0 {
-						return nil, errors.New("此内置处理器没有可配置参数")
-					}
+				var params map[string]any
+				decoder := json.NewDecoder(strings.NewReader(string(rule.Config.Params)))
+				decoder.UseNumber()
+				if err := decoder.Decode(&params); err != nil || params == nil {
+					return nil, errors.New("脚本参数必须是 JSON 对象")
+				}
+				if _, err := toStar(params); err != nil {
+					return nil, err
 				}
 			}
+			c.program, err = compileScript(rule.ID+".star", rule.Config.Code)
+			if err != nil {
+				return nil, fmt.Errorf("规则 %s 的脚本无效：%w", rule.Name, err)
+			}
 		case "regex":
-			if rule.Config.Handler != "" || len(rule.Config.Params) > 0 {
-				return nil, errors.New("正则规则不能包含内置处理器配置")
+			if rule.Config.Handler != "" || rule.Config.Code != "" || len(rule.Config.Params) > 0 {
+				return nil, errors.New("正则规则不能包含脚本或内置处理器配置")
 			}
 			if rule.Config.Pattern == "" || len(rule.Config.Pattern) > 16384 {
 				return nil, errors.New("正则不能为空或过长")
@@ -105,7 +117,7 @@ func Compile(rules []Rule) (*Engine, error) {
 				return nil, err
 			}
 		default:
-			return nil, errors.New("规则类型必须为 builtin 或 regex")
+			return nil, errors.New("规则类型必须为 script 或 regex；旧内置规则请迁移为脚本")
 		}
 		for _, example := range rule.Examples {
 			if _, err := prepare(Input{Path: example.Path, Root: example.Root}); err != nil {
@@ -159,7 +171,8 @@ func (e *Engine) Extract(ctx context.Context, in Input, observer Observer) (Resu
 			for _, text := range inputs {
 				step.Inputs = append(step.Inputs, text)
 				attempt := Attempt{Input: text}
-				match, matchErr := c.match(text, p)
+				match, matchErr := c.match(ctx, text, p, result.Metadata)
+				attempt.Trace = match.trace
 				if match.value != nil {
 					attempt.Matched = true
 					attempt.MatchedText = match.text
@@ -216,13 +229,51 @@ func (e *Engine) Extract(ctx context.Context, in Input, observer Observer) (Resu
 	}
 	return result, nil
 }
-func (c compiledRule) match(text string, p pathInput) (matchValue, error) {
-	if c.rule.Kind == "builtin" {
-		return builtin(c.rule.Config.Handler, text, p, c.params)
+func (c compiledRule) match(ctx context.Context, text string, p pathInput, metadata Metadata) (matchValue, error) {
+	events := []ScriptEvent{}
+	filename := p.filename
+	directories := append([]string{}, p.directories...)
+	if (c.rule.Target == Episodes || c.rule.Target == Season) && (c.program != nil || c.sourceProgram != nil) {
+		protectedText := idRE.ReplaceAllString(text, " ")
+		if protectedText != text {
+			events = append(events, ScriptEvent{Phase: "input", Operation: "protect", Message: "TMDB ID 标签已屏蔽，不能作为季号或集数", Data: map[string]any{"before": text, "after": protectedText}})
+		}
+		text = protectedText
+		filename = idRE.ReplaceAllString(filename, " ")
+		for i := range directories {
+			directories[i] = idRE.ReplaceAllString(directories[i], " ")
+		}
+		metadata.TMDBID = nil
+	}
+	values := map[string]any{"text": text, "filename": filename, "directories": directories, "hasParent": len(directories) > 0, "source": string(c.rule.Source), "metadata": metadata, "params": map[string]any{}}
+	if len(c.rule.Config.Params) > 0 {
+		var params any
+		decoder := json.NewDecoder(strings.NewReader(string(c.rule.Config.Params)))
+		decoder.UseNumber()
+		_ = decoder.Decode(&params)
+		values["params"] = params
+	}
+	if c.sourceProgram != nil {
+		cleaned, err := executeScript(ctx, c.sourceProgram, values, "source")
+		events = append(events, cleaned.trace...)
+		if err != nil {
+			return matchValue{trace: events}, err
+		}
+		var ok bool
+		text, ok = cleaned.value.(string)
+		if !ok {
+			return matchValue{trace: events}, errors.New("来源清理脚本必须返回字符串")
+		}
+		values["text"] = text
+	}
+	if c.rule.Kind == "script" {
+		match, err := executeScript(ctx, c.program, values, "extract")
+		match.trace = append(events, match.trace...)
+		return match, err
 	}
 	indexes := c.regex.FindStringSubmatchIndex(text)
 	if indexes == nil {
-		return matchValue{}, nil
+		return matchValue{trace: events}, nil
 	}
 	start, end := indexes[0], indexes[1]
 	value := any(c.rule.Config.Value)
@@ -240,7 +291,7 @@ func (c compiledRule) match(text string, p pathInput) (matchValue, error) {
 		value = text[start:end]
 	}
 	if (c.rule.Target == Episodes || c.rule.Target == Season) && protected(text, start, end) {
-		return matchValue{value: value, text: text[indexes[0]:indexes[1]], captures: captures}, errors.New("受保护的 TMDB ID 标签不能作为季号或集数")
+		return matchValue{value: value, text: text[indexes[0]:indexes[1]], captures: captures, trace: events}, errors.New("受保护的 TMDB ID 标签不能作为季号或集数")
 	}
-	return matchValue{value: value, text: text[indexes[0]:indexes[1]], captures: captures}, nil
+	return matchValue{value: value, text: text[indexes[0]:indexes[1]], captures: captures, trace: events}, nil
 }

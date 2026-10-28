@@ -32,6 +32,9 @@ const (
 )
 
 type Config struct {
+	Code       string `json:"code,omitempty"`
+	SourceCode string `json:"sourceCode,omitempty"`
+	// Handler is retained only for migrating saved rules and reading old traces.
 	Handler string          `json:"handler,omitempty"`
 	Params  json.RawMessage `json:"params,omitempty"`
 	Pattern string          `json:"pattern,omitempty"`
@@ -71,6 +74,16 @@ type Attempt struct {
 	MatchedText string            `json:"matchedText,omitempty"`
 	Captures    map[string]string `json:"captures,omitempty"`
 	Error       string            `json:"error,omitempty"`
+	Trace       []ScriptEvent     `json:"trace,omitempty"`
+}
+type ScriptEvent struct {
+	Phase     string `json:"phase"`
+	Line      int32  `json:"line"`
+	Column    int32  `json:"column"`
+	Function  string `json:"function,omitempty"`
+	Operation string `json:"operation"`
+	Message   string `json:"message"`
+	Data      any    `json:"data,omitempty"`
 }
 type Step struct {
 	RuleID         string            `json:"ruleId"`
@@ -100,12 +113,12 @@ type Input struct {
 	Root string
 }
 type Descriptor struct {
-	Handler     string          `json:"handler"`
-	Name        string          `json:"name"`
-	Target      Target          `json:"target"`
-	Description string          `json:"description"`
-	Sources     []Source        `json:"sources"`
-	Params      json.RawMessage `json:"params"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Target      Target   `json:"target"`
+	Description string   `json:"description"`
+	Sources     []Source `json:"sources"`
+	Config      Config   `json:"config"`
 }
 
 // Observer receives a completed immutable step, allowing an application to

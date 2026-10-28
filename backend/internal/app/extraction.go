@@ -44,8 +44,21 @@ func (a *App) initExtraction() error {
 	if err = json.Unmarshal([]byte(raw), &rules); err != nil {
 		return err
 	}
-	a.extractor, err = recognition.Compile(rules)
-	return err
+	migrated, changed, err := recognition.MigrateLegacyRules(rules)
+	if err != nil {
+		return err
+	}
+	engine, err := recognition.Compile(migrated)
+	if err != nil {
+		return err
+	}
+	if changed {
+		if _, err = a.db.Exec("UPDATE extraction_rules SET value=? WHERE id=1", jsonText(engine.Rules())); err != nil {
+			return err
+		}
+	}
+	a.extractor = engine
+	return nil
 }
 func (a *App) currentExtractor() *recognition.Engine {
 	a.mu.Lock()

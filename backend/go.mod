@@ -3,6 +3,7 @@ module joycurator
 go 1.24.0
 
 require (
+	go.starlark.net v0.0.0-20260324133313-ffb3f39dd27a
 	golang.org/x/crypto v0.36.0
 	golang.org/x/sys v0.31.0
 	modernc.org/sqlite v1.36.3

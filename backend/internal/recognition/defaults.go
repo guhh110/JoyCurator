@@ -4,9 +4,9 @@ import "encoding/json"
 
 func DefaultRules() []Rule {
 	rules := []Rule{}
-	add := func(id string, target Target, source Source, handler string) {
-		d, _ := descriptor(handler)
-		rules = append(rules, Rule{ID: id, Name: d.Name, Description: d.Description, Target: target, Source: source, Order: (len(rules) + 1) * 10, Enabled: true, Kind: "builtin", Config: Config{Handler: handler}, Examples: []Example{}})
+	add := func(id string, target Target, source Source, templateID string) {
+		d, _ := descriptor(templateID)
+		rules = append(rules, Rule{ID: id, Name: d.Name, Description: d.Description, Target: target, Source: source, Order: (len(rules) + 1) * 10, Enabled: true, Kind: "script", Config: d.Config, Examples: []Example{}})
 	}
 	add("id-filename", TMDBID, Filename, "tmdb-id")
 	add("id-directory", TMDBID, Directories, "tmdb-id")

@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import type { Catalog, Rule } from './model'
-import { sources, targets } from './model'
-const props = defineProps<{ rule: Rule; catalog: Catalog[] }>()
+import { ref, watch } from 'vue'
+import type { Rule, Source } from './model'
+import ScriptCode from './ScriptCode.vue'
+import { sources, targets, emptyScript } from './model'
+const props = defineProps<{
+  rule: Rule
+  sourceScripts: Partial<Record<Source, string>>
+}>()
 const emit = defineEmits<{ update: [value: Rule] }>()
 const draft = ref<Rule>(JSON.parse(JSON.stringify(props.rule)) as Rule)
 const constant = ref(false),
   constantText = ref(''),
   paramsText = ref('{}'),
+  sourceCode = ref(''),
   examplesText = ref('[]'),
   error = ref('')
 watch(
@@ -18,40 +23,18 @@ watch(
     constantText.value = JSON.stringify(value.config.value ?? 'tv')
     paramsText.value = JSON.stringify(value.config.params ?? {}, null, 2)
     examplesText.value = JSON.stringify(value.examples ?? [], null, 2)
+    sourceCode.value =
+      value.config.sourceCode ?? props.sourceScripts.cleanFilename ?? ''
     error.value = ''
   },
   { immediate: true },
 )
-const handlers = computed(() =>
-  props.catalog.filter((item) => item.target === draft.value.target),
-)
-const allowedSources = computed(() =>
-  draft.value.kind === 'builtin'
-    ? (props.catalog.find((item) => item.handler === draft.value.config.handler)
-        ?.sources ?? [])
-    : Object.keys(sources),
-)
-function handlerChanged() {
-  const handler = props.catalog.find(
-    (item) => item.handler === draft.value.config.handler,
-  )
-  if (!handler) return
-  paramsText.value = JSON.stringify(handler.params, null, 2)
-  if (!handler.sources.includes(draft.value.source))
-    draft.value.source = handler.sources[0]!
-}
 function kindChanged() {
   draft.value.config =
     draft.value.kind === 'regex'
       ? { pattern: '(?P<value>.+)', capture: 'value' }
-      : { handler: handlers.value[0]?.handler }
-  handlerChanged()
-}
-function targetChanged() {
-  if (draft.value.kind === 'builtin') {
-    draft.value.config.handler = handlers.value[0]?.handler
-    handlerChanged()
-  }
+      : { code: emptyScript }
+  paramsText.value = '{}'
 }
 function commit() {
   try {
@@ -59,14 +42,16 @@ function commit() {
     rule.examples = JSON.parse(examplesText.value)
     if (!Array.isArray(rule.examples)) throw new Error('样例必须是 JSON 数组')
     rule.config =
-      rule.kind === 'builtin'
-        ? { handler: rule.config.handler, params: JSON.parse(paramsText.value) }
+      rule.kind === 'script'
+        ? { code: rule.config.code, params: JSON.parse(paramsText.value) }
         : constant.value
           ? {
               pattern: rule.config.pattern,
               value: JSON.parse(constantText.value),
             }
           : { pattern: rule.config.pattern, capture: rule.config.capture }
+    if (rule.source === 'cleanFilename')
+      rule.config.sourceCode = sourceCode.value
     emit('update', rule)
     error.value = ''
   } catch (e) {
@@ -88,11 +73,7 @@ function commit() {
       </div>
       <div>
         <label for="rule-target">提取目标（仅一个）</label
-        ><select
-          id="rule-target"
-          v-model="draft.target"
-          @change="targetChanged"
-        >
+        ><select id="rule-target" v-model="draft.target">
           <option v-for="(label, key) in targets" :key="key" :value="key">
             {{ label }}
           </option>
@@ -102,13 +83,13 @@ function commit() {
         <label for="rule-kind">规则类型</label
         ><select id="rule-kind" v-model="draft.kind" @change="kindChanged">
           <option value="regex">自定义正则</option>
-          <option value="builtin">内置处理器</option>
+          <option value="script">Starlark 脚本</option>
         </select>
       </div>
       <div>
         <label for="rule-source">输入来源</label
         ><select id="rule-source" v-model="draft.source">
-          <option v-for="key in allowedSources" :key="key" :value="key">
+          <option v-for="(_, key) in sources" :key="key" :value="key">
             {{ sources[key as keyof typeof sources] }}
           </option>
         </select>
@@ -126,26 +107,18 @@ function commit() {
     </div>
     <label for="rule-description">说明</label
     ><input id="rule-description" v-model="draft.description" />
-    <template v-if="draft.kind === 'builtin'"
-      ><label for="rule-handler">内置处理器</label
-      ><select
-        id="rule-handler"
-        v-model="draft.config.handler"
-        @change="handlerChanged"
-      >
-        <option
-          v-for="handler in handlers"
-          :key="handler.handler"
-          :value="handler.handler"
-        >
-          {{ handler.name }} · {{ handler.handler }}
-        </option>
-      </select>
+    <template v-if="draft.kind === 'script'">
+      <label for="rule-code">完整脚本（Starlark）</label>
+      <ScriptCode
+        id="rule-code"
+        v-model="draft.config.code!"
+        label="Starlark 脚本"
+      />
       <p class="muted tiny">
-        {{
-          catalog.find((item) => item.handler === draft.config.handler)
-            ?.description
-        }}
+        定义 extract(ctx)。使用
+        ctx.text、ctx.directories、ctx.metadata、ctx.params；返回本字段值或
+        None。re_search / re_findall / re_sub
+        会自动记录参数与结果，trace("说明", 中间值) 可记录判断依据。
       </p>
       <label for="rule-params">参数 JSON</label
       ><textarea
@@ -179,6 +152,10 @@ function commit() {
           placeholder="value"
           spellcheck="false" /></template
     ></template>
+    <details v-if="draft.source === 'cleanFilename'" class="source-cleaner">
+      <summary>来源清理脚本（同样可编辑与追踪）</summary>
+      <ScriptCode v-model="sourceCode" label="来源清理脚本" />
+    </details>
     <div class="checks">
       <label class="check"
         ><input v-model="draft.enabled" type="checkbox" />启用</label
@@ -219,6 +196,14 @@ h2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+}
+.source-cleaner {
+  margin-top: 18px;
+}
+.source-cleaner summary {
+  cursor: pointer;
+  color: var(--purple);
+  margin-bottom: 12px;
 }
 .editor > label {
   margin-top: 16px;

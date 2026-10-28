@@ -154,11 +154,11 @@ func TestCancellationPreservesCompletedStepsAndSnapshot(t *testing.T) {
 		count++
 		if count == 1 {
 			cancel()
-			step.RuleConfig.Config.Handler = "changed"
+			step.RuleConfig.Config.Code = "changed"
 		}
 		return nil
 	})
-	if !errors.Is(err, context.Canceled) || count != len(r.DefaultRules()) || *got.Metadata.TMDBID != 603 || got.Steps[0].RuleConfig.Config.Handler != "tmdb-id" {
+	if !errors.Is(err, context.Canceled) || count != len(r.DefaultRules()) || *got.Metadata.TMDBID != 603 || got.Steps[0].RuleConfig.Config.Code != r.DefaultRules()[0].Config.Code {
 		t.Fatal(count, err)
 	}
 	for _, step := range got.Steps[1:] {

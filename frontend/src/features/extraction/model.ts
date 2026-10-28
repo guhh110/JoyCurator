@@ -21,10 +21,11 @@ export interface Rule {
   source: Source
   order: number
   enabled: boolean
-  kind: 'builtin' | 'regex'
+  kind: 'script' | 'regex'
   overwrite: boolean
   config: {
-    handler?: string
+    code?: string
+    sourceCode?: string
     params?: Record<string, unknown>
     pattern?: string
     capture?: string
@@ -54,6 +55,7 @@ export interface Step {
     matchedText?: string
     captures?: Record<string, string>
     error?: string
+    trace?: ScriptEvent[]
   }[]
   status: string
   matchedText: string
@@ -72,13 +74,22 @@ export interface ExtractionResult {
   metadata: Metadata
   steps: Step[]
 }
+export interface ScriptEvent {
+  phase: string
+  line: number
+  column: number
+  function?: string
+  operation: string
+  message: string
+  data?: unknown
+}
 export interface Catalog {
-  handler: string
+  id: string
   name: string
   target: Target
   description: string
   sources: Source[]
-  params: Record<string, unknown>
+  config: Rule['config']
 }
 export interface RuleLibrary {
   rules: Rule[]
@@ -86,6 +97,8 @@ export interface RuleLibrary {
   catalog: Catalog[]
   targets: Target[]
   sources: Source[]
+  sourceScripts: Partial<Record<Source, string>>
+  scriptLanguage: string
 }
 export interface Trace {
   id: string
@@ -137,3 +150,9 @@ export function moveRule(rules: Rule[], from: number, to: number) {
     rule.order = (index + 1) * 10
   })
 }
+
+export const emptyScript = `def extract(ctx):
+    trace("输入文本", ctx.text)
+    # 返回本规则的目标值；未命中时返回 None。
+    return None
+`

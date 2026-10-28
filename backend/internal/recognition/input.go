@@ -9,8 +9,6 @@ import (
 )
 
 var idRE = regexp.MustCompile(`(?i)tmdb[-= ]?(\d+)`)
-var qualityRE = regexp.MustCompile(`(?i)\b(?:2160p|1080p|1080i|720p|480p|4k|bluray|blu-ray|bdrip|webrip|web-dl|webdl|hdtv|remux|x264|x265|h[ .]?264|h[ .]?265|hevc|avc|aac|dts|ddp|hdr10?|dv|10bit|8bit)\b`)
-var bracketsRE = regexp.MustCompile(`[\[【][^\]】]*[\]】]`)
 
 type pathInput struct {
 	path, root, filename string
@@ -49,7 +47,7 @@ func (p pathInput) sources(source Source) []string {
 	case Filename:
 		return []string{p.filename}
 	case CleanFilename:
-		return []string{cleanInput(p.filename)}
+		return []string{p.filename}
 	case ParentDirectory:
 		if len(p.directories) > 0 {
 			return p.directories[:1]
@@ -63,12 +61,6 @@ func (p pathInput) sources(source Source) []string {
 		return []string{p.path}
 	}
 	return []string{}
-}
-func cleanInput(s string) string {
-	s = idRE.ReplaceAllString(s, " ")
-	s = bracketsRE.ReplaceAllString(s, " ")
-	s = qualityRE.ReplaceAllString(s, " ")
-	return strings.Trim(s, " ._-\t")
 }
 func NormalizeTitle(s string) string {
 	return strings.Map(func(r rune) rune {

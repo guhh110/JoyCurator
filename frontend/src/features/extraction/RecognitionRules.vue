@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { api } from '../../api'
 import type { Rule, RuleLibrary } from './model'
-import { targets, sources, moveRule } from './model'
+import { targets, sources, moveRule, emptyScript } from './model'
 import RuleEditor from './RuleEditor.vue'
 import ExtractionResult from './ExtractionResult.vue'
 import { useExtraction } from './useExtraction'
@@ -63,20 +63,25 @@ function edit(value: Rule) {
   notice.value = '已应用到编辑链，尚未保存'
   result.value = null
 }
-function add(kind: 'builtin' | 'regex') {
-  const descriptor = library.value?.catalog[0]
+const templateId = ref('')
+function add(kind: 'script' | 'regex', template = false) {
+  const descriptor = template
+    ? library.value?.catalog.find((item) => item.id === templateId.value)
+    : undefined
   const rule: Rule = {
     id: `rule-${Date.now().toString(36)}`,
-    name: kind === 'builtin' ? (descriptor?.name ?? '内置规则') : '新正则规则',
-    target: kind === 'builtin' ? (descriptor?.target ?? 'title') : 'title',
-    source: 'filename',
+    name: descriptor?.name ?? (kind === 'script' ? '新脚本规则' : '新正则规则'),
+    description: descriptor?.description,
+    target: descriptor?.target ?? 'title',
+    source: descriptor?.sources[0] ?? 'filename',
     order: Math.max(0, ...rules.value.map((rule) => rule.order)) + 10,
     enabled: true,
     kind,
     overwrite: false,
-    config:
-      kind === 'builtin'
-        ? { handler: descriptor?.handler, params: descriptor?.params }
+    config: descriptor
+      ? JSON.parse(JSON.stringify(descriptor.config))
+      : kind === 'script'
+        ? { code: emptyScript, params: {} }
         : { pattern: '(?P<value>.+)', capture: 'value' },
     examples: [],
   }
@@ -139,8 +144,8 @@ async function examples() {
     <div class="toolbar">
       <button class="button" @click="add('regex')" :disabled="!library">
         新增正则规则</button
-      ><button class="button" @click="add('builtin')" :disabled="!library">
-        添加内置规则</button
+      ><button class="button" @click="add('script')" :disabled="!library">
+        新增脚本规则</button
       ><button class="button" @click="reset" :disabled="!library">
         恢复默认链</button
       ><button
@@ -149,6 +154,24 @@ async function examples() {
         @click="save"
       >
         保存规则链
+      </button>
+    </div>
+    <div class="toolbar">
+      <select v-model="templateId" aria-label="脚本模板">
+        <option value="">选择可编辑的脚本模板</option>
+        <option
+          v-for="item in library?.catalog"
+          :key="item.id"
+          :value="item.id"
+        >
+          {{ targets[item.target] }} · {{ item.name }}
+        </option></select
+      ><button
+        class="button"
+        :disabled="!templateId"
+        @click="add('script', true)"
+      >
+        从模板添加
       </button>
     </div>
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
@@ -215,7 +238,7 @@ async function examples() {
         <RuleEditor
           :key="selected"
           :rule="editing"
-          :catalog="library.catalog"
+          :source-scripts="library.sourceScripts"
           @update="edit"
         />
       </div>

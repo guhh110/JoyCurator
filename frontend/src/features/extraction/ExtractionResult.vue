@@ -1,8 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import type { ExtractionResult } from './model'
+import ScriptCode from './ScriptCode.vue'
+import type { ExtractionResult, ScriptEvent } from './model'
 import { targets, sources, statuses, valueText } from './model'
 const props = defineProps<{ result: ExtractionResult }>()
+const activeCode = ref<
+  Record<string, { phase: string; line: number; request: number }>
+>({})
+let focusRequest = 0
+function locate(ruleId: string, event: ScriptEvent) {
+  activeCode.value[ruleId] = {
+    phase: event.phase,
+    line: event.line,
+    request: ++focusRequest,
+  }
+}
 const status = ref(''),
   rule = ref(''),
   copied = ref('')
@@ -103,8 +115,68 @@ async function copy() {
             <pre v-if="attempt.captures">{{
               JSON.stringify(attempt.captures, null, 2)
             }}</pre>
+            <details v-if="attempt.trace?.length" open class="script-log">
+              <summary>脚本过程（{{ attempt.trace.length }} 条）</summary>
+              <article
+                v-for="(event, index) in attempt.trace"
+                :key="index"
+                class="script-event"
+              >
+                <header>
+                  <button
+                    v-if="event.line"
+                    class="text-button"
+                    @click="locate(s.ruleId, event)"
+                  >
+                    {{ event.phase === 'source' ? '来源' : '脚本' }} L{{
+                      event.line
+                    }}:{{ event.column }}</button
+                  ><span class="tiny muted"
+                    >{{ event.operation }} · {{ event.function }}</span
+                  >
+                </header>
+                <p>{{ event.message }}</p>
+                <pre v-if="event.data !== undefined">{{
+                  JSON.stringify(event.data, null, 2)
+                }}</pre>
+              </article>
+            </details>
             <p v-if="attempt.error" class="red">{{ attempt.error }}</p>
           </div>
+          <details
+            v-if="s.ruleConfig.config.code"
+            :open="activeCode[s.ruleId]?.phase === 'extract'"
+            class="script-snapshot"
+          >
+            <summary>本次完整脚本（快照）</summary>
+            <ScriptCode
+              :model-value="s.ruleConfig.config.code"
+              :focus-key="activeCode[s.ruleId]?.request"
+              readonly
+              :active-line="
+                activeCode[s.ruleId]?.phase === 'extract'
+                  ? activeCode[s.ruleId]?.line
+                  : undefined
+              "
+            />
+          </details>
+          <details
+            v-if="s.ruleConfig.config.sourceCode"
+            :open="activeCode[s.ruleId]?.phase === 'source'"
+            class="script-snapshot"
+          >
+            <summary>本次来源清理脚本（快照）</summary>
+            <ScriptCode
+              :model-value="s.ruleConfig.config.sourceCode"
+              :focus-key="activeCode[s.ruleId]?.request"
+              readonly
+              :active-line="
+                activeCode[s.ruleId]?.phase === 'source'
+                  ? activeCode[s.ruleId]?.line
+                  : undefined
+              "
+            />
+          </details>
           <details>
             <summary>本次规则配置</summary>
             <pre>{{ JSON.stringify(s.ruleConfig, null, 2) }}</pre>
@@ -132,6 +204,33 @@ async function copy() {
   </div>
 </template>
 <style scoped>
+.script-log summary {
+  cursor: pointer;
+}
+.script-event {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.script-event header {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.script-event p {
+  margin: 8px 0;
+}
+.script-event pre {
+  max-height: 220px;
+  overflow: auto;
+}
+.script-snapshot {
+  margin: 16px 0;
+}
+.script-snapshot > summary {
+  margin-bottom: 12px;
+}
 .extraction-output {
   display: grid;
   gap: 20px;
