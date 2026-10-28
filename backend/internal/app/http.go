@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"joycurator/internal/auth"
 	"joycurator/internal/model"
 	"joycurator/internal/rules"
@@ -41,7 +42,7 @@ func errorReply(w http.ResponseWriter, code int, msg string) {
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"message": msg})
 }
-func (a *App) Handler(frontend string) http.Handler {
+func (a *App) Handler(frontend fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	add := func(pattern string, f endpoint) {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
@@ -300,18 +301,11 @@ func (a *App) Handler(frontend string) http.Handler {
 			errorReply(w, 404, "接口不存在")
 			return
 		}
-		if _, err := os.Stat(filepath.Join(frontend, "index.html")); err != nil {
-			http.Error(w, "前端请访问 http://localhost:5175", 503)
+		if frontend == nil {
+			http.Error(w, "前端请访问 http://localhost:5175；单文件部署请使用 make build", 503)
 			return
 		}
-		if r.URL.Path != "/" {
-			file := filepath.Join(frontend, filepath.Clean(r.URL.Path))
-			if _, err := os.Stat(file); err != nil {
-				http.NotFound(w, r)
-				return
-			}
-		}
-		http.FileServer(http.Dir(frontend)).ServeHTTP(w, r)
+		http.FileServer(http.FS(frontend)).ServeHTTP(w, r)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")

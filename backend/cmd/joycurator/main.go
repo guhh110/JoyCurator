@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"joycurator/internal/app"
+	"joycurator/internal/webui"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,7 +22,17 @@ func env(name, fallback string) string {
 	}
 	return fallback
 }
+
+var version = "dev"
+
 func main() {
+	showVersion := flag.Bool("version", false, "显示版本")
+	flag.Parse()
+	if *showVersion {
+		fmt.Println("JoyCurator", version)
+		return
+	}
+
 	base := "local"
 	cwd, _ := os.Getwd()
 	if filepath.Base(cwd) == "backend" {
@@ -27,6 +40,8 @@ func main() {
 	}
 	if executable, err := os.Executable(); err == nil && filepath.Base(filepath.Dir(executable)) == "bin" && filepath.Base(filepath.Dir(filepath.Dir(executable))) == "local" {
 		base = filepath.Dir(filepath.Dir(executable))
+	} else if webui.Embedded && err == nil {
+		base = filepath.Join(filepath.Dir(executable), "local")
 	}
 	base, _ = filepath.Abs(base)
 	for _, d := range []string{"data", "media/inbox", "media/movies", "media/tv"} {
@@ -41,7 +56,7 @@ func main() {
 		slog.Error("启动失败", "error", err)
 		os.Exit(1)
 	}
-	srv := &http.Server{Addr: env("JOYCURATOR_ADDR", "127.0.0.1:8081"), Handler: a.Handler(filepath.Join(base, "build/frontend")), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	srv := &http.Server{Addr: env("JOYCURATOR_ADDR", "127.0.0.1:8081"), Handler: a.Handler(webui.Files()), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	go func() {

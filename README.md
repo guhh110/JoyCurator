@@ -65,7 +65,61 @@ make build
 ./local/bin/joycurator
 ```
 
-`make check` 运行 Go vet、竞态测试、前端单元测试、类型检查和生产构建。前端产物在 `local/build/frontend/`，Go 二进制在 `local/bin/`；运行构建产物时需一并保留前端产物。二进制在此布局下会定位到同级 `local/`，不依赖终端当前目录。
+`make check` 运行 Go vet、竞态测试、前端单元测试、类型检查和生产构建。`make build` 将前端嵌入 Go 二进制，输出 `local/bin/joycurator`，部署时只需复制这一个文件，不需要携带前端目录。开发命令仍然使用 Vite，不依赖内嵌资源。
+
+## 单文件部署
+
+从 [Releases](https://github.com/guhh110/JoyCurator/releases) 下载对应系统和架构的程序，例如 Linux x86_64 使用 `joycurator_v0.1.0_linux_amd64`，Apple Silicon 使用 `darwin_arm64`。当前支持 Linux/macOS 的 amd64、arm64；Windows 暂不支持。
+
+把下载的程序放入独立、可写的安装目录，重命名为 `joycurator`：
+
+```sh
+chmod +x joycurator
+./joycurator --version
+./joycurator
+```
+
+访问 **http://localhost:8081** 创建管理员。程序已包含页面、API 和 SQLite 驱动，无需安装 Go、Node.js、pnpm 或 SQLite。ffprobe 可选；安装 FFmpeg 并将 ffprobe 放入 PATH 后可获取分辨率、编码等信息。
+
+默认在**程序所在目录**创建可见的 `local/data/` 和 `local/media/{inbox,movies,tv}/`，从其他工作目录启动也使用同一位置。本仓库的 `local/bin/joycurator` 特别使用项目已有的 `local/`。更新前停止服务、备份整个 `local/data/`，替换程序后重新启动；保留媒体与数据目录。SHA256 校验值随 Release 提供，macOS 下载后如受系统安全策略拦截，需在系统设置中允许该程序运行。
+
+需要通过局域网访问时设置 `JOYCURATOR_ADDR=0.0.0.0:8081`；可使用上表的环境变量指定数据位置和授权媒体根目录。访问 HTTPS 反向代理时设置 `JOYCURATOR_SECURE_COOKIE=true`，代理需保留原始 Host。长期运行可交给 systemd 或其他进程管理器，使用有媒体读写权限的普通用户。
+
+## Docker 部署（服务器）
+
+开发电脑不需要 Docker。镜像包含单文件程序、CA 证书、时区数据和 ffprobe，支持 Linux amd64/arm64。
+
+将 [deploy/compose.yaml](deploy/compose.yaml) 放入服务器上的独立部署目录，在该目录执行：
+
+```sh
+mkdir -p data media/inbox media/movies media/tv
+# 让容器使用当前用户访问挂载目录；NAS 可改成实际媒体所有者的 UID/GID。
+export JOYCURATOR_UID=$(id -u)
+export JOYCURATOR_GID=$(id -g)
+docker compose pull
+docker compose up -d
+```
+
+访问 `http://服务器IP:8081`。SQLite 和凭据持久化在宿主机 `data/`，媒体位于 `media/`。容器内授权根目录为 `/media`；添加文件、设置目标路径时使用 `/media/inbox`、`/media/movies`、`/media/tv`。已有媒体可将 `./media:/media` 改为实际绝对路径挂载；源和目标应位于同一文件系统以使用硬链接。
+
+默认使用镜像的 `latest` 稳定版；可在部署目录的 `.env` 设置 `JOYCURATOR_VERSION=0.1.0` 固定版本。容器默认 UID/GID 为 1000，挂载目录需允许相应用户读写；不要用公开权限解决写入问题。升级时备份 `data/`，再运行 `docker compose pull && docker compose up -d`。首次发布后 GHCR 包需设为 Public 才能匿名拉取，私有包需先登录 GHCR。
+
+## 发布版本
+
+[GitHub Actions](.github/workflows/release.yml) 在推送 main、提交 PR 或手动触发时运行检查、构建四个平台的二进制，并在 Linux amd64/arm64 容器内检查启动、页面和 ffprobe；这些触发不会发布版本。
+
+确认代码已推送后，创建版本标签触发正式发布：
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+检查通过后，工作流自动创建 GitHub Release，上传四个单文件程序和 `SHA256SUMS`，同时发布 `ghcr.io/guhh110/joycurator:0.1.0`。稳定版本更新 `latest`，带连字符的预发布版本（例如 `v0.2.0-rc.1`）不更新它。程序版本可通过 `--version` 查看。
+
+镜像发布使用仓库自带 `GITHUB_TOKEN` 的 `packages: write` 权限，Release 使用 `contents: write`，无需配置 Docker Hub 密钥。仓库需允许运行 Actions 和相应权限；首次发布后在 GitHub Packages 的包设置中选择 Public。构建与发布日志均在仓库 Actions 页面查看。
+
+也可本地执行 `make release VERSION=v0.1.0` 生成同样的四个平台程序及校验文件，输出到 `local/releases/`；仅构建，不联网发布、不运行 Docker。此目标额外需要 Python 3 生成校验文件。生产构建使用 `production` 标签，必须先构建前端并复制内嵌资源，推荐通过 Makefile 完成，不要直接用普通 `go build` 制作发布包。
 
 ## 功能与数据
 

@@ -1,0 +1,11 @@
+**
+!Dockerfile
+!frontend/
+!frontend/**
+!backend/
+!backend/**
+**/node_modules
+backend/internal/webui/dist
+**/.env
+**/.env.*
+**/*.log

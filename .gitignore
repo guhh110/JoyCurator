@@ -5,3 +5,4 @@ local/
 !.env.example
 .DS_Store
 *.log
+backend/internal/webui/dist/

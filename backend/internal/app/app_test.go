@@ -259,7 +259,7 @@ func TestMoveAndHardlink(t *testing.T) {
 }
 func TestHTTPAuthenticationAndCredentialRedaction(t *testing.T) {
 	a, _ := fixture(t)
-	h := a.Handler(t.TempDir())
+	h := a.Handler(nil)
 	request := func(method, path, body string, cookie *http.Cookie, origin string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		r.Host = "localhost:8081"
