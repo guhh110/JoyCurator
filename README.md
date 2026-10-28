@@ -106,7 +106,7 @@ docker compose up -d
 
 ## 发布版本
 
-[GitHub Actions](.github/workflows/release.yml) 在推送 main、提交 PR 或手动触发时运行检查、构建四个平台的二进制，并在 Linux amd64/arm64 容器内检查启动、页面和 ffprobe；这些触发不会发布版本。
+[GitHub Actions](.github/workflows/release.yml) 在推送 main、提交 PR 或手动触发时运行检查、构建四个平台的二进制，并分别使用原生 Linux amd64/arm64 runner 构建容器、检查启动、页面和 ffprobe；这些触发不会发布版本。
 
 确认代码已推送后，创建版本标签触发正式发布：
 
