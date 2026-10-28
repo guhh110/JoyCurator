@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { VueDraggable } from 'vue-draggable-plus'
+import type { DraggableEvent } from 'vue-draggable-plus'
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -14,6 +16,7 @@ import {
   Film,
   Folder,
   FolderOpen,
+  GripVertical,
   History,
   Layers3,
   Link2,
@@ -30,6 +33,7 @@ import {
 } from '@lucide/vue'
 import { api, bytes, episodeCode, name, parseEpisodes } from './api'
 import type {
+  Category,
   Entry,
   Episode,
   MediaFile,
@@ -83,6 +87,29 @@ const settings = ref<Settings | null>(null),
   token = ref(''),
   clearToken = ref(false),
   settingsSection = ref('folders')
+const categoryDragging = ref(false),
+  categoryOrderNotice = ref('拖动左侧手柄调整优先级，保存设置后生效。')
+const categoryKeys = new WeakMap<Category, number>()
+let nextCategoryKey = 0
+function categoryKey(category: Category) {
+  if (!categoryKeys.has(category)) categoryKeys.set(category, ++nextCategoryKey)
+  return categoryKeys.get(category)!
+}
+function moveCategory(index: number, offset: number, event: Event) {
+  const list = settings.value?.rules.categories
+  const target = index + offset
+  if (!list || busy.value || running.value || categoryDragging.value || target < 0 || target >= list.length) return
+  const handle = event.currentTarget as HTMLElement
+  const [category] = list.splice(index, 1)
+  list.splice(target, 0, category!)
+  categoryOrderNotice.value = `已移至第 ${target + 1} 条，保存设置后生效。`
+  void nextTick(() => handle.focus())
+}
+function finishCategorySort(event: DraggableEvent) {
+  categoryDragging.value = false
+  if (event.oldIndex !== event.newIndex && event.newIndex !== undefined)
+    categoryOrderNotice.value = `已移至第 ${event.newIndex + 1} 条，保存设置后生效。`
+}
 const records = ref<Run[]>([]),
   recordPage = ref(1),
   recordTotal = ref(0),
@@ -513,6 +540,7 @@ async function saveSettings() {
     token.value = ''
     clearToken.value = false
     await loadSettings()
+    categoryOrderNotice.value = '分类顺序已保存。'
     success.value = '设置已保存'
   })
 }
@@ -1098,7 +1126,7 @@ onUnmounted(() => {
             <Check :size="16" />保存设置
           </button>
         </div>
-        <div class="settings-layout">
+        <div class="settings-layout" :class="{ 'rules-layout': settingsSection === 'rules' }">
           <nav class="settings-nav" aria-label="设置分类">
             <button
               :class="{ active: settingsSection === 'folders' }"
@@ -1122,7 +1150,7 @@ onUnmounted(() => {
               <ArrowDownToLine :size="17" />刮削产物
             </button>
           </nav>
-          <section class="pane settings-content">
+          <section class="pane settings-content" :class="{ 'rules-content': settingsSection === 'rules' }">
             <template v-if="settingsSection === 'folders'"
               ><h2>让每份收藏各归其位</h2>
               <p class="muted">
@@ -1199,6 +1227,9 @@ onUnmounted(() => {
               <p class="muted">
                 分类按顺序取首条命中的规则。模板缺少字段会在预览中提示。
               </p>
+              <div class="rules-columns">
+              <section class="naming-panel" aria-labelledby="naming-title">
+              <h3 id="naming-title">命名模板</h3>
               <label
                 >电影目录模板<input
                   v-model="settings.rules.movieFolder" /></label
@@ -1216,10 +1247,14 @@ onUnmounted(() => {
                 ><code>{resolution}</code><code>{codec}</code
                 ><code>{original_stem}</code><code>{ext}</code>
               </p>
+              <p class="rules-help">目录模板相对于目标目录，<code>{category}</code> 由右侧分类规则生成。</p>
+              </section>
+              <section class="category-panel" aria-labelledby="categories-title">
               <div class="section-heading">
-                <h3>分类规则</h3>
+                <h3 id="categories-title">分类规则 <span class="rule-count">{{ settings.rules.categories.length }}</span></h3>
                 <button
                   class="button small"
+                  :disabled="busy || running || categoryDragging"
                   @click="
                     settings.rules.categories.push({
                       name: '新分类',
@@ -1232,17 +1267,47 @@ onUnmounted(() => {
                   <Plus :size="14" />添加规则
                 </button>
               </div>
-              <p class="muted">按顺序匹配，首个命中的规则决定目标目录下的分类路径。使用 / 创建多级目录，例如电影/华语电影、电视剧/国产剧。</p>
+              <p class="rules-help" id="category-order-help">从上到下匹配，首个命中生效。子目录支持 <code>电影/华语电影</code>、<code>电视剧/国产剧</code>。</p>
+              <VueDraggable
+                v-model="settings.rules.categories"
+                class="category-list"
+                handle=".rule-handle"
+                draggable=".category-rule"
+                :animation="160"
+                :disabled="busy || running"
+                :delay="120"
+                :delay-on-touch-only="true"
+                :touch-start-threshold="5"
+                :scroll-sensitivity="48"
+                :scroll-speed="12"
+                ghost-class="rule-ghost"
+                chosen-class="rule-chosen"
+                @start="categoryDragging = true"
+                @end="finishCategorySort"
+              >
               <details
                 v-for="(category, index) in settings.rules.categories"
-                :key="index"
+                :key="categoryKey(category)"
                 class="category-rule"
               >
                 <summary>
+                  <button
+                    type="button"
+                    class="rule-handle"
+                    :aria-label="`拖动排序 ${category.name || '未命名分类'}，第 ${index + 1} 条`"
+                    aria-describedby="category-order-help"
+                    title="拖动排序，或按 ↑ ↓ 调整"
+                    :disabled="busy || running"
+                    @click.stop.prevent
+                    @keydown.up.prevent="moveCategory(index, -1, $event)"
+                    @keydown.down.prevent="moveCategory(index, 1, $event)"
+                  ><GripVertical :size="16" /></button>
                   <span class="rule-index">{{
                     String(index + 1).padStart(2, '0')
                   }}</span
-                  >{{ category.name || '未命名分类' }}<ChevronDown :size="15" />
+                  ><span class="rule-name" :title="category.name">{{ category.name || '未命名分类' }}</span>
+                  <span class="rule-kind">{{ category.type === 'movie' ? '电影' : category.type === 'tv' ? '电视剧' : '全部' }}</span>
+                  <ChevronDown :size="15" />
                 </summary>
                 <div class="category-fields">
                   <label>分类子目录<input v-model="category.name" placeholder="电影/华语电影" /></label
@@ -1276,27 +1341,27 @@ onUnmounted(() => {
                   <div class="category-actions">
                     <button
                       class="button small"
-                      :disabled="index === 0"
-                      @click="
-                        [
-                          settings.rules.categories[index - 1],
-                          settings.rules.categories[index],
-                        ] = [
-                          settings.rules.categories[index]!,
-                          settings.rules.categories[index - 1]!,
-                        ]
-                      "
-                    >
-                      上移</button
-                    ><button
+                      :disabled="index === 0 || busy || running || categoryDragging"
+                      @click="moveCategory(index, -1, $event)"
+                    >上移</button>
+                    <button
+                      class="button small"
+                      :disabled="index === settings.rules.categories.length - 1 || busy || running || categoryDragging"
+                      @click="moveCategory(index, 1, $event)"
+                    >下移</button><button
                       class="button small danger"
+                      :disabled="busy || running || categoryDragging"
                       @click="settings.rules.categories.splice(index, 1)"
                     >
                       <Trash2 :size="13" />移除
                     </button>
                   </div>
                 </div>
-              </details></template
+              </details>
+              </VueDraggable>
+              <p class="rule-order-status" role="status">{{ categoryOrderNotice }}</p>
+              </section>
+              </div></template
             >
             <template v-else
               ><h2>补全收藏的每一个细节</h2>
