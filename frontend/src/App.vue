@@ -261,6 +261,9 @@ async function login() {
 }
 function expire() {
   username.value = ''
+  password.value = ''
+  token.value = ''
+  clearToken.value = false
   files.value = []
   entry.value = null
   preview.value = null

@@ -9,7 +9,7 @@ import (
 
 const Embedded = true
 
-//go:embed all:dist
+//go:embed dist/index.html dist/assets
 var assets embed.FS
 
 func Files() fs.FS {

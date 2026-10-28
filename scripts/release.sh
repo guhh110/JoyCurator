@@ -15,7 +15,8 @@ import hashlib
 import pathlib
 import sys
 root = pathlib.Path('local/releases')
-files = sorted(root.glob(f'joycurator_{sys.argv[1]}_*'))
+files = [root / f'joycurator_{sys.argv[1]}_{platform}' for platform in
+         ('linux_amd64', 'linux_arm64', 'darwin_amd64', 'darwin_arm64')]
 with (root / 'SHA256SUMS').open('w') as output:
     for file in files:
         digest = hashlib.sha256()
