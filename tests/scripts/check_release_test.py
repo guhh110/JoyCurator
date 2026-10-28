@@ -3,7 +3,7 @@ import runpy
 import tempfile
 import unittest
 
-inspect = runpy.run_path(str(pathlib.Path(__file__).with_name('check-release.py')))['inspect']
+inspect = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[2] / 'scripts/check-release.py'))['inspect']
 
 
 class PrivacyCheckTest(unittest.TestCase):

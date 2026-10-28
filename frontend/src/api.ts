@@ -87,13 +87,40 @@ export interface Run {
   total: number
   undo: boolean
   ops?: Operation[]
+  batchId?: string
 }
+export interface RecognitionItem extends MediaFile {
+  traceId?: string
+  parsed: { title: string; year: number; type: string; tmdbId: number; season: number; episodes: number[] }
+  group: string
+  entry: Entry | null
+  candidates: Entry[]
+  state: 'pending' | 'ready' | 'review' | 'unmatched' | 'failed'
+  reason: string
+  selected: boolean
+  removed: boolean
+}
+export interface Recognition {
+  id: string
+  revision: number
+  state: string
+  paths: string[]
+  items: RecognitionItem[]
+  completed: number
+  total: number
+  error: string
+  created: string
+}
+export interface Batch { id: string; runs: Run[]; active: boolean }
+export interface BatchPreview extends Preview { groups: (Preview & { type: string; tmdbId: number })[] }
 export async function api<T>(
   path: string,
   body?: unknown,
   method = 'POST',
+  options: Pick<RequestInit, 'signal'> = {},
 ): Promise<T> {
   const response = await fetch(`/api${path}`, {
+    ...options,
     credentials: 'same-origin',
     ...(body === undefined
       ? {}
@@ -105,7 +132,10 @@ export async function api<T>(
   })
   const value = await response
     .json()
-    .catch(() => ({ message: '服务暂时不可用，请检查后端是否启动' }))
+    .catch((error) => {
+      if (options.signal?.aborted) throw error
+      return { message: '服务暂时不可用，请检查后端是否启动' }
+    })
   if (!response.ok) {
     if (response.status === 401)
       window.dispatchEvent(new Event('session-expired'))

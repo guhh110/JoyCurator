@@ -272,6 +272,9 @@ func (a *App) Handler(frontend fs.FS) http.Handler {
 		}
 		return err
 	})
+	a.recognitionRoutes(add)
+	a.recognitionDebugRoute(add)
+	a.extractionRoutes(add)
 	add("GET /api/runs", func(w http.ResponseWriter, r *http.Request) error {
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page < 1 {
@@ -376,7 +379,7 @@ func (a *App) updateSettings(w http.ResponseWriter, r *http.Request) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.running != "" {
+	if a.running != "" || a.batch != "" {
 		return errBusy
 	}
 	old, err := a.settings()

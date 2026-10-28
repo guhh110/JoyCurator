@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bytes, episodeCode, parseEpisodes } from './api'
+import { bytes, episodeCode, parseEpisodes } from '../../frontend/src/api'
 describe('manual episode mapping', () => {
   it('accepts merged episodes and Chinese separators', () =>
     expect(parseEpisodes('1，3-5')).toEqual([1, 3, 4, 5]))

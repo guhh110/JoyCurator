@@ -35,6 +35,7 @@ import { api, bytes, episodeCode, name, parseEpisodes } from './api'
 import type {
   Category,
   Entry,
+  Batch,
   Episode,
   MediaFile,
   Preview,
@@ -44,8 +45,14 @@ import type {
 } from './api'
 import Modal from './components/Modal.vue'
 import FileBrowser from './components/FileBrowser.vue'
+import AutoRecognition from './components/AutoRecognition.vue'
+import RecognitionDebug from './components/RecognitionDebug.vue'
+import RecognitionRules from './features/extraction/RecognitionRules.vue'
+import ExtractionHistory from './features/extraction/ExtractionHistory.vue'
+const extractionTraceId = ref('')
 
 const pageScroll = ref<HTMLElement>()
+const autoBatch = ref<Batch | null>(null)
 const view = ref('work'),
   sessionReady = ref(false),
   initialized = ref(true),
@@ -132,6 +139,7 @@ const kindNames: Record<string, string> = {
   image: '图片',
 }
 const states: Record<string, string> = {
+  queued: '等待中',
   running: '进行中',
   completed: '已完成',
   failed: '部分失败',
@@ -155,7 +163,7 @@ const visibleFiles = computed(() =>
 const filePages = computed(() =>
   Math.max(1, Math.ceil(filtered.value.length / 40)),
 )
-const running = computed(() => active.value?.state === 'running')
+const running = computed(() => active.value?.state === 'running' || !!autoBatch.value?.active)
 const mapping = (file: MediaFile) => ({
   ...file,
   season: file.season < 0 ? season.value : file.season,
@@ -212,6 +220,7 @@ watch(
   { deep: true },
 )
 watch(view, (value) => {
+  if (username.value) localStorage.setItem('joycurator-view', value)
   pageScroll.value?.scrollTo({ top: 0, left: 0 })
   message.value = ''
   if (value === 'records') void loadRecords()
@@ -256,6 +265,8 @@ async function session() {
 }
 function restore() {
   try {
+    const savedView = localStorage.getItem('joycurator-view')
+    if (savedView && ['work', 'auto', 'recognition-debug', 'recognition-rules', 'extraction-history', 'records', 'settings'].includes(savedView)) view.value = savedView
     const value = JSON.parse(localStorage.getItem('joycurator-files') || '[]')
     if (Array.isArray(value))
       files.value = value
@@ -300,12 +311,14 @@ function expire() {
   searchOpen.value = false
   browser.value = false
   active.value = null
+  autoBatch.value = null
   settings.value = null
   episodeRequest++
   searchRequest++
   localStorage.removeItem('joycurator-files')
   localStorage.removeItem('joycurator-entry')
   localStorage.removeItem('joycurator-active')
+  localStorage.removeItem('joycurator-view')
 }
 async function logout() {
   await act(async () => {
@@ -653,6 +666,9 @@ onUnmounted(() => {
         JoyCurator<span class="edition">轻量版</span></a
       >
       <nav aria-label="主导航">
+        <button :class="{ active: ['auto', 'recognition-debug', 'recognition-rules', 'extraction-history'].includes(view) }" @click="view = 'auto'">
+          <Layers3 :size="17" />自动识别
+        </button>
         <button :class="{ active: view === 'work' }" @click="view = 'work'">
           <FolderOpen :size="17" />整理工作台</button
         ><button
@@ -696,6 +712,10 @@ onUnmounted(() => {
           <X :size="16" />
         </button>
       </div>
+      <div v-show="view === 'auto'"><AutoRecognition :execution-busy="active?.state === 'running'" @batch="autoBatch = $event" @inspect="inspect" @debug="view = 'recognition-debug'" @rules="view = 'recognition-rules'" @history="extractionTraceId = ''; view = 'extraction-history'" @trace="extractionTraceId = $event; view = 'extraction-history'" /></div>
+      <RecognitionDebug v-if="view === 'recognition-debug'" @back="view = 'auto'" />
+      <RecognitionRules v-if="view === 'recognition-rules'" @back="view = 'auto'" />
+      <ExtractionHistory v-if="view === 'extraction-history'" :trace-id="extractionTraceId" @back="view = 'auto'" />
       <template v-if="view === 'work'">
         <div class="workspace-heading">
           <div>
@@ -1111,7 +1131,7 @@ onUnmounted(() => {
           </button>
         </div></template
       >
-      <template v-else-if="settings"
+      <template v-else-if="view === 'settings' && settings"
         ><div class="page-heading">
           <div>
             <span class="eyebrow">MAKE IT YOURS</span>
@@ -1405,8 +1425,8 @@ onUnmounted(() => {
       ></template>
     </main>
     </div>
-    <div v-if="active" class="task-toast" :class="{ finished: !running }">
-      <LoaderCircle v-if="running" class="spin purple" :size="19" /><CircleCheck
+    <div v-if="active" class="task-toast" :class="{ finished: active.state !== 'running' }">
+      <LoaderCircle v-if="active.state === 'running'" class="spin purple" :size="19" /><CircleCheck
         v-else-if="active.state === 'completed' || active.state === 'undone'"
         :size="19"
         class="green"
@@ -1422,14 +1442,14 @@ onUnmounted(() => {
         >
       </div>
       <button
-        v-if="running"
+        v-if="active.state === 'running'"
         class="text-button"
         @click="recordAction(active, 'cancel')"
       >
         取消</button
       ><button v-else class="text-button" @click="inspect(active)">查看</button
       ><button
-        v-if="!running"
+        v-if="active.state !== 'running'"
         class="icon-button"
         aria-label="关闭任务提示"
         @click="active = null"
@@ -1438,6 +1458,9 @@ onUnmounted(() => {
       </button>
     </div>
     <nav class="bottom-nav" aria-label="手机主导航">
+      <button :class="{ active: ['auto', 'recognition-debug', 'recognition-rules', 'extraction-history'].includes(view) }" @click="view = 'auto'">
+        <Layers3 :size="20" />识别
+      </button>
       <button :class="{ active: view === 'work' }" @click="view = 'work'">
         <FolderOpen :size="20" />工作台</button
       ><button
@@ -1695,7 +1718,7 @@ onUnmounted(() => {
         >
           重试未完成项</button
         ><button
-          v-if="detail.state !== 'undone' && detail.state !== 'running'"
+          v-if="!['undone', 'running', 'queued'].includes(detail.state)"
           class="button"
           :disabled="busy || running"
           @click="undoing = detail"

@@ -21,6 +21,9 @@ func (a *App) execute(id string) (Run, error) {
 	if len(p.Issues) > 0 || len(p.Ops) == 0 {
 		return Run{}, errors.New("请先处理预览中的冲突")
 	}
+	if len(p.Groups) > 0 {
+		return Run{}, errors.New("请通过批量整理接口执行此预览")
+	}
 	s, err := a.settings()
 	if err != nil {
 		return Run{}, err
@@ -45,11 +48,25 @@ func (a *App) resume(id string, undo bool) (Run, error) {
 	if err != nil {
 		return r, err
 	}
-	if r.State == "running" || r.State == "undone" {
+	if r.State == "running" || r.State == "queued" || r.State == "undone" {
 		return r, errors.New("当前记录不能执行此操作")
 	}
 	if !undo && (r.State == "completed" || r.Undo) {
 		return r, errors.New("此记录无需重试；撤销中断后请继续撤销")
+	}
+	if !undo && r.BatchID != "" {
+		s, e := a.settings()
+		if e != nil {
+			return r, e
+		}
+		if s.Version != r.Version {
+			return r, errors.New("设置已变化，请重新预览")
+		}
+		for _, op := range r.Ops {
+			if op.Source != "" && op.Status != "completed" && op.Status != "published" && !a.sourceAllowed(op.Source, s) {
+				return r, errors.New("来源已超出当前源目录，请重新添加")
+			}
+		}
 	}
 	r.State = "running"
 	r.Error = ""
@@ -65,7 +82,7 @@ func (a *App) launch(r Run) (Run, error) {
 	if a.closed {
 		return Run{}, errors.New("服务正在关闭")
 	}
-	if a.running != "" {
+	if a.running != "" || a.batch != "" {
 		return Run{}, errBusy
 	}
 	if err := a.save(r); err != nil {
@@ -151,6 +168,9 @@ func (a *App) work(ctx context.Context, cancel context.CancelFunc, r Run) {
 	case ctx.Err() != nil:
 		r.State = "cancelled"
 		r.Error = "操作已取消，可重试或撤销"
+		if a.isClosing() {
+			r.State, r.Error = "interrupted", "服务中断，可继续或撤销"
+		}
 	case len(failures) > 0:
 		r.State = "failed"
 		r.Error = strings.Join(failures, "\n")
@@ -162,6 +182,9 @@ func (a *App) work(ctx context.Context, cancel context.CancelFunc, r Run) {
 		r.Error = ""
 	}
 	_ = a.save(r)
+	if r.RecognitionID != "" && !r.Undo {
+		a.finishRecognitionFiles(r)
+	}
 }
 
 // JSON records keep artifact ownership with the batch, without another table.

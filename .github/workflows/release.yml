@@ -36,9 +36,7 @@ jobs:
       - name: 构建四个平台的单文件程序
         run: make release VERSION="$RELEASE_VERSION"
       - name: 验证内嵌资源
-        run: |
-          cd backend
-          go test -tags production ./internal/webui ./internal/app
+        run: python3 tests/run_backend.py test -tags production ./internal/webui ./internal/app
       - uses: actions/upload-artifact@v4
         with:
           name: binaries

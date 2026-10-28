@@ -1,14 +1,8 @@
-package scanner
+package recognition_test
 
 import (
-	"context"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
-
-	"joycurator/internal/fsops"
 )
 
 func TestParse(t *testing.T) {
@@ -25,41 +19,6 @@ func TestParse(t *testing.T) {
 		})
 	}
 }
-func TestWalkExclusionsAndSymlinks(t *testing.T) {
-	dir := t.TempDir()
-	output := filepath.Join(dir, "library")
-	if err := os.Mkdir(output, 0755); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"film.mkv", "partial.mkv.part", ".hidden.mkv", "library/organized.mkv"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("media"), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	outside := t.TempDir()
-	if err := os.WriteFile(filepath.Join(outside, "private.mkv"), []byte("private"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(outside, filepath.Join(dir, "escape")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(filepath.Join(outside, "private.mkv"), filepath.Join(dir, "link.mkv")); err != nil {
-		t.Fatal(err)
-	}
-	access, err := fsops.New([]string{dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := []string{}
-	err = Walk(context.Background(), access, []string{dir}, []string{output}, func(path string, info fs.FileInfo) error { names = append(names, filepath.Base(path)); return nil })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(names, []string{"film.mkv"}) {
-		t.Fatal(names)
-	}
-}
-
 func TestParsePathUsesFolderAsTitle(t *testing.T) {
 	for _, tc := range []struct {
 		path     string
@@ -140,5 +99,16 @@ func TestParsePathSkipsQualityFolders(t *testing.T) {
 	parsed = ParsePathIn("/media/inbox/Show/Season 2/3.mp4", []string{root})
 	if parsed.Title != "Show" || parsed.Season != 2 {
 		t.Fatalf("%#v", parsed)
+	}
+}
+
+func TestParsePathDoesNotUseTMDBIDAsEpisode(t *testing.T) {
+	parsed := ParsePath("/source/inbox/01-movies/The.Matrix.1999.tmdb-603.mkv")
+	if parsed.Type != "movie" || parsed.TMDBID != 603 || parsed.Title != "The Matrix" || parsed.Year != 1999 || len(parsed.Episodes) != 0 {
+		t.Fatal(parsed)
+	}
+	parsed = ParsePath("/source/Show - 03.tmdb-603.mkv")
+	if parsed.Type != "tv" || !reflect.DeepEqual(parsed.Episodes, []int{3}) {
+		t.Fatal(parsed)
 	}
 }

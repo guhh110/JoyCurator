@@ -11,5 +11,5 @@ export default defineConfig({
     proxy: { '/api': { target: 'http://127.0.0.1:8081', changeOrigin: false } },
   },
   build: { outDir: '../local/build/frontend', emptyOutDir: true, sourcemap: false },
-  test: { include: ['src/**/*.test.ts'] },
+  test: { include: ['../tests/frontend/**/*.test.ts'] },
 })

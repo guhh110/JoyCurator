@@ -17,21 +17,26 @@ import (
 	"joycurator/internal/auth"
 	"joycurator/internal/fsops"
 	"joycurator/internal/model"
+	"joycurator/internal/recognition"
 	"joycurator/internal/tmdb"
 	_ "modernc.org/sqlite"
 )
 
 type App struct {
-	db      *sql.DB
-	access  *fsops.FS
-	auth    *auth.Service
-	mu      sync.Mutex
-	plans   map[string]*Plan
-	running string
-	cancel  context.CancelFunc
-	closed  bool
-	wg      sync.WaitGroup
-	secure  bool
+	extractor          *recognition.Engine
+	db                 *sql.DB
+	access             *fsops.FS
+	auth               *auth.Service
+	mu                 sync.Mutex
+	plans              map[string]*Plan
+	running            string
+	cancel             context.CancelFunc
+	closed             bool
+	wg                 sync.WaitGroup
+	secure             bool
+	recognitionCancels map[string]context.CancelFunc
+	batch              string
+	batchCancel        context.CancelFunc
 }
 type Row struct {
 	Source    string   `json:"source"`
@@ -47,27 +52,35 @@ type Work struct {
 	Reused bool   `json:"reused,omitempty"`
 }
 type Plan struct {
-	ID       string    `json:"id"`
-	Title    string    `json:"title"`
-	Mode     string    `json:"mode"`
-	Rows     []Row     `json:"rows"`
-	Required int64     `json:"required"`
-	Issues   []string  `json:"issues"`
-	Version  int       `json:"-"`
-	Expires  time.Time `json:"-"`
-	Ops      []Work    `json:"-"`
+	ID            string    `json:"id"`
+	Title         string    `json:"title"`
+	Mode          string    `json:"mode"`
+	Rows          []Row     `json:"rows"`
+	Required      int64     `json:"required"`
+	Issues        []string  `json:"issues"`
+	Version       int       `json:"-"`
+	Expires       time.Time `json:"-"`
+	Ops           []Work    `json:"-"`
+	Groups        []*Plan   `json:"groups,omitempty"`
+	Type          string    `json:"type,omitempty"`
+	TMDBID        int       `json:"tmdbId,omitempty"`
+	RecognitionID string    `json:"-"`
+	Revision      int       `json:"-"`
 }
 type Run struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Mode      string `json:"mode"`
-	State     string `json:"state"`
-	Created   string `json:"created"`
-	Error     string `json:"error"`
-	Completed int    `json:"completed"`
-	Total     int    `json:"total"`
-	Undo      bool   `json:"undo"`
-	Ops       []Work `json:"ops,omitempty"`
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Mode          string `json:"mode"`
+	State         string `json:"state"`
+	Created       string `json:"created"`
+	Error         string `json:"error"`
+	Completed     int    `json:"completed"`
+	Total         int    `json:"total"`
+	Undo          bool   `json:"undo"`
+	Ops           []Work `json:"ops,omitempty"`
+	BatchID       string `json:"batchId,omitempty"`
+	Version       int    `json:"version,omitempty"`
+	RecognitionID string `json:"recognitionId,omitempty"`
 }
 
 func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
@@ -88,7 +101,8 @@ func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
  CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,administrator_id INTEGER NOT NULL REFERENCES administrators(id),expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS config(id INTEGER PRIMARY KEY CHECK(id=1),value TEXT NOT NULL,token TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS tmdb_cache(key TEXT PRIMARY KEY,value BLOB NOT NULL,expires_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,value TEXT NOT NULL);`)
+ CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,value TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS recognitions(id TEXT PRIMARY KEY,value TEXT NOT NULL);`)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -109,7 +123,11 @@ func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
 		return nil, err
 	}
 
-	a := &App{db: db, access: access, auth: &auth.Service{DB: db}, plans: map[string]*Plan{}, secure: secure}
+	a := &App{db: db, access: access, auth: &auth.Service{DB: db}, plans: map[string]*Plan{}, recognitionCancels: map[string]context.CancelFunc{}, secure: secure}
+	if err := a.initExtraction(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if _, err := a.settings(); err != nil {
 		db.Close()
 		return nil, err
@@ -131,7 +149,7 @@ func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
 		if err = json.Unmarshal([]byte(raw), &r); err != nil {
 			break
 		}
-		if r.State == "running" {
+		if r.State == "running" || r.State == "queued" {
 			r.State = "interrupted"
 			r.Error = "服务中断，可继续或撤销"
 			interrupted = append(interrupted, r)
@@ -151,6 +169,10 @@ func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
 			return nil, err
 		}
 	}
+	if _, err = db.Exec(`UPDATE recognitions SET value=json_set(value,'$.state','interrupted','$.error','服务中断，可重试未完成项') WHERE json_extract(value,'$.state')='running'`); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return a, nil
 }
 func (a *App) Close() error {
@@ -159,9 +181,20 @@ func (a *App) Close() error {
 	if a.cancel != nil {
 		a.cancel()
 	}
+	for _, cancel := range a.recognitionCancels {
+		cancel()
+	}
+	if a.batchCancel != nil {
+		a.batchCancel()
+	}
 	a.mu.Unlock()
 	a.wg.Wait()
 	return a.db.Close()
+}
+func (a *App) isClosing() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.closed
 }
 func jsonText(v any) string { b, _ := json.Marshal(v); return string(b) }
 func key() string {

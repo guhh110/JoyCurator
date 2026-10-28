@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"joycurator/internal/model"
+	"joycurator/internal/trace"
 )
 
 // Client never returns upstream response bodies or credentials in errors.
@@ -25,11 +26,14 @@ type Client struct {
 	BaseURL  string
 	Token    string
 	Language string
+	Trace    *trace.Recorder
 	// RetryWait is the base backoff between attempts. Tests shorten it.
 	RetryWait time.Duration
 	mu        sync.Mutex
 	next      time.Time
 }
+
+var ErrNotFound = errors.New("TMDB 条目或季集不存在")
 
 func New(db *sql.DB, token, proxy, language string) (*Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -74,7 +78,13 @@ func wait(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
-func (c *Client) Get(ctx context.Context, path string, q url.Values, dst any) error {
+func (c *Client) Get(ctx context.Context, path string, q url.Values, dst any) (resultErr error) {
+	started := time.Now()
+	cacheHit, attempts := false, 0
+	defer func() { c.traceRequest(path, q, started, cacheHit, attempts, resultErr) }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if c.Token == "" {
 		return errors.New("请先配置 TMDB API Read Access Token")
 	}
@@ -89,6 +99,7 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values, dst any) er
 	if c.DB != nil {
 		err := c.DB.QueryRowContext(ctx, "SELECT value FROM tmdb_cache WHERE key=? AND expires_at>?", key, time.Now().Unix()).Scan(&cached)
 		if err == nil && json.Unmarshal(cached, dst) == nil {
+			cacheHit = true
 			return nil
 		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -105,8 +116,11 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values, dst any) er
 		}
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 		req.Header.Set("Accept", "application/json")
+		attempts = attempt + 1
+		attemptStarted := time.Now()
 		resp, err := c.HTTP.Do(req)
 		if err != nil {
+			c.traceAttempt(path, attempts, 0, attemptStarted)
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -120,6 +134,7 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values, dst any) er
 		}
 		data, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 		resp.Body.Close()
+		c.traceAttempt(path, attempts, resp.StatusCode, attemptStarted)
 		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
 			if attempt < 2 {
 				delay := time.Duration(attempt+1) * c.retryWait()
@@ -136,7 +151,7 @@ func (c *Client) Get(ctx context.Context, path string, q url.Values, dst any) er
 			return errors.New("TMDB 凭据无效或没有访问权限")
 		}
 		if resp.StatusCode == 404 {
-			return errors.New("TMDB 条目或季集不存在")
+			return ErrNotFound
 		}
 		if resp.StatusCode != 200 {
 			return fmt.Errorf("TMDB 请求失败（HTTP %d）", resp.StatusCode)

@@ -4,7 +4,7 @@ export GOCACHE := $(ROOT)/local/cache/go-build
 export GOTMPDIR := $(ROOT)/local/tmp
 export TMPDIR := $(ROOT)/local/tmp
 export PYTHONDONTWRITEBYTECODE := 1
-.PHONY: prepare install backend frontend check assets build release
+.PHONY: prepare install backend frontend check test-backend test-frontend test-scripts assets build release
 VERSION ?= dev
 export VERSION
 prepare:
@@ -17,10 +17,17 @@ backend: prepare
 frontend:
 	cd frontend && pnpm dev
 check: prepare
-	python3 -m unittest discover -s scripts -p '*_test.py'
+	python3 -m unittest discover -s tests/scripts -p '*_test.py'
 	python3 scripts/check-release.py
-	cd backend && go vet ./... && go test -race ./...
+	python3 tests/run_backend.py vet ./...
+	python3 tests/run_backend.py test -race ./...
 	cd frontend && pnpm test && pnpm build
+test-backend: prepare
+	python3 tests/run_backend.py test -race ./...
+test-frontend:
+	cd frontend && pnpm test
+test-scripts: prepare
+	python3 -m unittest discover -s tests/scripts -p '*_test.py'
 assets: prepare
 	python3 scripts/check-release.py
 	cd frontend && pnpm build

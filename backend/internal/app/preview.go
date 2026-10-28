@@ -13,7 +13,6 @@ import (
 	"joycurator/internal/scanner"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -34,8 +33,6 @@ type PreviewRequest struct {
 	Files  []File `json:"files"`
 }
 
-var specials = regexp.MustCompile(`(?i)(s00e|season[ ._-]*0\b|特别篇|specials?)`)
-
 func (a *App) scan(ctx context.Context, paths []string) ([]File, error) {
 	if len(paths) == 0 || len(paths) > 200 {
 		return nil, errors.New("请选择 1–200 个文件或目录")
@@ -54,10 +51,11 @@ func (a *App) scan(ctx context.Context, paths []string) ([]File, error) {
 		if len(items) >= 2000 {
 			return errors.New("单次最多导入 2000 个视频，请分批添加")
 		}
-		p := scanner.ParsePathIn(path, a.access.Roots)
-		if p.Season == 0 && !specials.MatchString(path) {
-			p.Season = -1
+		extracted, _, extractErr := a.extractFile(ctx, path, s.SourceRoot, "")
+		if extractErr != nil {
+			return extractErr
 		}
+		p := parsedMetadata(extracted.Metadata)
 		items = append(items, File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: p.Season, Episodes: p.Episodes, Probe: scanner.Probe(ctx, a.access, path)})
 		return nil
 	})
@@ -65,6 +63,17 @@ func (a *App) scan(ctx context.Context, paths []string) ([]File, error) {
 	return items, err
 }
 func (a *App) preview(ctx context.Context, in PreviewRequest) (*Plan, error) {
+	plan, err := a.buildPreview(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.storePlan(plan)
+	return plan, nil
+}
+
+func (a *App) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, error) {
 	if len(in.Files) == 0 || len(in.Files) > 1000 {
 		return nil, errors.New("每次整理 1–1000 个文件")
 	}
@@ -91,7 +100,7 @@ func (a *App) preview(ctx context.Context, in PreviewRequest) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	plan := &Plan{ID: key(), Title: entry.Title, Mode: in.Mode, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(15 * time.Minute)}
+	plan := &Plan{ID: key(), Title: entry.Title, Type: in.Type, TMDBID: in.TMDBID, Mode: in.Mode, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(15 * time.Minute)}
 	seen := map[string]model.Operation{}
 	free := map[uint64]int64{}
 	needed := map[uint64]int64{}
@@ -197,7 +206,11 @@ func (a *App) preview(ctx context.Context, in PreviewRequest) (*Plan, error) {
 				unique[n] = true
 			}
 		}
-		src := model.Source{Path: f.Path, Parsed: scanner.ParsePathIn(f.Path, a.access.Roots), Probe: scanner.Probe(ctx, a.access, f.Path), Entry: &entry, Season: f.Season, Episodes: f.Episodes}
+		parsed, parseErr := a.parseForConsumer(ctx, f.Path, s.SourceRoot)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		src := model.Source{Path: f.Path, Parsed: parsed, Probe: scanner.Probe(ctx, a.access, f.Path), Entry: &entry, Season: f.Season, Episodes: f.Episodes}
 		target, e := rules.Target(src, s)
 		if e != nil {
 			fail(e.Error())
@@ -291,8 +304,11 @@ func (a *App) preview(ctx context.Context, in PreviewRequest) (*Plan, error) {
 			plan.Issues = append(plan.Issues, "目标磁盘空间不足")
 		}
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	return plan, nil
+}
+
+// storePlan is called under mu. Child previews are never independently cached.
+func (a *App) storePlan(plan *Plan) {
 	for id, p := range a.plans {
 		if time.Now().After(p.Expires) {
 			delete(a.plans, id)
@@ -302,7 +318,6 @@ func (a *App) preview(ctx context.Context, in PreviewRequest) (*Plan, error) {
 		a.plans = map[string]*Plan{}
 	}
 	a.plans[plan.ID] = plan
-	return plan, nil
 }
 
 func (a *App) validateOps(ops []Work) error {

@@ -11,7 +11,7 @@ import {
 } from '@lucide/vue'
 import { api, name } from '../api'
 import Modal from './Modal.vue'
-const props = defineProps<{ directory?: boolean }>()
+const props = defineProps<{ directory?: boolean; confirmLabel?: string }>()
 const emit = defineEmits<{ close: []; select: [paths: string[]] }>()
 const path = ref(''),
   typed = ref(''),
@@ -138,7 +138,7 @@ onMounted(() => open(''))
         :disabled="loading || (directory ? !path : !count)"
         @click="choose"
       >
-        {{ directory ? '使用此目录' : '添加到工作台' }}
+        {{ directory ? '使用此目录' : confirmLabel || '添加到工作台' }}
       </button></template
     >
   </Modal>
