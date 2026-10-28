@@ -33,17 +33,20 @@ func main() {
 		return
 	}
 
-	base := "local"
-	cwd, _ := os.Getwd()
-	if filepath.Base(cwd) == "backend" {
-		base = "../local"
-	}
-	if executable, err := os.Executable(); err == nil && filepath.Base(filepath.Dir(executable)) == "bin" && filepath.Base(filepath.Dir(filepath.Dir(executable))) == "local" {
-		base = filepath.Dir(filepath.Dir(executable))
-	} else if webui.Embedded && err == nil {
+	base := filepath.Join("..", "local")
+	if webui.Embedded {
+		executable, err := os.Executable()
+		if err != nil {
+			slog.Error("无法定位程序目录", "error", err)
+			os.Exit(1)
+		}
 		base = filepath.Join(filepath.Dir(executable), "local")
 	}
-	base, _ = filepath.Abs(base)
+	base, err := filepath.Abs(base)
+	if err != nil {
+		slog.Error("无法解析数据目录", "error", err)
+		os.Exit(1)
+	}
 	dataDir := env("JOYCURATOR_DATA_DIR", filepath.Join(base, "data"))
 	sourceDir := env("JOYCURATOR_SOURCE_DIR", filepath.Join(base, "source"))
 	targetDir := env("JOYCURATOR_TARGET_DIR", filepath.Join(base, "target"))
@@ -53,7 +56,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	a, err := app.Open(dataDir, []string{sourceDir, targetDir}, strings.EqualFold(os.Getenv("JOYCURATOR_SECURE_COOKIE"), "true"))
+	a, err := app.Open(dataDir, sourceDir, targetDir, strings.EqualFold(os.Getenv("JOYCURATOR_SECURE_COOKIE"), "true"))
 	if err != nil {
 		slog.Error("启动失败", "error", err)
 		os.Exit(1)

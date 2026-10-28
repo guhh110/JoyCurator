@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -69,11 +70,11 @@ type Run struct {
 	Ops       []Work `json:"ops,omitempty"`
 }
 
-func Open(dir string, roots []string, secure bool) (*App, error) {
+func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	access, err := fsops.New(roots)
+	access, err := fsops.New([]string{sourceRoot, targetRoot})
 	if err != nil {
 		return nil, err
 	}
@@ -82,19 +83,6 @@ func Open(dir string, roots []string, secure bool) (*App, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	var legacy, version int
-	if err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('settings','records','schema_migrations')").Scan(&legacy); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if legacy != 0 || version > 2 {
-		db.Close()
-		return nil, errors.New("此数据目录属于其他版本，请使用独立的数据目录")
-	}
 	_, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;
  CREATE TABLE IF NOT EXISTS administrators(id INTEGER PRIMARY KEY CHECK(id=1),username TEXT NOT NULL,password_hash BLOB NOT NULL);
  CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,administrator_id INTEGER NOT NULL REFERENCES administrators(id),expires_at INTEGER NOT NULL);
@@ -110,29 +98,23 @@ func Open(dir string, roots []string, secure bool) (*App, error) {
 		return nil, err
 	}
 	setting := model.DefaultSettings()
-	if len(access.Roots) == 0 {
-		db.Close()
-		return nil, errors.New("请配置源目录和目标目录")
-	}
-	if len(access.Roots) >= 2 {
-		setting.SourceRoot, setting.TargetRoot = access.Roots[0], access.Roots[1]
-	} else {
-		setting.SourceRoot, setting.TargetRoot = filepath.Join(access.Roots[0], "source"), filepath.Join(access.Roots[0], "target")
-	}
+	setting.SourceRoot, setting.TargetRoot = access.Roots[0], access.Roots[1]
 	if fsops.Within(setting.TargetRoot, setting.SourceRoot) {
 		db.Close()
 		return nil, errors.New("源目录不能位于目标目录内或与其相同")
 	}
 	_, err = db.Exec("INSERT OR IGNORE INTO config VALUES(1,?, '')", jsonText(setting))
-	if err == nil {
-		err = migrateDirectories(db, setting)
-	}
 	if err != nil {
 		db.Close()
 		return nil, err
 	}
 
 	a := &App{db: db, access: access, auth: &auth.Service{DB: db}, plans: map[string]*Plan{}, secure: secure}
+	if _, err := a.settings(); err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	// Persisted operation states contain staging paths and hashes for recovery.
 	rows, err := db.Query("SELECT value FROM runs")
 	if err != nil {
@@ -197,9 +179,16 @@ func (a *App) settings() (model.Settings, error) {
 		return s, err
 	}
 	token := s.Token
-	err = json.Unmarshal([]byte(raw), &s)
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&s); err != nil {
+		return s, err
+	}
+	if !filepath.IsAbs(s.SourceRoot) || !filepath.IsAbs(s.TargetRoot) || s.Version < 1 {
+		return s, errors.New("源目录、目标目录或设置版本无效")
+	}
 	s.Token = token
-	return s, err
+	return s, nil
 }
 func (a *App) client(s model.Settings) (*tmdb.Client, error) {
 	return tmdb.New(a.db, s.Token, s.ProxyURL, s.Language)

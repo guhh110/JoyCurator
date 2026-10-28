@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +22,7 @@ func fixture(t *testing.T) (*App, string) {
 			t.Fatal(err)
 		}
 	}
-	a, err := Open(filepath.Join(base, "data"), []string{filepath.Join(media, "source"), filepath.Join(media, "target")}, false)
+	a, err := Open(filepath.Join(base, "data"), filepath.Join(media, "source"), filepath.Join(media, "target"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +332,7 @@ func TestInterruptedRunCanResumeAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = a.Close()
-	next, err := Open(filepath.Join(filepath.Dir(root), "data"), []string{root}, false)
+	next, err := Open(filepath.Join(filepath.Dir(root), "data"), filepath.Join(root, "source"), filepath.Join(root, "target"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,27 +369,5 @@ func TestSingleFlightDoesNotWriteAnExtraRecord(t *testing.T) {
 	records, err := a.records(1)
 	if err != nil || records["total"] != 0 {
 		t.Fatalf("%v %v", records, err)
-	}
-}
-
-func TestLegacyDatabaseIsRejectedWithoutChangingSchema(t *testing.T) {
-	dir := t.TempDir()
-	db, err := sql.Open("sqlite", filepath.Join(dir, "joycurator.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = db.Exec("CREATE TABLE settings(id INTEGER PRIMARY KEY,value TEXT)"); err != nil {
-		t.Fatal(err)
-	}
-	db.Close()
-	if a, err := Open(dir, []string{t.TempDir()}, false); err == nil {
-		a.Close()
-		t.Fatal("legacy database accepted")
-	}
-	db, _ = sql.Open("sqlite", filepath.Join(dir, "joycurator.db"))
-	defer db.Close()
-	var n int
-	if err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='config'").Scan(&n); err != nil || n != 0 {
-		t.Fatal("legacy schema changed", err)
 	}
 }

@@ -217,12 +217,6 @@ func (f *FS) CheckTarget(name string) (int64, uint64, error) {
 	}
 	return int64(disk.Bavail) * int64(disk.Bsize), uint64(stat.Dev), nil
 }
-func Device(info os.FileInfo) uint64 {
-	if stat, ok := info.Sys().(*unix.Stat_t); ok {
-		return uint64(stat.Dev)
-	}
-	return devicePortable(info)
-}
 
 // Device resolves a file's device id, honoring DeviceOf when it is set.
 func (f *FS) Device(info os.FileInfo) uint64 {

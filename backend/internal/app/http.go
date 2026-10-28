@@ -87,7 +87,7 @@ func (a *App) Handler(frontend fs.FS) http.Handler {
 				errorReply(w, 401, "用户名或密码不正确")
 				return nil
 			}
-			http.SetCookie(w, &http.Cookie{Name: "joycurator_rewrite", Value: token, Path: "/", HttpOnly: true, Secure: a.secure, SameSite: http.SameSiteStrictMode, MaxAge: int(auth.SessionLifetime.Seconds())})
+			http.SetCookie(w, &http.Cookie{Name: "joycurator_session", Value: token, Path: "/", HttpOnly: true, Secure: a.secure, SameSite: http.SameSiteStrictMode, MaxAge: int(auth.SessionLifetime.Seconds())})
 			reply(w, u)
 			return nil
 		})
@@ -96,7 +96,7 @@ func (a *App) Handler(frontend fs.FS) http.Handler {
 		if err := a.auth.Logout(r.Context(), cookie(r)); err != nil {
 			return err
 		}
-		http.SetCookie(w, &http.Cookie{Name: "joycurator_rewrite", Path: "/", HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteStrictMode, Secure: a.secure})
+		http.SetCookie(w, &http.Cookie{Name: "joycurator_session", Path: "/", HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteStrictMode, Secure: a.secure})
 		reply(w, map[string]bool{"ok": true})
 		return nil
 	})
@@ -360,7 +360,7 @@ func (a *App) Handler(frontend fs.FS) http.Handler {
 	})
 }
 func cookie(r *http.Request) string {
-	c, err := r.Cookie("joycurator_rewrite")
+	c, err := r.Cookie("joycurator_session")
 	if err != nil {
 		return ""
 	}

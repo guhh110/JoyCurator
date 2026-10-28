@@ -3,65 +3,30 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"joycurator/internal/model"
 )
 
-func TestDirectoryDefaultsAndMigration(t *testing.T) {
+func TestDirectoryDefaults(t *testing.T) {
 	a, media := fixture(t)
+	s, err := a.settings()
+	if err != nil || s.SourceRoot != filepath.Join(media, "source") || s.TargetRoot != filepath.Join(media, "target") {
+		t.Fatal("unexpected defaults", err)
+	}
+}
+
+func TestSettingsRejectUnknownFields(t *testing.T) {
+	a, _ := fixture(t)
 	s, _ := a.settings()
-	if s.SourceRoot != filepath.Join(media, "source") || s.TargetRoot != filepath.Join(media, "target") {
-		t.Fatal("unexpected defaults")
-	}
-	raw := map[string]any{}
-	_ = json.Unmarshal([]byte(jsonText(s)), &raw)
-	delete(raw, "sourceRoot")
-	delete(raw, "targetRoot")
-	raw["version"], raw["sources"], raw["movieRoot"], raw["tvRoot"] = 7, []string{"/previous/source"}, "/previous/movies", "/previous/tv"
-	oldRules := s.Rules
-	oldRules.Categories = []model.Category{{Name: "科幻", Type: "movie"}, {Name: "纪录片", Genres: []string{"Documentary"}}}
-	raw["rules"] = oldRules
-	if _, err := a.db.Exec("UPDATE config SET value=?", jsonText(raw)); err != nil {
+	raw := strings.TrimSuffix(jsonText(s), "}") + `,"unexpectedField":true}`
+	if _, err := a.db.Exec("UPDATE config SET value=?", raw); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.save(Run{ID: "history", State: "undone", Title: "旧记录"}); err != nil {
-		t.Fatal(err)
-	}
-	_ = a.Close()
-	roots := []string{filepath.Join(media, "source"), filepath.Join(media, "target")}
-	next, err := Open(filepath.Join(filepath.Dir(media), "data"), roots, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer next.Close()
-	migrated, _ := next.settings()
-	if migrated.SourceRoot != roots[0] || migrated.TargetRoot != roots[1] || migrated.Version != 8 || migrated.Token != "fixture-secret" {
-		t.Fatal("settings or credential not preserved")
-	}
-	if len(migrated.Rules.Categories) != 3 || migrated.Rules.Categories[0].Name != "电影/科幻" || migrated.Rules.Categories[2].Name != "剧集/纪录片" {
-		t.Fatal(migrated.Rules.Categories)
-	}
-	record, err := next.record("history")
-	if err != nil || record.State != "undone" {
-		t.Fatal("operation history lost")
-	}
-	if err := migrateDirectories(next.db, model.DefaultSettings()); err != nil {
-		t.Fatal(err)
-	}
-	repeated, _ := next.settings()
-	if jsonText(repeated) != jsonText(migrated) || repeated.Token != migrated.Token {
-		t.Fatal("migration is not idempotent")
-	}
-	var version int
-	_ = next.db.QueryRow("PRAGMA user_version").Scan(&version)
-	if version != 2 {
-		t.Fatal(version)
+	if _, err := a.settings(); err == nil {
+		t.Fatal("unknown settings field accepted")
 	}
 }
 
@@ -120,7 +85,7 @@ func TestBrowseDefaultsToSource(t *testing.T) {
 	handler := a.Handler(nil)
 	get := func(path string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest("GET", path, nil)
-		request.Header.Set("Cookie", "joycurator_rewrite="+token)
+		request.Header.Set("Cookie", "joycurator_session="+token)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 		return response

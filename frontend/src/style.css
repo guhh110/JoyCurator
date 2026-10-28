@@ -67,11 +67,6 @@
 .global-notice {
   scrollbar-gutter: stable;
 }
-@supports not (scrollbar-gutter: stable) {
-  .page-scroll {
-    overflow-y: scroll;
-  }
-}
 body {
   margin: 0;
 }

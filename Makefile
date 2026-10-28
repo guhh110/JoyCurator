@@ -4,7 +4,7 @@ export GOCACHE := $(ROOT)/local/cache/go-build
 export GOTMPDIR := $(ROOT)/local/tmp
 export TMPDIR := $(ROOT)/local/tmp
 export PYTHONDONTWRITEBYTECODE := 1
-.PHONY: prepare install backend frontend dev-backend dev-frontend check assets build release
+.PHONY: prepare install backend frontend check assets build release
 VERSION ?= dev
 export VERSION
 prepare:
@@ -12,8 +12,6 @@ prepare:
 install: prepare
 	cd frontend && pnpm install --frozen-lockfile
 	cd backend && go mod download
-dev-backend: backend
-dev-frontend: frontend
 backend: prepare
 	cd backend && go run ./cmd/joycurator
 frontend:

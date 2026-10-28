@@ -169,7 +169,7 @@ watch(previewFilter, () => (previewPage.value = 1))
 watch(entry, (value) => {
   if (username.value)
     try {
-      localStorage.setItem('joy-rewrite-entry', JSON.stringify(value))
+      localStorage.setItem('joycurator-entry', JSON.stringify(value))
     } catch {}
 })
 watch(
@@ -177,7 +177,7 @@ watch(
   (value) => {
     if (username.value)
       try {
-        localStorage.setItem('joy-rewrite-files', JSON.stringify(value))
+        localStorage.setItem('joycurator-files', JSON.stringify(value))
       } catch {
         /* Work remains in memory if storage is full. */
       }
@@ -229,7 +229,7 @@ async function session() {
 }
 function restore() {
   try {
-    const value = JSON.parse(localStorage.getItem('joy-rewrite-files') || '[]')
+    const value = JSON.parse(localStorage.getItem('joycurator-files') || '[]')
     if (Array.isArray(value))
       files.value = value
         .filter(
@@ -238,7 +238,7 @@ function restore() {
         )
         .slice(0, 2000)
     const saved = JSON.parse(
-      localStorage.getItem('joy-rewrite-entry') || 'null',
+      localStorage.getItem('joycurator-entry') || 'null',
     )
     if (
       saved &&
@@ -276,9 +276,9 @@ function expire() {
   settings.value = null
   episodeRequest++
   searchRequest++
-  localStorage.removeItem('joy-rewrite-files')
-  localStorage.removeItem('joy-rewrite-entry')
-  localStorage.removeItem('joy-rewrite-active')
+  localStorage.removeItem('joycurator-files')
+  localStorage.removeItem('joycurator-entry')
+  localStorage.removeItem('joycurator-active')
 }
 async function logout() {
   await act(async () => {
@@ -427,7 +427,7 @@ async function execute() {
   if (!preview.value) return
   await act(async () => {
     active.value = await api<Run>('/execute', { id: preview.value!.id })
-    localStorage.setItem('joy-rewrite-active', active.value.id)
+    localStorage.setItem('joycurator-active', active.value.id)
     preview.value = null
     success.value = '正在整理，进度会自动更新'
   })
@@ -454,7 +454,7 @@ async function recordAction(run: Run, action: string) {
       return
     }
     active.value = await api<Run>(`/runs/${run.id}/${action}`, {})
-    localStorage.setItem('joy-rewrite-active', active.value.id)
+    localStorage.setItem('joycurator-active', active.value.id)
     detail.value = null
     await loadRecords()
   })
@@ -464,14 +464,14 @@ async function poll() {
   const id =
     active.value?.state === 'running'
       ? active.value.id
-      : localStorage.getItem('joy-rewrite-active')
+      : localStorage.getItem('joycurator-active')
   if (!id) return
   polling = true
   try {
     const value = await api<Run>(`/runs/${id}`)
     active.value = value
     if (value.state !== 'running') {
-      localStorage.removeItem('joy-rewrite-active')
+      localStorage.removeItem('joycurator-active')
       if (!value.undo) {
         const done = new Set(
           value.ops
@@ -484,7 +484,7 @@ async function poll() {
     }
   } catch (e) {
     message.value = (e as Error).message
-    localStorage.removeItem('joy-rewrite-active')
+    localStorage.removeItem('joycurator-active')
   } finally {
     polling = false
   }
@@ -1232,7 +1232,7 @@ onUnmounted(() => {
                   <Plus :size="14" />添加规则
                 </button>
               </div>
-              <p class="muted">按顺序匹配，首个命中的规则决定目标目录下的分类路径。使用 / 创建多级目录，例如电影/华语电影、剧集/国产剧。</p>
+              <p class="muted">按顺序匹配，首个命中的规则决定目标目录下的分类路径。使用 / 创建多级目录，例如电影/华语电影、电视剧/国产剧。</p>
               <details
                 v-for="(category, index) in settings.rules.categories"
                 :key="index"

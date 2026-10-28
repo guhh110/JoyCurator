@@ -53,7 +53,7 @@ func TestNestedCategoryPaths(t *testing.T) {
 	settings.TargetRoot = "/target"
 	file := model.Source{Path: "/source/file.mkv", Entry: &model.Entry{TMDBID: 1, Type: "tv", Title: "剧名", Year: 2024, Countries: []string{"CN"}}, Season: 1, Episodes: []int{1}}
 	target, err := Target(file, settings)
-	if err != nil || !strings.HasPrefix(target, "/target/剧集/国产剧/") {
+	if err != nil || !strings.HasPrefix(target, "/target/电视剧/国产剧/") {
 		t.Fatal(target, err)
 	}
 	show, err := ShowRoot(file, settings)
@@ -90,10 +90,19 @@ func TestDefaultCategories(t *testing.T) {
 		{"anime movie in english metadata", model.Entry{Type: "movie", Genres: []string{"Animation"}}, "电影/动画电影"},
 		{"documentary", model.Entry{Type: "movie", Genres: []string{"Documentary"}, Countries: []string{"US"}}, "电影/纪录片"},
 		{"american movie", model.Entry{Type: "movie", Countries: []string{"US"}}, "电影/欧美电影"},
-		{"korean show", model.Entry{Type: "tv", Countries: []string{"KR"}}, "剧集/日韩剧"},
-		{"anime show", model.Entry{Type: "tv", Genres: []string{"动画"}, Countries: []string{"JP"}}, "剧集/动漫"},
+		{"korean show", model.Entry{Type: "tv", Countries: []string{"KR"}}, "电视剧/日韩剧"},
+		{"anime show", model.Entry{Type: "tv", Genres: []string{"动画"}, Countries: []string{"JP"}}, "电视剧/日番"},
 		{"unknown country", model.Entry{Type: "movie", Countries: []string{"IN"}}, "电影/其他电影"},
-		{"no country show", model.Entry{Type: "tv"}, "剧集/其他剧集"},
+		{"Chinese animation", model.Entry{Type: "tv", Genres: []string{"动画"}, Countries: []string{"CN"}}, "电视剧/国漫"},
+		{"Chinese drama", model.Entry{Type: "tv", Countries: []string{"CN"}}, "电视剧/国产剧"},
+		{"Japanese drama", model.Entry{Type: "tv", Countries: []string{"JP"}}, "电视剧/日韩剧"},
+		{"American drama", model.Entry{Type: "tv", Countries: []string{"US"}}, "电视剧/欧美剧"},
+		{"kids before anime and country", model.Entry{Type: "tv", Genres: []string{"动画", "儿童"}, Countries: []string{"CN"}}, "电视剧/儿童"},
+		{"English kids", model.Entry{Type: "tv", Genres: []string{"Animation", "Kids"}, Countries: []string{"JP"}}, "电视剧/儿童"},
+		{"family is not automatically kids", model.Entry{Type: "tv", Genres: []string{"Family"}, Countries: []string{"US"}}, "电视剧/欧美剧"},
+		{"movie kids unaffected", model.Entry{Type: "movie", Genres: []string{"儿童"}, Countries: []string{"CN"}}, "电影/华语电影"},
+		{"unknown country show", model.Entry{Type: "tv", Countries: []string{"IN"}}, "电视剧/其他剧集"},
+		{"no country show", model.Entry{Type: "tv"}, "电视剧/其他剧集"},
 	} {
 		if got := Category(tc.item, categories); got != tc.want {
 			t.Errorf("%s: got %q want %q", tc.name, got, tc.want)
