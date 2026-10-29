@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go.starlark.net/starlark"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"go.starlark.net/starlark"
 )
 
 type compiledRule struct {

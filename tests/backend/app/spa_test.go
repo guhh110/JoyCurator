@@ -32,10 +32,10 @@ func TestSPAPageRefreshAndMissingAssets(t *testing.T) {
 	if response.Code != 200 || response.Body.Len() != 0 {
 		t.Fatal("HEAD navigation", response.Code, response.Body.String())
 	}
-	if err := a.auth.Setup(context.Background(), "test", "test-password-2026"); err != nil {
+	if err := a.dependencies.Auth.Setup(context.Background(), "test", "test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
-	token, _, err := a.auth.Login(context.Background(), "test", "test-password-2026")
+	token, _, err := a.dependencies.Auth.Login(context.Background(), "test", "test-password-2026")
 	if err != nil {
 		t.Fatal(err)
 	}

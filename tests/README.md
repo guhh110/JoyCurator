@@ -6,12 +6,12 @@
 tests/
 ├── backend/          # Go 测试，子目录对应 backend/internal/ 中的包
 │   ├── app/
+│   ├── infra/        # sqlite、tmdb、scanner
+│   ├── matching/
 │   ├── metadata/
 │   ├── organizer/
 │   ├── recognition/
 │   ├── rules/
-│   ├── scanner/
-│   ├── tmdb/
 │   ├── trace/
 │   └── webui/
 ├── frontend/         # Vitest 测试

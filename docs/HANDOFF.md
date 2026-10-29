@@ -2,7 +2,7 @@
 
 本文描述当前仓库中的实现，供接手开发、定位问题和继续迭代使用。范围包含路径提取、自动识别、手动整理、执行队列，以及本次拆分后的前端路由与查询管理。
 
-配套文档：[启动与使用](../README.md)、[接口字段](API.md)、[规则与脚本规范](RECOGNITION.md)、[前端目录与路由](FRONTEND.md)、[测试入口](../tests/README.md)。接口的完整请求格式以 `API.md` 和相应处理函数为准。
+配套文档：[后端模块与调用链](BACKEND.md)、[启动与使用](../README.md)、[接口字段](API.md)、[规则与脚本规范](RECOGNITION.md)、[前端目录与路由](FRONTEND.md)、[测试入口](../tests/README.md)。接口的完整请求格式以 `API.md` 和相应处理函数为准。
 
 ## 1. 先理解三个不同的业务环节
 
@@ -18,35 +18,34 @@ flowchart LR
 ```
 
 1. **路径提取**：从文本提取 ID、标题、年份、季集等；不读取文件，不访问 TMDB。代码在 `internal/recognition`。
-2. **作品识别**：消费提取结果，查询 TMDB、判断候选、校验季集、形成可整理或待处理状态。代码在 `internal/app/recognition*.go`。
-3. **整理执行**：根据已确认的作品与映射生成预览，检查冲突，执行复制／移动／硬链接、字幕和刮削产物。代码在 `app/preview.go`、`app/jobs.go`、`app/batch.go` 和 `organizer`。
+2. **作品识别**：消费提取结果，查询 TMDB、判断候选、校验季集、形成可整理或待处理状态。代码在 `internal/matching/`。
+3. **整理执行**：根据已确认的作品与映射生成预览，检查冲突，执行复制／移动／硬链接、字幕和刮削产物。代码在 `planning/preview.go`、`organizer/jobs.go`、`organizer/batch.go` 和 `organizer`。
 
 这三个环节的边界需要保持。比如“某个标题对应哪个 TMDB 作品”属于作品识别，“S02E03 提取为季 2、集 3”属于路径提取，“最终保存在哪个目录”属于命名与整理。
 
 **两个容易混淆的命名：**
 
-- `internal/recognition` 是纯路径元数据规则引擎；`app/recognition*.go` 是异步识别工作区与 TMDB 消费逻辑。
+- `internal/recognition` 是纯路径元数据规则引擎；`matching/` 负责作品匹配，异步工作区由 app 协调。
 - `internal/rules` 是目标目录分类、命名模板规则；不是路径提取规则库。修改提取规则应查看 `internal/recognition`。
 
 ## 2. 仓库与部署结构
 
 ```text
 backend/
-  cmd/joycurator/main.go       服务启动、环境变量、信号退出
+  cmd/joycurator/main.go       启动与退出
   internal/
-    app/                      HTTP、配置、工作区、预览、任务、持久化与适配
-    recognition/              纯路径规则链、模型、正则与脚本运行环境
-      scripts/*.star          默认规则的可读 Starlark 源码
-    scanner/                  视频遍历、扩展名判断与 ffprobe 探测
-    tmdb/                     TMDB 查询、归一化、缓存、重试和请求追踪
-    rules/                    分类与命名模板渲染
-    organizer/                单项文件操作及撤销、恢复
-    fsops/                    授权目录内的文件操作与发布能力
-    metadata/                 NFO 等元数据生成
-    model/                    原有整理领域模型和设置
-    auth/                     管理员、密码哈希、会话
-    trace/                    原完整识别调试的事件记录器
-    webui/                    开发模式与 production 内嵌前端
+    app/                      装配、HTTP、工作区流程、认证与设置接入
+    recognition/              路径规则、Metadata、调试、轨迹
+    matching/                 TMDB 匹配、候选与季集策略
+    planning/                 Plan 生成、修改、删除、提交
+    organizer/                Run、队列、文件操作、记录与回退
+    model/                    共用文件、作品、设置与操作 DTO
+    infra/tmdb/               TMDB 请求、响应转换和缓存端口
+    infra/sqlite/             SQL、事务和持久化
+    infra/fsops/              授权文件操作
+    infra/scanner/            文件遍历和媒体探测
+    rules/metadata/trace/     命名、NFO 与事件等现有工具能力
+    auth/webui/               认证与前端资源接入
 frontend/src/
   app/                        路由、登录、Query、导航、共享运行状态
   layouts/                    登录后的统一应用外壳
@@ -76,7 +75,10 @@ main.main
     → 创建授权文件系统 fsops.FS
     → 打开 joycurator.db、启用 WAL / busy_timeout / foreign_keys
     → 建表、写入首次默认设置
-    → initExtraction：初始化规则与轨迹表、迁移旧规则、编译当前链
+    → sqlite.Open：原有表与历史中断恢复
+    → 创建 organizer.Coordinator
+    → recognition.New：迁移旧规则、编译当前链
+    → 装配设置、目录、识别、规划、执行与 HTTP 服务
     → 校验设置
     → 将遗留 running / queued 整理任务及运行中识别标为 interrupted
   → App.Handler(webui.Files())
@@ -85,9 +87,9 @@ main.main
 
 退出时 HTTP 服务先停止接收请求，随后 `App.Close` 取消当前整理、识别与批次，等待后台工作结束，再关闭数据库。
 
-`App` 是应用协调器，持有数据库、授权文件系统、认证服务、当前提取引擎、内存预览、任务执行槽和取消函数。领域计算留在独立包；HTTP、SQLite 和队列协调留在 `app`。
+`App` 装配四个业务模块与 infra，并接入 HTTP、设置、认证和工作区流程；当前链属于 recognition，预览属于 planning，任务与后台生命周期由 organizer.Coordinator 管理。业务模块不直接依赖 SQL／HTTP，具体边界与调用链见 [后端架构](BACKEND.md)。
 
-数据库仅设置一个打开连接。不要在尚未关闭的查询结果集内再执行依赖同连接的写入；读取后关闭 rows，再修改记录。并发控制和任务取消要遵循现有 `App.mu`、`wg` 和 context 的生命周期。
+数据库仅设置一个打开连接。不要在尚未关闭的查询结果集内再执行依赖同连接的写入；读取后关闭 rows，再修改记录。并发控制和任务取消要遵循`organizer.Coordinator` 的准入锁、等待计数和 context 生命周期。
 
 ## 4. 路径规则链的稳定模型
 
@@ -122,7 +124,7 @@ main.main
 }
 ```
 
-单值未知为 `null`，集数未知为 `[]`。`season: 0` 是特别篇；电影与剧集共用 `title`，`mediaType` 只接受 `movie/tv/null`。原有消费 DTO 的未知季号为 `-1`，仅在 `app/extraction.go:parsedMetadata` 做兼容转换，不能把 `-1` 引入新模型。
+单值未知为 `null`，集数未知为 `[]`。`season: 0` 是特别篇；电影与剧集共用 `title`，`mediaType` 只接受 `movie/tv/null`。原有消费 DTO 的未知季号为 `-1`，仅在 `recognition/compat.go:ParsedMetadata` 做兼容转换，不能把 `-1` 引入新模型。
 
 ### 4.3 Step：说明每条规则做了什么
 
@@ -188,14 +190,14 @@ prepare(Input)：验证 /… 绝对路径、文本规范化、确认边界
 
 ```text
 RecognitionRules 编辑草稿 → PUT /api/extraction/rules
-  → saveExtractionRules
+  → recognition.Service.Save
   → recognition.Compile：先全量验证
-  → App.mu 内保存 extraction_rules
-  → 替换 App.extractor
+  → recognition 的规则锁内通过 Store 保存 extraction_rules
+  → 替换 recognition.Service 的当前 Engine
   → 前端失效并重新读取 rules Query
 ```
 
-保存失败不替换原链。不维护版本、草稿发布或任务绑定。每个文件开始提取时通过 `currentExtractor()` 获取一次实例；本次调用内不切换。批量任务的后续文件可以使用刚保存的新链。
+保存失败不替换原链。不维护版本、草稿发布或任务绑定。每个文件开始提取时通过 `recognition.Service.Current()` 获取一次实例；本次调用内不切换。批量任务的后续文件可以使用刚保存的新链。
 
 ### 试跑
 
@@ -214,7 +216,7 @@ DebugPage / 规则编辑器试跑 → useExtraction
 ### 正式轨迹
 
 ```text
-App.extractFile(path,root,workspace)
+recognition.Service.ExtractFile(path,root,workspace)
   → 获取当前 Engine
   → 插入 extraction_traces(status=running)
   → Engine.Extract(observer)
@@ -223,7 +225,7 @@ App.extractFile(path,root,workspace)
   → 返回 Result 与 traceId
 ```
 
-手动 `/scan` 和自动识别都会调用 `extractFile`；手动扫描还会做媒体探测，自动识别阶段不探测。消费方的无持久化适配入口是 `parseForConsumer`。
+手动 `/scan` 和自动识别都会调用 `ExtractFile`；手动扫描还会做媒体探测，自动识别阶段不探测。消费方的无持久化适配入口是 `recognition.Service.Parse`。
 
 工作区文件行只携带 `traceId`，历史列表分页读取摘要，选中详情才获取全部步骤。每步含完整规则及源码快照，当前规则改名、修改或删除不影响旧记录。重启将遗留 running 轨迹标记 interrupted。清理仅允许已结束轨迹，关联 steps 通过外键级联删除，不删除工作区结果。
 
@@ -234,20 +236,20 @@ App.extractFile(path,root,workspace)
 ```text
 AutomaticRecognitionPage → useAutomaticRecognition.add
   → POST /api/recognitions {paths,id?}
-  → startRecognition：校验目录／数量、初始化或补充工作区
+  → WorkspaceService.Start：校验目录／数量、初始化或补充工作区
   → 保存 Recognition，建立后台 context
   → recognize
     → scanner.Walk（不 Probe）
-    → 对新文件 extractFile → parsedMetadata → 初始 query 分组
-    → recognitionMemo.match：作品候选匹配与同批查询去重
-    → recognitionMemo.validate：季集有效性
+    → 对新文件 ExtractFile → Metadata → 初始 query 分组
+    → Resolver.Match → DecideMatch：作品候选匹配与同批查询去重
+    → Resolver.Validate → 季集纯策略：季集有效性
     → 按 type + TMDB ID 合并作品，同剧多季同组
     → 自动选择 ready 且未移出的文件
     → 分批保存工作区进度
   → 前端 TanStack Query 轮询
 ```
 
-关键文件：`app/recognition.go` 管任务和修正，`recognition_match.go` 管候选，`recognition_validate.go` 管季集。TMDB 客户端负责请求、响应缓存与重试，规则引擎不参与网络。
+关键入口：`app/workspace.go` 管任务准入，`app/recognition_job.go` 管异步流程，`app/workspace_edits.go` 管修正；`matching/match.go`、`validate.go` 管查询协调，`policy.go` 管不依赖网络的判断。TMDB 客户端负责请求、响应缓存与重试，规则引擎不参与网络。
 
 匹配策略：明确 ID 优先；类型不明时查电影和剧集，ID 在两类中都存在也需消歧。标题／原名标准化精确匹配、已知年份一致、无同等候选才自动采用；模糊、同名、年份冲突与去年份回退进入 review。没有搜索结果与网络／凭据错误分开处理。缺季号只在唯一常规季且集数有效时补全；不自动换算跨季连续集号。
 
@@ -266,16 +268,16 @@ AutomaticRecognitionPage → useAutomaticRecognition.add
 
 ```text
 WorkbenchPage → useWorkbench.add → POST /scan
-  → scanner.Walk → extractFile → scanner.Probe
+  → scanner.Walk → ExtractFile → scanner.Probe
   → 浏览器保存文件列表
 搜索作品 → GET /search → 选择 Entry
   → 剧集再 GET /seasons、GET /episodes → 修正映射
-预览 → POST /preview → preview → buildPreview
+预览 → POST /preview → Planning.Preview → buildPreview
   → 校验源路径和文件身份、读取设置与 TMDB 元数据
   → rules.Target / ShowRoot 渲染分类与命名
   → 生成视频／字幕／NFO／图片操作
   → 校验冲突、磁盘需求等 → storePlan
-确认 → POST /execute {id} → execute → launch → work
+确认 → POST /execute {id} → Planning.Submit → Organizer.Execute → launch → work
   → organizer.Engine.Run，逐步持久化操作状态
 ```
 
@@ -287,19 +289,19 @@ WorkbenchPage → useWorkbench.add → POST /scan
 
 ```text
 POST /batches/preview {recognitionId,revision,mode}
-  → batchPreview：仅收集已选 ready 文件，按作品分组
+  → Planning.BatchPreview：仅收集已选 ready 文件，按作品分组
   → 每组 buildPreview
   → 合并全部 ops，检查跨作品重复目标与合计空间
   → 保存统一 Plan（绑定工作区 revision 与设置 version）
 POST /batches/execute {id}
-  → executeBatch：重验预览、revision、设置、来源与目标
+  → Planning.Submit → Organizer.ExecuteBatch：重验预览、revision、设置、来源与目标
   → 事务写入每作品一条 queued Run，带 batchId
   → 占用批次执行槽 → runBatch 顺序调用 work
 ```
 
 批次不是单独的数据库表，`batchId` 将 `runs` 中的作品记录关联起来，`readBatch` 重建批次视图。每部作品启动前重新校验配置版本、授权来源和操作条件；某部失败继续下一部。
 
-`App.running` 管当前单任务，`App.batch` 保留整个队列的互斥占用，避免两部作品之间的空隙被其他执行抢占。手动执行、重试、撤销和另一批次共享执行限制；队列结束前不允许设置变更。
+`organizer.Coordinator` 管当前单任务和整个队列的互斥占用，避免两部作品之间的空隙被其他执行抢占。手动执行、重试、撤销和另一批次共享执行限制；队列结束前不允许设置变更。
 
 批次取消作用于当前任务和尚未开始项；已完成记录保留。每部作品独立重试／撤销。撤销按操作逆序执行，公共 NFO／图片的共享所有权通过记录判断，不能盲删。重启后 queued/running 均标为 interrupted，不自动恢复执行。
 
@@ -314,7 +316,7 @@ POST /batches/execute {id}
 | 提取执行与步骤 | SQLite extraction_traces / extraction_steps | 长期保留，人工清理 |
 | 自动识别工作区 | SQLite recognitions | JSON，含 revision、修正、候选、traceId |
 | 整理／撤销记录与队列 | SQLite runs | JSON，操作恢复信息与可选 batchId |
-| 尚未执行的预览 | App.plans 内存 | 过期或重启失效 |
+| 尚未执行的预览 | planning.Service 内存 | 过期或重启失效 |
 | 手动文件列表、作品、活动任务引用 | 浏览器 localStorage | 跨刷新恢复；退出清空 |
 | 查询响应缓存 | TanStack Query 内存 | 按 key 隔离，退出清空 |
 | 规则编辑草稿、调试结果 | 页面内存 | 未保存编辑离开规则页会丢失 |
@@ -384,7 +386,7 @@ main.ts
 | --- | --- | --- |
 | 片名／季集提取错误 | 调试页、Step、scripts | 输入来源和边界 → 命中捕获 → 转换错误 → overwrite／applied |
 | Matrix 被当成某一集 | ID 标签保护、集数脚本 | 是否使用当前链 → 是否把路径别处数字当集数 → Step 的实际输入 |
-| ID 对应错误类型 | app/recognition_match.go | 路径类型依据 → 电影／剧集候选 → 标题／年份消歧 |
+| ID 对应错误类型 | matching/match.go 与 policy.go | 路径类型依据 → 电影／剧集候选 → 标题／年份消歧 |
 | 有候选却未自动采用 | 文件 reason 和候选比较 | 同名／年份冲突／回退／模糊匹配是否需要人工确认 |
 | 页面切换后状态不对 | feature 草稿、runtime、query keys | KeepAlive → 查询启停 → revision → 缓存失效范围 |
 | 页面刷新 404 | 后端根路由／反向代理 | 是否命中 SPA 回退 → API 与资源是否被误回退 |
@@ -413,13 +415,13 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 关键回归入口：
 
 - `tests/backend/recognition/`：纯提取、脚本、目录边界、季集、Matrix、覆盖／取消／旧规则迁移。
-- `tests/backend/app/recognition*_test.go`：工作区、候选、兼容调试与修正。
-- `tests/backend/app/batch_test.go`：跨作品冲突、空间、持久化队列、取消、单部失败继续。
+- `tests/backend/matching/` 与 `tests/backend/app/recognition*_test.go`：纯策略、查询协调、工作区、兼容调试与修正。
+- `tests/backend/app/batch_test.go`、`tests/backend/organizer/` 与 `tests/backend/infra/sqlite/`：跨作品冲突、空间、事务、队列、取消、单部失败继续、关闭与兼容恢复。
 - `tests/backend/app/spa_test.go`：生产前端路由回退、API 与资源 404。
 - `tests/frontend/recognition/`：规则模型、调试取消、工作区行为与脚本展示。
 - `tests/frontend/app/`：路由、登录跳转、侧边导航、Query 去重／取消／失效、会话隔离。
 
-本次交接前已通过 `make check`（前端 7 个测试文件、40 个用例）、`make build` 及 production 构建标签测试；浏览器验证了三工具页、历史详情刷新、手机抽屉与宽度、手动导入／查询／作品映射及切页保留状态。浏览器验证使用隔离测试目录，没有用真实收藏执行整理。
+交付检查包含 `make check`（前端 7 个测试文件、40 个用例）、`make build` 及 production 构建标签测试；浏览器验证了三工具页、历史详情刷新、手机抽屉与宽度、手动导入／查询／作品映射及切页保留状态。浏览器验证使用隔离测试目录，没有用真实收藏执行整理。
 
 ## 16. 后续修改建议与当前取舍
 
@@ -433,4 +435,4 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 8. 批次执行和恢复信息持久化，预览不持久化；服务重启只标中断，不自动继续危险的文件操作。
 9. 前端已按路由与 feature 分开，既有大表单与业务样式仍有继续细分空间；新增逻辑应遵循现有职责，不回填到应用外壳。
 
-建议接手顺序：先读本节总体链路，再读 `recognition/model.go → engine.go → scripts`，然后 `app/extraction.go → recognition.go → batch.go/jobs.go`，最后结合前端 `routes.ts → runtime.ts → 对应 feature` 追一条实际路径。
+建议接手顺序：先读本节总体链路，再读 `recognition/model.go → engine.go → scripts`，然后 `recognition → matching → planning → organizer`，配合 `infra/sqlite` 和 `app/http*.go`，最后结合前端 `routes.ts → runtime.ts → 对应 feature` 追一条实际路径。

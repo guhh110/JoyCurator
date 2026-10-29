@@ -1,268 +1,81 @@
-// Package app owns the small HTTP application. Domain helpers stay stateless.
+// Package app wires the four business modules and the infrastructure adapters.
 package app
 
 import (
 	"context"
-	"crypto/rand"
-	"database/sql"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
-	"strings"
+	"io/fs"
+	"net/http"
 	"sync"
-	"time"
 
 	"joycurator/internal/auth"
-	"joycurator/internal/fsops"
+	"joycurator/internal/infra/fsops"
+	"joycurator/internal/infra/sqlite"
+	"joycurator/internal/infra/tmdb"
+	"joycurator/internal/matching"
 	"joycurator/internal/model"
+	"joycurator/internal/organizer"
+	"joycurator/internal/planning"
 	"joycurator/internal/recognition"
-	"joycurator/internal/tmdb"
-	_ "modernc.org/sqlite"
+	"joycurator/internal/trace"
 )
 
 type App struct {
-	extractor          *recognition.Engine
-	db                 *sql.DB
-	access             *fsops.FS
-	auth               *auth.Service
-	mu                 sync.Mutex
-	plans              map[string]*Plan
-	running            string
-	cancel             context.CancelFunc
-	closed             bool
-	wg                 sync.WaitGroup
-	secure             bool
-	recognitionCancels map[string]context.CancelFunc
-	batch              string
-	batchCancel        context.CancelFunc
-}
-type Row struct {
-	Source    string   `json:"source"`
-	Target    string   `json:"target"`
-	Season    int      `json:"season"`
-	Episodes  []int    `json:"episodes"`
-	Artifacts []string `json:"artifacts"`
-	Issues    []string `json:"issues"`
-}
-type Work struct {
-	model.Operation
-	Owner  string `json:"owner"`
-	Reused bool   `json:"reused,omitempty"`
-}
-type Plan struct {
-	ID            string    `json:"id"`
-	Title         string    `json:"title"`
-	Mode          string    `json:"mode"`
-	Rows          []Row     `json:"rows"`
-	Required      int64     `json:"required"`
-	Issues        []string  `json:"issues"`
-	Version       int       `json:"-"`
-	Expires       time.Time `json:"-"`
-	Ops           []Work    `json:"-"`
-	Groups        []*Plan   `json:"groups,omitempty"`
-	Type          string    `json:"type,omitempty"`
-	TMDBID        int       `json:"tmdbId,omitempty"`
-	RecognitionID string    `json:"-"`
-	Revision      int       `json:"-"`
-}
-type Run struct {
-	ID            string `json:"id"`
-	Title         string `json:"title"`
-	Mode          string `json:"mode"`
-	State         string `json:"state"`
-	Created       string `json:"created"`
-	Error         string `json:"error"`
-	Completed     int    `json:"completed"`
-	Total         int    `json:"total"`
-	Undo          bool   `json:"undo"`
-	Ops           []Work `json:"ops,omitempty"`
-	BatchID       string `json:"batchId,omitempty"`
-	Version       int    `json:"version,omitempty"`
-	RecognitionID string `json:"recognitionId,omitempty"`
+	store        *sqlite.Store
+	coordinator  *organizer.Coordinator
+	dependencies Dependencies
+	closeOnce    sync.Once
+	closeErr     error
 }
 
 func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return nil, err
-	}
 	access, err := fsops.New([]string{sourceRoot, targetRoot})
 	if err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", filepath.Join(dir, "joycurator.db"))
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	_, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;
- CREATE TABLE IF NOT EXISTS administrators(id INTEGER PRIMARY KEY CHECK(id=1),username TEXT NOT NULL,password_hash BLOB NOT NULL);
- CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,administrator_id INTEGER NOT NULL REFERENCES administrators(id),expires_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS config(id INTEGER PRIMARY KEY CHECK(id=1),value TEXT NOT NULL,token TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS tmdb_cache(key TEXT PRIMARY KEY,value BLOB NOT NULL,expires_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,value TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS recognitions(id TEXT PRIMARY KEY,value TEXT NOT NULL);`)
-	if err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err = os.Chmod(filepath.Join(dir, "joycurator.db"), 0600); err != nil {
-		db.Close()
-		return nil, err
-	}
-	setting := model.DefaultSettings()
-	setting.SourceRoot, setting.TargetRoot = access.Roots[0], access.Roots[1]
-	if fsops.Within(setting.TargetRoot, setting.SourceRoot) {
-		db.Close()
+	initial := model.DefaultSettings()
+	initial.SourceRoot, initial.TargetRoot = access.Roots[0], access.Roots[1]
+	if fsops.Within(initial.TargetRoot, initial.SourceRoot) {
 		return nil, errors.New("源目录不能位于目标目录内或与其相同")
 	}
-	_, err = db.Exec("INSERT OR IGNORE INTO config VALUES(1,?, '')", jsonText(setting))
+	store, err := sqlite.Open(dir, initial)
 	if err != nil {
-		db.Close()
 		return nil, err
 	}
-
-	a := &App{db: db, access: access, auth: &auth.Service{DB: db}, plans: map[string]*Plan{}, recognitionCancels: map[string]context.CancelFunc{}, secure: secure}
-	if err := a.initExtraction(); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if _, err := a.settings(); err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	// Persisted operation states contain staging paths and hashes for recovery.
-	rows, err := db.Query("SELECT value FROM runs")
+	coordinator := organizer.NewCoordinator()
+	factory := matching.Factory(func(s model.Settings, log *trace.Recorder) (matching.Provider, error) {
+		client, err := tmdb.New(store, s.Token, s.ProxyURL, s.Language)
+		if err == nil {
+			client.Trace = log
+		}
+		return client, err
+	})
+	recognize, err := recognition.New(store, coordinator.IsClosing)
 	if err != nil {
-		db.Close()
+		store.Close()
 		return nil, err
 	}
-	interrupted := []Run{}
-	for rows.Next() {
-		var raw string
-		if err = rows.Scan(&raw); err != nil {
-			break
+	var planner *planning.Service
+	config := NewConfig(store, access, coordinator, factory, func() { planner.Invalidate() })
+	files := NewFiles(access, config, recognize)
+	workspace := NewWorkspace(store, config, factory, recognize, WorkspaceFiles{Access: access, SourceAccess: files}, coordinator)
+	var organize *organizer.Service
+	match := matching.New(config, factory)
+	planner = planning.New(planning.Dependencies{Settings: config, Access: access, Sources: files, Recognition: recognize, Matching: match, Workspaces: workspace, Ownership: store, Verifier: &organizer.Engine{FS: access}, Submit: func(id string, batch bool) (any, error) {
+		if batch {
+			return organize.ExecuteBatch(id)
 		}
-		var r Run
-		if err = json.Unmarshal([]byte(raw), &r); err != nil {
-			break
-		}
-		if r.State == "running" || r.State == "queued" {
-			r.State = "interrupted"
-			r.Error = "服务中断，可继续或撤销"
-			interrupted = append(interrupted, r)
-		}
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	rows.Close()
-	if err != nil {
-		db.Close()
-		return nil, err
-	}
-	for _, r := range interrupted {
-		if err = a.save(r); err != nil {
-			db.Close()
-			return nil, err
-		}
-	}
-	if _, err = db.Exec(`UPDATE recognitions SET value=json_set(value,'$.state','interrupted','$.error','服务中断，可重试未完成项') WHERE json_extract(value,'$.state')='running'`); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return a, nil
+		return organize.Execute(id)
+	}})
+	runner := organizer.RunnerFactory(func(image func(context.Context, string) ([]byte, error)) organizer.Runner {
+		return &organizer.Engine{FS: access, Image: image}
+	})
+	organize = organizer.New(coordinator, store, config, planner, files, factory, runner, workspace.Revision, workspace.FinishRun)
+	deps := Dependencies{Auth: auth.New(store), Secure: secure, Health: store.Ping, Config: config, Matching: match, Recognition: recognize, Workspace: workspace, Files: files, Planning: planner, Organizer: organize}
+	return &App{store: store, coordinator: coordinator, dependencies: deps}, nil
 }
+func (a *App) Handler(frontend fs.FS) http.Handler { return NewHTTP(a.dependencies, frontend) }
 func (a *App) Close() error {
-	a.mu.Lock()
-	a.closed = true
-	if a.cancel != nil {
-		a.cancel()
-	}
-	for _, cancel := range a.recognitionCancels {
-		cancel()
-	}
-	if a.batchCancel != nil {
-		a.batchCancel()
-	}
-	a.mu.Unlock()
-	a.wg.Wait()
-	return a.db.Close()
+	a.closeOnce.Do(func() { a.coordinator.Close(); a.closeErr = a.store.Close() })
+	return a.closeErr
 }
-func (a *App) isClosing() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.closed
-}
-func jsonText(v any) string { b, _ := json.Marshal(v); return string(b) }
-func key() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-	return hex.EncodeToString(b)
-}
-func (a *App) settings() (model.Settings, error) {
-	var s model.Settings
-	var raw string
-	err := a.db.QueryRow("SELECT value,token FROM config WHERE id=1").Scan(&raw, &s.Token)
-	if err != nil {
-		return s, err
-	}
-	token := s.Token
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&s); err != nil {
-		return s, err
-	}
-	if !filepath.IsAbs(s.SourceRoot) || !filepath.IsAbs(s.TargetRoot) || s.Version < 1 {
-		return s, errors.New("源目录、目标目录或设置版本无效")
-	}
-	s.Token = token
-	return s, nil
-}
-func (a *App) client(s model.Settings) (*tmdb.Client, error) {
-	return tmdb.New(a.db, s.Token, s.ProxyURL, s.Language)
-}
-func (a *App) save(r Run) error {
-	_, err := a.db.Exec("INSERT INTO runs(id,value) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value", r.ID, jsonText(r))
-	return err
-}
-func (a *App) record(id string) (Run, error) {
-	var r Run
-	var raw string
-	err := a.db.QueryRow("SELECT value FROM runs WHERE id=?", id).Scan(&raw)
-	if err == nil {
-		err = json.Unmarshal([]byte(raw), &r)
-	}
-	return r, err
-}
-func (a *App) records(page int) (map[string]any, error) {
-	var total int
-	if err := a.db.QueryRow("SELECT COUNT(*) FROM runs").Scan(&total); err != nil {
-		return nil, err
-	}
-	rows, err := a.db.Query("SELECT value FROM runs ORDER BY rowid DESC LIMIT 20 OFFSET ?", (page-1)*20)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Run{}
-	for rows.Next() {
-		var raw string
-		var r Run
-		if err = rows.Scan(&raw); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(raw), &r); err != nil {
-			return nil, err
-		}
-		r.Ops = nil
-		items = append(items, r)
-	}
-	return map[string]any{"items": items, "total": total, "page": page}, rows.Err()
-}
-
-var errBusy = errors.New("已有任务正在运行，请等待完成")

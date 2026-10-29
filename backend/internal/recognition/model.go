@@ -131,3 +131,22 @@ func Targets() []Target {
 func Sources() []Source {
 	return []Source{Filename, CleanFilename, ParentDirectory, Directories, RelativePath, AbsolutePath}
 }
+
+type Trace struct {
+	ID          string   `json:"id"`
+	Path        string   `json:"path"`
+	Root        string   `json:"root"`
+	WorkspaceID string   `json:"workspaceId,omitempty"`
+	Status      string   `json:"status"`
+	StartedAt   string   `json:"startedAt"`
+	FinishedAt  string   `json:"finishedAt,omitempty"`
+	Metadata    Metadata `json:"metadata"`
+	Error       string   `json:"error,omitempty"`
+	StepCount   int      `json:"stepCount"`
+}
+
+type TestRequest struct {
+	Path  string  `json:"path"`
+	Root  string  `json:"root,omitempty"`
+	Rules *[]Rule `json:"rules,omitempty"`
+}

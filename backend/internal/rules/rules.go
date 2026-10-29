@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"joycurator/internal/fsops"
+	"joycurator/internal/infra/fsops"
 	"joycurator/internal/model"
 )
 

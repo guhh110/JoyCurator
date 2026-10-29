@@ -107,7 +107,7 @@ docker compose -f compose.shared.yaml up -d
 
 侧边导航按“文件整理／自动识别／系统设置”折叠分组，手机使用抽屉菜单。识别规则（`/recognition/rules`）、执行历史（`/recognition/history`）和识别调试（`/recognition/debug`）各自独立，可直接访问、刷新或使用浏览器前进后退；历史详情与筛选也保留在地址中。前端路由、查询管理及页面组织见 [前端结构](docs/FRONTEND.md)。
 
-开发交接可从 [技术交接文档](docs/HANDOFF.md) 开始，包含模块职责、核心模型、调用链、持久化与问题定位入口。
+后端模块职责、依赖与调用链见 [后端架构](docs/BACKEND.md)。开发交接可从 [技术交接文档](docs/HANDOFF.md) 开始，包含模块职责、核心模型、调用链、持久化与问题定位入口。
 
 浏览器中的目录均位于运行 JoyCurator 的设备上；从手机访问时，同样操作服务端文件。
 

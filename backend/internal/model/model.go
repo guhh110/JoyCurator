@@ -1,5 +1,10 @@
-// Package model defines settings, metadata and file operation values.
 package model
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+)
 
 type Category struct {
 	Name      string   `json:"name"`
@@ -57,25 +62,6 @@ func DefaultCategories() []Category {
 	}
 }
 
-// Parsed is what the file name and its folders yield.
-type Parsed struct {
-	Title      string `json:"title"`
-	Year       int    `json:"year"`
-	Type       string `json:"type"`
-	Season     int    `json:"season"`
-	Episodes   []int  `json:"episodes"`
-	TMDBID     int    `json:"tmdbId"`
-	ReleaseTag string `json:"releaseTag"`
-}
-
-// Probe is what ffprobe reported about the file.
-type Probe struct {
-	Resolution string  `json:"resolution"`
-	Codec      string  `json:"codec"`
-	Duration   float64 `json:"duration"`
-	Warning    string  `json:"warning,omitempty"`
-}
-
 type Actor struct {
 	Name string `json:"name"`
 	Role string `json:"role"`
@@ -96,6 +82,25 @@ type Entry struct {
 	Cast          []Actor  `json:"cast"`
 	PosterPath    string   `json:"posterPath"`
 	BackdropPath  string   `json:"backdropPath"`
+}
+
+// Parsed is what the file name and its folders yield.
+type Parsed struct {
+	Title      string `json:"title"`
+	Year       int    `json:"year"`
+	Type       string `json:"type"`
+	Season     int    `json:"season"`
+	Episodes   []int  `json:"episodes"`
+	TMDBID     int    `json:"tmdbId"`
+	ReleaseTag string `json:"releaseTag"`
+}
+
+// Probe is what ffprobe reported about the file.
+type Probe struct {
+	Resolution string  `json:"resolution"`
+	Codec      string  `json:"codec"`
+	Duration   float64 `json:"duration"`
+	Warning    string  `json:"warning,omitempty"`
 }
 
 // Source contains the inputs used to render naming rules.
@@ -127,3 +132,45 @@ type Operation struct {
 	SourceIdentity string     `json:"sourceIdentity"`
 	Undo           *Operation `json:"undo,omitempty"`
 }
+
+type Work struct {
+	Operation
+	Owner  string `json:"owner"`
+	Reused bool   `json:"reused,omitempty"`
+}
+
+type File struct {
+	Path     string `json:"path"`
+	Size     int64  `json:"size"`
+	MTime    int64  `json:"mtime,string"`
+	Season   int    `json:"season"`
+	Episodes []int  `json:"episodes"`
+	Probe    Probe  `json:"probe"`
+}
+
+func Key() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(b)
+}
+
+// Season is one season entry of a show.
+type Season struct {
+	Number int    `json:"number"`
+	Name   string `json:"name"`
+	Count  int    `json:"count"`
+}
+
+// Episode is one episode of a season.
+type Episode struct {
+	Season   int    `json:"season"`
+	Number   int    `json:"number"`
+	Name     string `json:"name"`
+	AirDate  string `json:"airDate"`
+	Overview string `json:"overview"`
+	Still    string `json:"stillPath"`
+}
+
+var ErrNotFound = errors.New("TMDB 条目或季集不存在")

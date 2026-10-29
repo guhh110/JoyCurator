@@ -116,7 +116,7 @@ func TestHTTPConfigurationSimulationPersistenceAndHistory(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("simulation created a file")
 	}
-	// Simulations accept an unsaved chain without changing current configuration.
+	// Simulations accept an unsaved chain without changing current model.
 	custom := regexRule("custom", 1, r.Title, `(?P<value>Show)`)
 	custom.Config = r.Config{Pattern: "Show", Value: json.RawMessage(`"Custom title"`)}
 	unsaved := decodeResponse[r.Result](t, s.call(t, "POST", "/api/extraction/test", map[string]any{"path": path, "rules": []r.Rule{custom}}, 200))

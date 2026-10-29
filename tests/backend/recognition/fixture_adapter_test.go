@@ -4,15 +4,18 @@ package recognition_test
 // new default engine. Production conversion lives only in the app layer.
 import (
 	"context"
+	"path/filepath"
+	"strings"
+
 	"joycurator/internal/model"
 	"joycurator/internal/recognition"
 	"joycurator/internal/trace"
-	"path/filepath"
-	"strings"
 )
 
-func MatchTitle(title string) string                 { return recognition.NormalizeTitle(title) }
-func RecognitionPath(path, root string) model.Parsed { return RecognitionPathTrace(path, root, nil) }
+func MatchTitle(title string) string { return recognition.NormalizeTitle(title) }
+func RecognitionPath(path, root string) model.Parsed {
+	return RecognitionPathTrace(path, root, nil)
+}
 func RecognitionPathTrace(path, root string, log *trace.Recorder) model.Parsed {
 	if !filepath.IsAbs(path) {
 		path = "/" + path

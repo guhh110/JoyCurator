@@ -8,11 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"joycurator/internal/model"
+	"joycurator/internal/planning"
 )
 
 func TestDirectoryDefaults(t *testing.T) {
 	a, media := fixture(t)
-	s, err := a.settings()
+	s, err := a.dependencies.Config.Load()
 	if err != nil || s.SourceRoot != filepath.Join(media, "source") || s.TargetRoot != filepath.Join(media, "target") {
 		t.Fatal("unexpected defaults", err)
 	}
@@ -20,12 +23,12 @@ func TestDirectoryDefaults(t *testing.T) {
 
 func TestSettingsRejectUnknownFields(t *testing.T) {
 	a, _ := fixture(t)
-	s, _ := a.settings()
+	s, _ := a.dependencies.Config.Load()
 	raw := strings.TrimSuffix(jsonText(s), "}") + `,"unexpectedField":true}`
-	if _, err := a.db.Exec("UPDATE config SET value=?", raw); err != nil {
+	if _, err := testDB(t, a).Exec("UPDATE config SET value=?", raw); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.settings(); err == nil {
+	if _, err := a.dependencies.Config.Load(); err == nil {
 		t.Fatal("unknown settings field accepted")
 	}
 }
@@ -36,31 +39,31 @@ func TestSourceBoundaryAndNestedTargetExclusion(t *testing.T) {
 	outside := filepath.Join(media, "outside.mkv")
 	_ = os.WriteFile(outside, []byte("outside"), 0644)
 	for _, path := range []string{outside, filepath.Join(media, "target")} {
-		if _, err := a.scan(context.Background(), []string{path}); err == nil {
+		if _, err := a.dependencies.Files.Scan(context.Background(), []string{path}); err == nil {
 			t.Fatal("source boundary bypassed", path)
 		}
 	}
-	if _, err := a.preview(context.Background(), PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []File{{Path: outside}}}); err == nil {
+	if _, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{{Path: outside}}}); err == nil {
 		t.Fatal("preview accepted file outside source")
 	}
-	s, _ := a.settings()
+	s, _ := a.dependencies.Config.Load()
 	s.TargetRoot = filepath.Join(s.SourceRoot, "organized")
 	_ = os.MkdirAll(s.TargetRoot, 0755)
 	_ = os.WriteFile(filepath.Join(s.TargetRoot, "output.mkv"), []byte("output"), 0644)
 	request := httptest.NewRequest("PUT", "/api/settings", bytes.NewBufferString(jsonText(s)))
-	if err := a.updateSettings(httptest.NewRecorder(), request); err != nil {
+	if err := testUpdateSettings(t, a, httptest.NewRecorder(), request); err != nil {
 		t.Fatal(err)
 	}
-	files, err := a.scan(context.Background(), []string{s.SourceRoot})
+	files, err := a.dependencies.Files.Scan(context.Background(), []string{s.SourceRoot})
 	if err != nil || len(files) != 1 || files[0].Path != input.Path {
 		t.Fatal(files, err)
 	}
-	if _, err := a.scan(context.Background(), []string{filepath.Join(s.TargetRoot, "output.mkv")}); err == nil {
+	if _, err := a.dependencies.Files.Scan(context.Background(), []string{filepath.Join(s.TargetRoot, "output.mkv")}); err == nil {
 		t.Fatal("target accepted as direct source")
 	}
-	s, _ = a.settings()
+	s, _ = a.dependencies.Config.Load()
 	s.TargetRoot = s.SourceRoot
-	if err := a.updateSettings(httptest.NewRecorder(), httptest.NewRequest("PUT", "/api/settings", bytes.NewBufferString(jsonText(s)))); err == nil {
+	if err := testUpdateSettings(t, a, httptest.NewRecorder(), httptest.NewRequest("PUT", "/api/settings", bytes.NewBufferString(jsonText(s)))); err == nil {
 		t.Fatal("identical source/target accepted")
 	}
 	alias := filepath.Join(s.SourceRoot, "target-alias")
@@ -68,17 +71,17 @@ func TestSourceBoundaryAndNestedTargetExclusion(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.TargetRoot = alias
-	if err := a.updateSettings(httptest.NewRecorder(), httptest.NewRequest("PUT", "/api/settings", bytes.NewBufferString(jsonText(s)))); err == nil {
+	if err := testUpdateSettings(t, a, httptest.NewRecorder(), httptest.NewRequest("PUT", "/api/settings", bytes.NewBufferString(jsonText(s)))); err == nil {
 		t.Fatal("symlink alias bypassed directory overlap check")
 	}
 }
 
 func TestBrowseDefaultsToSource(t *testing.T) {
 	a, media := fixture(t)
-	if err := a.auth.Setup(context.Background(), "admin", "fixture-password-2026"); err != nil {
+	if err := a.dependencies.Auth.Setup(context.Background(), "admin", "fixture-password-2026"); err != nil {
 		t.Fatal(err)
 	}
-	token, _, err := a.auth.Login(context.Background(), "admin", "fixture-password-2026")
+	token, _, err := a.dependencies.Auth.Login(context.Background(), "admin", "fixture-password-2026")
 	if err != nil {
 		t.Fatal(err)
 	}

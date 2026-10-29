@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"joycurator/internal/fsops"
+	"joycurator/internal/infra/fsops"
 	"joycurator/internal/model"
 )
 

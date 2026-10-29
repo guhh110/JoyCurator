@@ -1,9 +1,10 @@
 package recognition_test
 
 import (
-	"joycurator/internal/trace"
 	"reflect"
 	"testing"
+
+	"joycurator/internal/trace"
 )
 
 func TestRecognitionTracePreservesParserResults(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"joycurator/internal/fsops"
+	"joycurator/internal/infra/fsops"
 	"joycurator/internal/model"
 )
 

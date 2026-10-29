@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// MigrateLegacyRules only translates saved configuration. There is no builtin
+// MigrateLegacyRules only translates saved model. There is no builtin
 // execution path; new calls always execute the visible, editable script snapshot.
 func MigrateLegacyRules(rules []Rule) ([]Rule, bool, error) {
 	raw, err := json.Marshal(rules)

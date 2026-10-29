@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"strings"
@@ -21,15 +20,24 @@ var (
 
 const SessionLifetime = 7 * 24 * time.Hour
 
-type Service struct{ DB *sql.DB }
+type Store interface {
+	AdministratorExists(context.Context) (bool, error)
+	CreateAdministrator(context.Context, string, []byte) error
+	Administrator(context.Context) (User, []byte, error)
+	CreateSession(context.Context, string, int64, int64) error
+	SessionUser(context.Context, string, int64) (User, error)
+	DeleteSession(context.Context, string) error
+}
+type Service struct{ Store Store }
+
+func New(store Store) *Service { return &Service{Store: store} }
+
 type User struct {
 	Username string `json:"username"`
 }
 
 func (s *Service) Initialized(ctx context.Context) (bool, error) {
-	var n int
-	err := s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM administrators").Scan(&n)
-	return n > 0, err
+	return s.Store.AdministratorExists(ctx)
 }
 
 func (s *Service) Setup(ctx context.Context, username, password string) error {
@@ -48,27 +56,11 @@ func (s *Service) Setup(ctx context.Context, username, password string) error {
 	if err != nil {
 		return err
 	}
-	r, err := s.DB.ExecContext(ctx, "INSERT OR IGNORE INTO administrators(id,username,password_hash) VALUES(1,?,?)", username, hash)
-	if err != nil {
-		return err
-	}
-	n, err := r.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrInitialized
-	}
-	return nil
+	return s.Store.CreateAdministrator(ctx, username, hash)
 }
 
 func (s *Service) Login(ctx context.Context, username, password string) (string, User, error) {
-	var user User
-	var hash []byte
-	err := s.DB.QueryRowContext(ctx, "SELECT username,password_hash FROM administrators WHERE id=1").Scan(&user.Username, &hash)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", user, ErrCredentials
-	}
+	user, hash, err := s.Store.Administrator(ctx)
 	if err != nil {
 		return "", user, err
 	}
@@ -80,10 +72,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (string,
 		return "", User{}, err
 	}
 	token := hex.EncodeToString(buf)
-	if _, err := s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= ?", time.Now().Unix()); err != nil {
-		return "", User{}, err
-	}
-	_, err = s.DB.ExecContext(ctx, "INSERT INTO sessions(token_hash,administrator_id,expires_at) VALUES(?,1,?)", tokenHash(token), time.Now().Add(SessionLifetime).Unix())
+	err = s.Store.CreateSession(ctx, tokenHash(token), time.Now().Unix(), time.Now().Add(SessionLifetime).Unix())
 	return token, user, err
 }
 
@@ -92,16 +81,11 @@ func (s *Service) Session(ctx context.Context, token string) (User, error) {
 	if len(token) != 64 {
 		return user, ErrCredentials
 	}
-	err := s.DB.QueryRowContext(ctx, `SELECT a.username FROM sessions s JOIN administrators a ON a.id=s.administrator_id WHERE s.token_hash=? AND s.expires_at>?`, tokenHash(token), time.Now().Unix()).Scan(&user.Username)
-	if errors.Is(err, sql.ErrNoRows) {
-		return user, ErrCredentials
-	}
-	return user, err
+	return s.Store.SessionUser(ctx, tokenHash(token), time.Now().Unix())
 }
 
 func (s *Service) Logout(ctx context.Context, token string) error {
-	_, err := s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash=?", tokenHash(token))
-	return err
+	return s.Store.DeleteSession(ctx, tokenHash(token))
 }
 func tokenHash(token string) string {
 	sum := sha256.Sum256([]byte(token))

@@ -12,11 +12,11 @@
 - `script.go`：Starlark 执行器、通用正则能力、日志、行号、取消与执行限制。
 - `migration.go`：将旧处理器配置一次性迁移为脚本；不再提供旧处理器执行分支。
 - `value.go`：字段校验和转换；未知值不猜测类型。
-- `backend/internal/app/extraction*.go`：当前链原子替换、SQLite 轨迹持久化、接口与旧结果适配。
+- `backend/internal/recognition/service.go`、`history.go`、`trial.go`：当前链管理、轨迹、试跑；SQL 在 `infra/sqlite/`，接口在 `app/http_extraction.go`。
 - `frontend/src/features/extraction/`：规则编辑器、试跑、元数据与步骤展示、历史页。
 - `tests/backend/recognition/`、`tests/frontend/recognition/`：本功能测试，包括从原解析器迁来的路径回归样例；整个项目统一使用根目录 [tests/](../tests/README.md)。
 
-`scanner` 只保留文件遍历及媒体探测，不再维护解析入口和规则。旧数据结构只在应用层适配。正式应用调用当前配置的执行器，每个文件开始时获取一次实例；保存规则不改变正在执行的实例。
+`scanner` 只保留文件遍历及媒体探测，不再维护解析入口和规则。旧 parsed 字段仅在接口、存储与命名适配边界转换；内部匹配统一消费 Metadata。正式应用调用当前配置的执行器，每个文件开始时获取一次实例；保存规则不改变正在执行的实例。
 
 ## Rule
 
