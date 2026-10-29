@@ -53,7 +53,7 @@ func TestCurrentScanAndWorkspaceExposeMetadata(t *testing.T) {
 	if response := call("/api/recognitions/debug", `{"path":"/absent/file.mkv","mode":"parse"}`); response.Code != 404 {
 		t.Fatal("removed endpoint still available", response.Code)
 	}
-	if response := call("/api/extraction/test", `{"path":"/absent/file.mkv","rules":[{"id":"one","name":"one","target":"title","source":"filename","order":1,"enabled":true,"kind":"script","config":{"handler":"title","code":"def extract(ctx):\n    return None"},"overwrite":false,"examples":[]}]}`); response.Code != 400 {
+	if response := call("/api/extraction/test", `{"path":"/absent/file.mkv","rules":[{"id":"one","name":"one","target":"title","source":"filename","order":1,"enabled":true,"kind":"script","config":{"handler":"title","code":"function extract(ctx) { return null; }"},"overwrite":false,"examples":[]}]}`); response.Code != 400 {
 		t.Fatal("unknown rule property accepted", response.Code)
 	}
 }

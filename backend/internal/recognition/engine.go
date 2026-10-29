@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"go.starlark.net/starlark"
+	"github.com/dop251/goja"
 )
 
 type compiledRule struct {
 	rule          Rule
 	regex         *regexp.Regexp
 	capture       int
-	program       *starlark.Program
-	sourceProgram *starlark.Program
+	program       *goja.Program
+	sourceProgram *goja.Program
 }
 type Engine struct{ rules []compiledRule }
 type matchValue struct {
@@ -65,7 +65,7 @@ func Compile(rules []Rule) (*Engine, error) {
 		}
 		c := compiledRule{rule: rule}
 		if rule.Source == CleanFilename {
-			c.sourceProgram, err = compileScript(rule.ID+"-source.star", rule.Config.SourceCode)
+			c.sourceProgram, err = compileScript(rule.ID+"-source.js", rule.Config.SourceCode)
 			if err != nil {
 				return nil, fmt.Errorf("规则 %s 的来源脚本无效：%w", rule.Name, err)
 			}
@@ -87,11 +87,8 @@ func Compile(rules []Rule) (*Engine, error) {
 				if err := decoder.Decode(&params); err != nil || params == nil {
 					return nil, errors.New("脚本参数必须是 JSON 对象")
 				}
-				if _, err := toStar(params); err != nil {
-					return nil, err
-				}
 			}
-			c.program, err = compileScript(rule.ID+".star", rule.Config.Code)
+			c.program, err = compileScript(rule.ID+".js", rule.Config.Code)
 			if err != nil {
 				return nil, fmt.Errorf("规则 %s 的脚本无效：%w", rule.Name, err)
 			}

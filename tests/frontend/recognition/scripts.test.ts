@@ -18,7 +18,7 @@ const rule: Rule = {
   enabled: true,
   kind: 'script',
   overwrite: false,
-  config: { code: 'def extract(ctx):\n    return ctx.text', params: {} },
+  config: { code: 'function extract(ctx) {\n  return ctx.text;\n}', params: {} },
   examples: [],
 }
 describe('observable script editor and snapshots', () => {
@@ -26,11 +26,13 @@ describe('observable script editor and snapshots', () => {
     const html = await renderToString(
       h(RuleEditor, { rule, sourceScripts: {} }),
     )
-    expect(html).toContain('Starlark 脚本')
+    expect(html).toContain('JavaScript 脚本')
     expect(html).toContain('return ctx.text')
     expect(html).toContain('rule-params')
     expect(html).not.toContain('内置处理器')
     expect(emptyScript).toContain('trace(')
+    expect(emptyScript).toContain('function extract(ctx)')
+    expect(emptyScript).toContain('return null')
   })
   it('renders source line numbers and highlights the referenced line', async () => {
     const html = await renderToString(

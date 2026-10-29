@@ -83,7 +83,7 @@ function commit() {
         <label for="rule-kind">规则类型</label
         ><select id="rule-kind" v-model="draft.kind" @change="kindChanged">
           <option value="regex">自定义正则</option>
-          <option value="script">Starlark 脚本</option>
+          <option value="script">JavaScript 脚本</option>
         </select>
       </div>
       <div>
@@ -108,17 +108,18 @@ function commit() {
     <label for="rule-description">说明</label
     ><input id="rule-description" v-model="draft.description" />
     <template v-if="draft.kind === 'script'">
-      <label for="rule-code">完整脚本（Starlark）</label>
+      <label for="rule-code">完整脚本（JavaScript）</label>
       <ScriptCode
         id="rule-code"
         v-model="draft.config.code!"
-        label="Starlark 脚本"
+        label="JavaScript 脚本"
       />
       <p class="muted tiny">
-        定义 extract(ctx)。使用
+        定义同步 function extract(ctx)。使用
         ctx.text、ctx.directories、ctx.metadata、ctx.params；返回本字段值或
-        None。re_search / re_findall / re_sub
+        null。reSearch / reFindAll / reSub
         会自动记录参数与结果，trace("说明", 中间值) 可记录判断依据。
+        不提供 Node.js、网络或文件访问，不支持 async / Promise。
       </p>
       <label for="rule-params">参数 JSON</label
       ><textarea

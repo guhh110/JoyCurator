@@ -10,7 +10,7 @@ import (
 
 func extractionRoutes(a Dependencies, add func(string, endpoint)) {
 	add("GET /api/extraction/rules", func(w http.ResponseWriter, r *http.Request) error {
-		reply(w, map[string]any{"rules": a.Recognition.Current().Rules(), "defaults": recognition.DefaultRules(), "catalog": recognition.Catalog(), "targets": recognition.Targets(), "sources": recognition.Sources(), "sourceScripts": recognition.SourceScripts(), "scriptLanguage": "starlark"})
+		reply(w, map[string]any{"rules": a.Recognition.Current().Rules(), "defaults": recognition.DefaultRules(), "catalog": recognition.Catalog(), "targets": recognition.Targets(), "sources": recognition.Sources(), "sourceScripts": recognition.SourceScripts(), "scriptLanguage": "javascript"})
 		return nil
 	})
 	add("PUT /api/extraction/rules", func(w http.ResponseWriter, r *http.Request) error {

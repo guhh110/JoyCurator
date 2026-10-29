@@ -151,8 +151,9 @@ export function moveRule(rules: Rule[], from: number, to: number) {
   })
 }
 
-export const emptyScript = `def extract(ctx):
-    trace("输入文本", ctx.text)
-    # 返回本规则的目标值；未命中时返回 None。
-    return None
+export const emptyScript = `function extract(ctx) {
+  trace("输入文本", ctx.text)
+  // 返回本规则的目标值；未命中时返回 null。
+  return null
+}
 `

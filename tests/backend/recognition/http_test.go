@@ -245,7 +245,7 @@ func TestHistoryPaginationRestartInterruptionAndCleanup(t *testing.T) {
 func TestScriptHTTPTrialInvalidSaveAndFormalScan(t *testing.T) {
 	s := newService(t)
 	path := filepath.Join(s.source, "Film.mkv")
-	rule := scriptRule("script", r.Title, "def extract(ctx):\n    trace(\"source\", ctx.text)\n    return ctx.params[\"title\"]\n")
+	rule := scriptRule("script", r.Title, "function extract(ctx) { trace(\"source\", ctx.text); return ctx.params.title; }")
 	rule.Config.Params = json.RawMessage(`{"title":"Editable"}`)
 	before := s.history(t).Total
 	trial := decodeResponse[r.Result](t, s.call(t, "POST", "/api/extraction/test", map[string]any{"path": path, "rules": []r.Rule{rule}}, 200))
@@ -254,7 +254,7 @@ func TestScriptHTTPTrialInvalidSaveAndFormalScan(t *testing.T) {
 	}
 	s.call(t, "PUT", "/api/extraction/rules", map[string]any{"rules": []r.Rule{rule}}, 200)
 	invalid := rule
-	invalid.Config.Code = "def extract(:"
+	invalid.Config.Code = "function extract( {"
 	s.call(t, "PUT", "/api/extraction/rules", map[string]any{"rules": []r.Rule{invalid}}, 400)
 	current := decodeResponse[r.Result](t, s.call(t, "POST", "/api/extraction/test", map[string]any{"path": path}, 200))
 	if !reflect.DeepEqual(current.Metadata, trial.Metadata) {
@@ -270,7 +270,7 @@ func TestScriptHTTPTrialInvalidSaveAndFormalScan(t *testing.T) {
 		t.Fatal(formal)
 	}
 	changed := rule
-	changed.Config.Code = "def extract(ctx):\n    return \"Changed\""
+	changed.Config.Code = "function extract(ctx) { return \"Changed\"; }"
 	s.call(t, "PUT", "/api/extraction/rules", map[string]any{"rules": []r.Rule{changed}}, 200)
 	persisted := decodeResponse[r.Result](t, s.call(t, "GET", "/api/extraction/traces/"+history.Items[0].ID, nil, 200))
 	if !reflect.DeepEqual(persisted, formal) {

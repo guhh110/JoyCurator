@@ -50,7 +50,7 @@ watch(
     <textarea
       :id="id"
       :value="modelValue"
-      :aria-label="label || 'Starlark 脚本'"
+      :aria-label="label || 'JavaScript 脚本'"
       spellcheck="false"
       wrap="off"
       rows="18"

@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 )
 
-//go:embed scripts/*.star
+//go:embed scripts/*.js
 var scriptTemplates embed.FS
 
-//go:embed scripts/clean-filename.star
+//go:embed scripts/clean-filename.js
 var cleanFilenameScript string
 
 func Catalog() []Descriptor {
@@ -37,7 +37,7 @@ func Catalog() []Descriptor {
 		{"release-tag", "发布标签", ReleaseTag, "提取文件名末尾非数字发布组标签", file, Config{}},
 	}
 	for i := range definitions {
-		code, err := scriptTemplates.ReadFile("scripts/" + definitions[i].ID + ".star")
+		code, err := scriptTemplates.ReadFile("scripts/" + definitions[i].ID + ".js")
 		if err != nil {
 			panic(err)
 		}

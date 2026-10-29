@@ -5,18 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 
-	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
-	"go.starlark.net/syntax"
+	"github.com/dop251/goja"
+	"github.com/dop251/goja/ast"
+	"github.com/dop251/goja/parser"
 )
 
-const maxScriptSteps = 100000
 const maxScriptEvents = 128
 const maxScriptBytes = 32768
+const scriptTimeout = 250 * time.Millisecond
 
 type scriptRun struct {
 	phase     string
@@ -24,44 +27,47 @@ type scriptRun struct {
 	truncated bool
 }
 
-func compileScript(name, code string) (*starlark.Program, error) {
+func compileScript(name, code string) (*goja.Program, error) {
 	if strings.TrimSpace(code) == "" || len(code) > maxScriptBytes {
 		return nil, errors.New("脚本不能为空或超过 32 KiB")
 	}
-	file, program, err := starlark.SourceProgramOptions(&syntax.FileOptions{}, name, code, scriptBuiltins(nil).Has)
+	tree, err := parser.ParseFile(nil, name, code, 0, parser.WithDisableSourceMaps)
 	if err != nil {
 		return nil, err
 	}
 	found := false
-	for _, statement := range file.Stmts {
-		if _, ok := statement.(*syntax.LoadStmt); ok {
-			return nil, errors.New("脚本不支持 load；请将完整规则写在当前脚本中")
-		}
-		if def, ok := statement.(*syntax.DefStmt); ok && def.Name.Name == "extract" {
-			if len(def.Params) != 1 {
-				return nil, errors.New("脚本必须定义 extract(ctx)，且只接受一个参数")
+	for _, statement := range tree.Body {
+		if decl, ok := statement.(*ast.FunctionDeclaration); ok && decl.Function.Name != nil && decl.Function.Name.Name.String() == "extract" {
+			f := decl.Function
+			if f.Async || f.Generator || len(f.ParameterList.List) != 1 || f.ParameterList.Rest != nil {
+				return nil, errors.New("脚本必须定义同步函数 extract(ctx)，且只接受一个参数")
 			}
-			if _, ok := def.Params[0].(*syntax.Ident); !ok {
-				return nil, errors.New("extract 的参数必须为 ctx")
+			if _, ok := f.ParameterList.List[0].Target.(*ast.Identifier); !ok || f.ParameterList.List[0].Initializer != nil {
+				return nil, errors.New("extract 必须使用单个普通参数")
 			}
 			found = true
 		}
 	}
 	if !found {
-		return nil, errors.New("脚本必须定义 extract(ctx)")
+		return nil, errors.New("脚本必须定义 function extract(ctx)")
 	}
-	return program, nil
+	// Strict mode makes writes to frozen input fail instead of silently succeeding.
+	return goja.CompileAST(tree, true)
 }
-func (s *scriptRun) record(thread *starlark.Thread, operation, message string, data any) {
+
+func (s *scriptRun) record(vm *goja.Runtime, operation, message string, data any) {
 	if len(message) > 4096 {
 		message = message[:4096] + "…"
 	}
 	event := ScriptEvent{Phase: s.phase, Operation: operation, Message: message, Data: data}
-	if thread.CallStackDepth() > 1 {
-		frame := thread.CallFrame(1)
-		event.Line = frame.Pos.Line
-		event.Column = frame.Pos.Col
-		event.Function = frame.Name
+	if vm != nil {
+		for _, frame := range vm.CaptureCallStack(8, nil) {
+			pos := frame.Position()
+			if pos.Line > 0 {
+				event.Line, event.Column, event.Function = int32(pos.Line), int32(pos.Column), frame.FuncName()
+				break
+			}
+		}
 	}
 	if len(s.events) >= maxScriptEvents {
 		if !s.truncated {
@@ -76,53 +82,53 @@ func (s *scriptRun) record(thread *starlark.Thread, operation, message string, d
 	}
 	s.events = append(s.events, event)
 }
-func scriptBuiltins(run *scriptRun) starlark.StringDict {
-	result := starlark.StringDict{}
-	result["trace"] = starlark.NewBuiltin("trace", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-		var message string
-		var data starlark.Value = starlark.None
-		if err := starlark.UnpackArgs("trace", args, kwargs, "message", &message, "data?", &data); err != nil {
-			return nil, err
-		}
-		value, err := fromStar(data, 0)
+
+func scriptBuiltins(vm *goja.Runtime, run *scriptRun) {
+	vm.Set("trace", func(call goja.FunctionCall) goja.Value {
+		value, err := scriptValue(call.Argument(1), 0)
 		if err != nil {
-			return nil, err
+			panic(vm.NewGoError(err))
 		}
-		run.record(thread, "trace", message, value)
-		return starlark.None, nil
+		run.record(vm, "trace", call.Argument(0).String(), value)
+		return goja.Undefined()
 	})
-	for _, operation := range []string{"re_search", "re_findall", "re_sub"} {
+	vm.Set("print", func(call goja.FunctionCall) goja.Value {
+		parts := make([]string, len(call.Arguments))
+		for i, v := range call.Arguments {
+			parts[i] = v.String()
+		}
+		run.record(vm, "print", strings.Join(parts, " "), nil)
+		return goja.Undefined()
+	})
+	for _, operation := range []string{"reSearch", "reFindAll", "reSub"} {
 		operation := operation
-		result[operation] = starlark.NewBuiltin(operation, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-			var pattern, text, replacement string
-			names := []any{"pattern", &pattern, "text", &text}
-			if operation == "re_sub" {
-				names = append(names, "replacement", &replacement)
-			}
-			if err := starlark.UnpackArgs(operation, args, kwargs, names...); err != nil {
-				return nil, err
+		vm.Set(operation, func(call goja.FunctionCall) goja.Value {
+			pattern, text := call.Argument(0).String(), call.Argument(1).String()
+			replacement := ""
+			if operation == "reSub" {
+				replacement = call.Argument(2).String()
 			}
 			if len(pattern) > 16384 || len(text) > 32768 || len(replacement) > 32768 {
-				return nil, errors.New("正则参数过长")
+				panic(vm.NewGoError(errors.New("正则参数过长")))
 			}
 			re, err := regexp.Compile(pattern)
 			if err != nil {
-				return nil, err
+				panic(vm.NewGoError(err))
 			}
 			var output any
 			switch operation {
-			case "re_sub":
+			case "reSub":
 				// Bound replacements before allocating the resulting string.
 				if count := len(re.FindAllStringIndex(text, 1025)); count > 1024 || len(text)+count*len(replacement) > 65536 {
-					return nil, errors.New("正则替换结果过长")
+					panic(vm.NewGoError(errors.New("正则替换结果过长")))
 				}
 				output = re.ReplaceAllString(text, replacement)
-			case "re_search", "re_findall":
+			case "reSearch", "reFindAll":
 				matches := re.FindAllStringSubmatchIndex(text, 1)
-				if operation == "re_findall" {
+				if operation == "reFindAll" {
 					matches = re.FindAllStringSubmatchIndex(text, 513)
 					if len(matches) > 512 {
-						return nil, errors.New("正则命中超过 512 次")
+						panic(vm.NewGoError(errors.New("正则命中超过 512 次")))
 					}
 				}
 				entries := []any{}
@@ -139,79 +145,111 @@ func scriptBuiltins(run *scriptRun) starlark.StringDict {
 							captures[name] = value
 						}
 					}
-					entries = append(entries, map[string]any{"text": groups[0], "groups": groups, "captures": captures, "start": indexes[0], "end": indexes[1]})
+					entries = append(entries, map[string]any{"text": groups[0], "groups": groups, "captures": captures, "start": len(utf16.Encode([]rune(text[:indexes[0]]))), "end": len(utf16.Encode([]rune(text[:indexes[1]])))})
 				}
-				if operation == "re_findall" {
+				if operation == "reFindAll" {
 					output = entries
 				} else if len(entries) > 0 {
 					output = entries[0]
 				}
 			}
-			run.record(thread, operation, "正则执行", map[string]any{"pattern": pattern, "input": text, "replacement": replacement, "output": output})
-			return toStar(output)
+			run.record(vm, operation, "正则执行", map[string]any{"pattern": pattern, "input": text, "replacement": replacement, "output": output})
+			return vm.ToValue(output)
 		})
 	}
-	return result
 }
-func executeScript(ctx context.Context, program *starlark.Program, values map[string]any, phase string) (matchValue, error) {
+
+// Only JSON data crosses the boundary: scripts never receive reflected Go objects.
+const inputFactory = `(function(raw) {
+ const value = JSON.parse(raw);
+ function freeze(v) {
+  if (v !== null && typeof v === "object") {
+   Object.keys(v).forEach(k => freeze(v[k]));
+   Object.freeze(v);
+  }
+  return v;
+ }
+ return freeze(value);
+})`
+
+func executeScript(ctx context.Context, program *goja.Program, values map[string]any, phase string) (matchValue, error) {
 	run := &scriptRun{phase: phase, events: []ScriptEvent{}}
-	thread := &starlark.Thread{Name: "path-extraction"}
-	thread.SetMaxExecutionSteps(maxScriptSteps)
-	thread.OnMaxSteps = func(t *starlark.Thread) { t.Cancel("脚本超过 100000 执行步数") }
-	thread.Print = func(t *starlark.Thread, message string) { run.record(t, "print", message, nil) }
-	deadline, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	vm := goja.New()
+	vm.SetParserOptions(parser.WithDisableSourceMaps)
+	vm.SetMaxCallStackSize(256)
+	deadline, cancel := context.WithTimeout(ctx, scriptTimeout)
 	defer cancel()
-	stop := context.AfterFunc(deadline, func() { thread.Cancel("脚本已取消或超过 250 ms 执行时间") })
+	stop := context.AfterFunc(deadline, func() { vm.Interrupt("脚本已取消或超过 250 ms 执行时间") })
 	defer stop()
+	scriptBuiltins(vm, run)
 	finish := func(err error) (matchValue, error) {
-		previous := len(run.events)
-		run.record(thread, "error", err.Error(), nil)
-		if eval, ok := err.(*starlark.EvalError); ok {
-			if len(run.events) > previous {
-				for depth := 0; depth < len(eval.CallStack); depth++ {
-					frame := eval.CallStack.At(depth)
-					if frame.Pos.Line > 0 {
-						event := &run.events[len(run.events)-1]
-						event.Line = frame.Pos.Line
-						event.Column = frame.Pos.Col
-						event.Function = frame.Name
-						break
-					}
+		run.record(nil, "error", err.Error(), nil)
+		var stackError interface{ Stack() []goja.StackFrame }
+		if errors.As(err, &stackError) {
+			for _, frame := range stackError.Stack() {
+				pos := frame.Position()
+				if pos.Line > 0 && !run.truncated {
+					event := &run.events[len(run.events)-1]
+					event.Line, event.Column, event.Function = int32(pos.Line), int32(pos.Column), frame.FuncName()
+					break
 				}
 			}
-			err = errors.New(eval.Backtrace())
 		}
+		var exception *goja.Exception
+		if errors.As(err, &exception) {
+			err = errors.New(exception.String())
+		}
+
 		return matchValue{trace: run.events}, err
 	}
-	run.record(thread, "input", "脚本输入", values)
-	globals, err := program.Init(thread, scriptBuiltins(run))
+	if ctx.Err() != nil {
+		return finish(ctx.Err())
+	}
+	raw, err := json.Marshal(values)
 	if err != nil {
 		return finish(err)
 	}
-	function, ok := globals["extract"].(*starlark.Function)
+	// Parse and freeze input before user code can replace built-in JSON/Object functions.
+	factory, err := vm.RunString(inputFactory)
+	if err != nil {
+		return finish(err)
+	}
+	makeInput, _ := goja.AssertFunction(factory)
+	input, err := makeInput(goja.Undefined(), vm.ToValue(string(raw)))
+	if err != nil {
+		return finish(err)
+	}
+	run.record(nil, "input", "脚本输入", values)
+	if _, err = vm.RunProgram(program); err != nil {
+		return finish(err)
+	}
+	extractValue, err := vm.RunString("extract")
+	if err != nil {
+		return finish(err)
+	}
+	function, ok := goja.AssertFunction(extractValue)
 	if !ok {
-		return finish(errors.New("extract 必须是脚本函数"))
+		return finish(errors.New("extract 必须是同步脚本函数"))
 	}
-	dictionary := starlark.StringDict{}
-	for key, value := range values {
-		item, e := toStar(value)
-		if e != nil {
-			return finish(e)
-		}
-		item.Freeze()
-		dictionary[key] = item
-	}
-	input := starlarkstruct.FromStringDict(starlark.String("ctx"), dictionary)
-	input.Freeze()
-	returned, err := starlark.Call(thread, function, starlark.Tuple{input}, nil)
+	returned, err := function(goja.Undefined(), input)
 	if err != nil {
 		return finish(err)
 	}
-	value, err := fromStar(returned, 0)
+	var value any
+	// Read accessors inside a callable boundary: goja.Try alone does not catch
+	// uncatchable interruptions (for example an infinite loop in a getter).
+	reader, _ := goja.AssertFunction(vm.ToValue(func(call goja.FunctionCall) goja.Value {
+		value, err = scriptValue(call.Argument(0), 0)
+		return goja.Undefined()
+	}))
+	if _, readErr := reader(goja.Undefined(), returned); readErr != nil {
+		return finish(readErr)
+	}
+
 	if err != nil {
 		return finish(err)
 	}
-	run.record(thread, "return", "脚本返回值", value)
+	run.record(nil, "return", "脚本返回值", value)
 	match := matchValue{value: value, trace: run.events, captures: map[string]string{}}
 	if fields, ok := value.(map[string]any); ok {
 		for key := range fields {
@@ -247,119 +285,90 @@ func executeScript(ctx context.Context, program *starlark.Program, values map[st
 	}
 	return match, nil
 }
-func toStar(value any) (starlark.Value, error) {
-	switch value := value.(type) {
-	case nil:
-		return starlark.None, nil
-	case string:
-		return starlark.String(value), nil
-	case bool:
-		return starlark.Bool(value), nil
-	case int:
-		return starlark.MakeInt(value), nil
-	case json.Number:
-		if n, err := value.Int64(); err == nil {
-			return starlark.MakeInt64(n), nil
-		}
-		return nil, errors.New("脚本参数数字必须为整数")
-	case []string:
-		items := []starlark.Value{}
-		for _, value := range value {
-			items = append(items, starlark.String(value))
-		}
-		return starlark.Tuple(items), nil
-	case []any:
-		items := []starlark.Value{}
-		for _, value := range value {
-			item, err := toStar(value)
-			if err != nil {
-				return nil, err
-			}
-			items = append(items, item)
-		}
-		return starlark.NewList(items), nil
-	case map[string]any:
-		dictionary := starlark.NewDict(len(value))
-		for key, value := range value {
-			item, err := toStar(value)
-			if err != nil {
-				return nil, err
-			}
-			if err = dictionary.SetKey(starlark.String(key), item); err != nil {
-				return nil, err
-			}
-		}
-		return dictionary, nil
-	default:
-		raw, err := json.Marshal(value)
-		if err != nil {
-			return nil, err
-		}
-		var decoded any
-		decoder := json.NewDecoder(strings.NewReader(string(raw)))
-		decoder.UseNumber()
-		if err = decoder.Decode(&decoded); err != nil {
-			return nil, err
-		}
-		return toStar(decoded)
-	}
+
+// Bounded traversal rejects promises, functions, cyclic and non-finite results.
+func scriptValue(value goja.Value, depth int) (any, error) {
+	budget := 65536
+	return readScriptValue(value, depth, &budget)
 }
-func fromStar(value starlark.Value, depth int) (any, error) {
+func readScriptValue(value goja.Value, depth int, budget *int) (any, error) {
+	*budget -= 16
+	if *budget < 0 {
+		return nil, errors.New("脚本结果总量超过 64 KiB")
+	}
 	if depth > 12 {
 		return nil, errors.New("脚本结果嵌套过深")
 	}
-	switch value := value.(type) {
-	case starlark.NoneType:
+	if value == nil || goja.IsNull(value) || goja.IsUndefined(value) {
 		return nil, nil
-	case starlark.String:
-		if len(value) > 32768 {
-			return nil, errors.New("脚本结果字符串过长")
-		}
-		return string(value), nil
-	case starlark.Bool:
-		return bool(value), nil
-	case starlark.Int:
-		if _, ok := value.Int64(); !ok {
-			return nil, errors.New("脚本整数超出范围")
-		}
-		return json.Number(value.String()), nil
-	case *starlark.Dict:
-		if value.Len() > 1024 {
-			return nil, errors.New("脚本结果过长")
-		}
-		result := map[string]any{}
-		for _, item := range value.Items() {
-			key, ok := starlark.AsString(item[0])
-			if !ok {
-				return nil, errors.New("脚本对象键必须是字符串")
-			}
-			child, err := fromStar(item[1], depth+1)
-			if err != nil {
-				return nil, err
-			}
-			result[key] = child
-		}
-		return result, nil
-	case starlark.Iterable:
-		if starlark.Len(value) > 1024 {
-			return nil, errors.New("脚本列表过长")
-		}
-		result := []any{}
-		iterator := value.Iterate()
-		defer iterator.Done()
-		var item starlark.Value
-		for iterator.Next(&item) {
-			if len(result) >= 1024 {
+	}
+	if object, ok := value.(*goja.Object); ok {
+		switch object.ClassName() {
+		case "Array":
+			length := object.Get("length").ToInteger()
+			if length > 1024 {
 				return nil, errors.New("脚本列表过长")
 			}
-			child, err := fromStar(item, depth+1)
-			if err != nil {
-				return nil, err
+			result := make([]any, 0, length)
+			for i := int64(0); i < length; i++ {
+				child, err := readScriptValue(object.Get(strconv.FormatInt(i, 10)), depth+1, budget)
+				if err != nil {
+					return nil, err
+				}
+				result = append(result, child)
 			}
-			result = append(result, child)
+			return result, nil
+		case "Object":
+			if _, ok := goja.AssertFunction(object.Get("then")); ok {
+				return nil, errors.New("脚本不支持异步返回值")
+			}
+			keys := object.Keys()
+			if len(keys) > 1024 {
+				return nil, errors.New("脚本对象过长")
+			}
+			result := map[string]any{}
+			for _, key := range keys {
+				*budget -= len(key)
+				if *budget < 0 {
+					return nil, errors.New("脚本结果总量超过 64 KiB")
+				}
+				if len(key) > 32768 {
+					return nil, errors.New("脚本对象键过长")
+				}
+				child, err := readScriptValue(object.Get(key), depth+1, budget)
+				if err != nil {
+					return nil, err
+				}
+				result[key] = child
+			}
+			return result, nil
+		default:
+			return nil, fmt.Errorf("不支持脚本返回类型 %s", object.ClassName())
 		}
-		return result, nil
+	}
+	switch v := value.Export().(type) {
+	case string:
+		*budget -= len(v)
+		if *budget < 0 {
+			return nil, errors.New("脚本结果总量超过 64 KiB")
+		}
+		if len(v) > 32768 {
+			return nil, errors.New("脚本结果字符串过长")
+		}
+		return v, nil
+	case bool:
+		return v, nil
+	case int64:
+		if v > 9007199254740991 || v < -9007199254740991 {
+			return nil, errors.New("脚本数字必须为有限安全数值")
+		}
+		return json.Number(strconv.FormatInt(v, 10)), nil
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) || math.Abs(v) > 9007199254740991 {
+			return nil, errors.New("脚本数字必须为有限安全数值")
+		}
+		return json.Number(strconv.FormatFloat(v, 'f', -1, 64)), nil
 	default:
-		return nil, fmt.Errorf("不支持脚本返回类型 %s", value.Type())
+		return nil, errors.New("脚本只能返回 JSON 数据")
 	}
 }

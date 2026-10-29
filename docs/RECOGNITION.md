@@ -7,9 +7,9 @@
 - `backend/internal/recognition/model.go`：Rule、Metadata、Step 和输入来源、目标枚举。
 - `input.go`：路径文本规范化、边界、输入来源和 ID 标签保护。
 - `engine.go`：配置编译、顺序执行、类型转换、覆盖决策、统一步骤记录。
-- `scripts/*.star`：全部默认规则与文件名清理脚本的完整源码。
+- `scripts/*.js`：全部默认规则与文件名清理脚本的完整源码。
 - `catalog.go`、`defaults.go`：可编辑的脚本模板与默认链；不包含提取算法。
-- `script.go`：Starlark 执行器、通用正则能力、日志、行号、取消与执行限制。
+- `script.go`：JavaScript 执行器、通用正则能力、日志、行号、取消与执行限制。
 - `value.go`：字段校验和转换；未知值不猜测类型。
 - `backend/internal/recognition/service.go`、`history.go`、`trial.go`：当前链管理、轨迹、试跑；SQL 在 `infra/sqlite/`，接口在 `app/http_extraction.go`。
 - `frontend/src/features/extraction/`：规则编辑器、试跑、元数据与步骤展示、历史页。
@@ -21,7 +21,7 @@
 
 每条规则只有一个 `target`。公共字段为 `id`、`name`、`description?`、`target`、`source`、`order`、`enabled`、`kind`、`config`、`overwrite`、`examples`。`target` 取 `tmdbId/title/mediaType/year/season/episodes/releaseTag`。`source` 取 `filename/cleanFilename/parentDirectory/directories/relativePath/absolutePath`。文件名来源不含扩展名，路径来源保留扩展名。目录来源近到远、不包含边界目录；相对路径以边界为根。绝对路径来源显式提供规范化的完整路径。
 
-正则使用 Go RE2 语法，`config={pattern,capture}` 指定命名捕获组，或使用 `{pattern,value}` 指定 JSON 固定值，二者互斥。脚本规则使用 `kind:"script"`、`config:{code,params?}`；`code` 是完整 Starlark 源码，`params` 是可选 JSON 对象。规则目录提供完整脚本模板，添加后可以直接编辑代码和目标，不会调用隐藏处理器。
+正则使用 Go RE2 语法，`config={pattern,capture}` 指定命名捕获组，或使用 `{pattern,value}` 指定 JSON 固定值，二者互斥。脚本规则使用 `kind:"script"`、`config:{code,params?}`；`code` 是完整 JavaScript 源码，`params` 是可选 JSON 对象。规则目录提供完整脚本模板，添加后可以直接编辑代码和目标，不会调用隐藏处理器。
 
 ```json
 {"id":"season-sxe","name":"SxxExx 季号","target":"season","source":"filename","order":10,"enabled":true,"kind":"regex","config":{"pattern":"(?i)S(?P<value>\\d{1,3})E\\d{1,4}","capture":"value"},"overwrite":false,"examples":[{"path":"/Show.S02E03.mkv","expected":2}]}
@@ -31,34 +31,45 @@
 
 ## 脚本规则
 
-脚本使用 [Starlark](https://github.com/google/starlark-go)，语法接近 Python，定义一个 `extract(ctx)` 函数。脚本不能加载模块、访问文件、网络、系统命令或环境变量。每条规则仍只返回一个目标字段；不能在脚本中修改公共元数据。
+脚本使用 JavaScript，由纯 Go 的 [goja](https://github.com/dop251/goja) 执行，定义一个 `extract(ctx)` 函数。脚本不能加载模块、访问文件、网络、系统命令或环境变量。每条规则仍只返回一个目标字段；不能在脚本中修改公共元数据。
 
-```python
-def extract(ctx):
-    trace("开始检查季号", ctx.text)
-    match = re_search(r"(?i)S(\d{1,3})E\d{1,4}", ctx.text)
-    if not match:
-        trace("未找到 SxxExx 标记")
-        return None
-    season = int(match["groups"][1])
-    trace("提取季号", season)
-    return {"value": season, "matchedText": match["text"]}
+```js
+function extract(ctx) {
+  trace("开始检查季号", ctx.text);
+  const match = reSearch("(?i)S(\\d{1,3})E\\d{1,4}", ctx.text);
+  if (!match) {
+    trace("未找到 SxxExx 标记");
+    return null;
+  }
+  const season = Number(match.groups[1]);
+  trace("提取季号", season);
+  return {value: season, matchedText: match.text};
+}
 ```
 
 - `ctx.text`：本次来源文本；逐级目录规则每次得到一个目录名，仍按近到远尝试。
-- `ctx.filename`：不含扩展名的文件名；`ctx.directories`：边界内的目录名元组；`ctx.hasParent`：是否有边界内父目录。
-- `ctx.source`：当前来源枚举；`ctx.metadata`：当前已提取元数据的只读字典；`ctx.params`：规则参数的只读字典。数字参数使用整数。
-- 返回标量或集数列表，未命中返回 `None`；也可返回 `{value,matchedText?,captures?}`，其中 `captures` 只能是字符串字典。其他结果字段会被拒绝。
+- `ctx.filename`：不含扩展名的文件名；`ctx.directories`：边界内的目录名数组；`ctx.hasParent`：是否有边界内父目录。
+- `ctx.source`：当前来源枚举；`ctx.metadata`：当前已提取元数据的只读对象；`ctx.params`：规则参数的只读对象。参数使用 JSON 数据。
+- 返回标量或集数列表，未命中返回 `null`；也可返回 `{value,matchedText?,captures?}`，其中 `captures` 只能是字符串字典。其他结果字段会被拒绝。
 
-通用能力只有 `re_search(pattern,text)`、`re_findall(pattern,text)`、`re_sub(pattern,text,replacement)` 与 `trace(message,data?)`；另可用 Starlark 标准的字符串、列表、整数等操作。正则使用 Go RE2 语法。命中对象包含 `text`、`groups`（含索引 0 的完整匹配）、`captures`（命名捕获）、`start/end`（字节索引）；未命中为 `None`，`re_findall` 返回列表。替换文本中的捕获引用使用 `$1` 或 `${name}`。
+自动追踪的辅助函数为 `reSearch(pattern,text)`、`reFindAll(pattern,text)`、`reSub(pattern,text,replacement)` 与 `trace(message,data?)`；另可用 JS 字符串、数组、数字及原生 RegExp 操作。这些辅助函数使用 Go RE2 语法；原生 JS RegExp 使用 JavaScript 语法。命中对象包含 `text`、`groups`（含索引 0 的完整匹配）、`captures`（命名捕获）、`start/end`（UTF-16 索引，与 JS slice 一致）；未命中为 `null`，`reFindAll` 返回列表。替换文本中的捕获引用使用 `$1` 或 `${name}`。
 
-每次调用自动记录脚本输入、返回值或错误；正则调用自动记录输入、表达式和结果；`trace` 与 `print` 记录说明或中间值。每条事件携带 `phase`（`input/source/extract`）、`line`、`column`、`function`、`operation`、`message` 和可选 `data`，存放在 `Step.attempts[].trace`。界面点击事件行号可定位到当时脚本的对应行。普通 Starlark 变量赋值不会自动记录，需要时用 `trace` 展示。
+每次调用自动记录脚本输入、返回值或错误；正则调用自动记录输入、表达式和结果；`trace` 与 `print` 记录说明或中间值。每条事件携带 `phase`（`input/source/extract`）、`line`、`column`、`function`、`operation`、`message` 和可选 `data`，存放在 `Step.attempts[].trace`。界面点击事件行号可定位到当时脚本的对应行。普通 JS 变量赋值不会自动记录，需要时用 `trace` 展示。
 
 `cleanFilename` 来源也改用脚本，代码位于 `config.sourceCode`：省略时填充默认清理脚本，并写入步骤快照；编辑器可查看或修改。清理脚本同样定义 `extract(ctx)`，但必须返回字符串，日志阶段为 `source`。普通脚本规则中的清理和判断全部直接保存在自己的源码中。
 
-每次执行使用独立的解释器全局状态。单个脚本限制为 32 KiB、100000 执行步数及 250 ms；每个脚本至多保留 128 条过程事件（超出后增加一条省略提示），单次正则匹配最多 512 项。超限或运行出错会保留此前日志、记录错误并继续后续规则；请求取消会中止运行并跳过剩余规则。输入中的 ID 标签在季号、集数脚本的文本、文件名及目录上下文中统一屏蔽，此时 `ctx.metadata["tmdbId"]` 也为 `None`，保护过程本身留下记录。
+每次执行使用独立的解释器全局状态。单个脚本限制为 32 KiB、250 ms 执行时限与 256 层调用栈；每个脚本至多保留 128 条过程事件（超出后增加一条省略提示），单次正则匹配最多 512 项；返回值最多 12 层、单个集合 1024 项、字符串 32 KiB，总遍历预算 64 KiB。超限或运行出错会保留此前日志、记录错误并继续后续规则；请求取消会中止运行并跳过剩余规则。输入中的 ID 标签在季号、集数脚本的文本、文件名及目录上下文中统一屏蔽，此时 `ctx.metadata["tmdbId"]` 也为 `null`，保护过程本身留下记录。
 
 开发阶段只维护当前 script/regex 规则。不存在 builtin 迁移或处理器字段；配置不符合当前模型直接报错。规则源码变化通过编辑并保存当前链生效，不自动覆盖用户配置。
+
+### JavaScript 运行边界
+
+- 必须声明同步的 `function extract(ctx)`，单个普通参数，不接受 async 或 generator 入口。未命中返回 null（undefined 同样表示未命中），不接受 Promise 结果。
+- 每次调用创建独立 goja Runtime；编译结果可复用，运行时、全局变量和原型不共享。传入数据经 JSON 复制后递归冻结，严格模式下修改输入会报错。
+- 不提供 Node.js、npm、require、fetch、文件、数据库或环境变量访问。输入与输出之间不暴露宿主 Go 对象。来源清理也使用同一 JS 执行器。
+- 原生 RegExp 调用和普通变量赋值不会自动产生子步骤；需要解释时调用 trace。默认规则使用自动追踪的 RE2 辅助函数，保留查询表达式、输入和匹配结果。
+- 250 ms 中断用于 JS 执行，不是进程级内存隔离，也无法保证抢占所有原生操作。规则是管理员维护的代码；不应将此环境作为任意不可信代码的隔离服务。复杂正则优先使用 RE2 辅助函数。
+- 仅维护 JavaScript 源码，不保留旧语言引擎、转换器或数据迁移。已有当前规则含旧语言源码时加载会报错，需显式更新开发配置；应用不会自动覆盖或清空已有数据。
 
 ## Metadata 与执行语义
 

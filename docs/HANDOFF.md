@@ -166,21 +166,23 @@ prepare(Input)：验证 /… 绝对路径、文本规范化、确认边界
 
 ## 6. 脚本规则与可观测性
 
-默认规则的提取算法全部位于 `recognition/scripts/*.star`；`catalog.go` 和 `defaults.go` 负责登记模板、来源和默认顺序。没有运行时 builtin 处理器分支。
+JavaScript 引擎使用 goja，每次调用创建独立 Runtime，不提供 Node.js、网络和文件 API。仅支持同步入口，拒绝 Promise 输出。原生 RegExp 需要主动 trace；默认脚本使用可追踪的 RE2 辅助函数。250 ms 是执行中断时限，不是进程级内存或所有原生操作的硬隔离。旧语言源码不自动转换，也不自动重置用户数据。
 
-脚本定义 `extract(ctx)`，返回单个值／集数列表、`None`，或 `{value,matchedText?,captures?}`。只读上下文包含当前文本、文件名、目录、source、metadata、params 等。规则不能直接修改公共 Metadata。
+默认规则的提取算法全部位于 `recognition/scripts/*.js`；`catalog.go` 和 `defaults.go` 负责登记模板、来源和默认顺序。没有运行时 builtin 处理器分支。
 
-允许的通用能力为 Starlark 标准操作、Go RE2 正则函数 `re_search/re_findall/re_sub` 及 `trace/print`。不提供文件、网络、模块加载、系统命令和环境变量访问。
+脚本定义同步 `function extract(ctx)`，返回单个值／集数列表、`null`，或 `{value,matchedText?,captures?}`。上下文经 JSON 复制并递归冻结，包含当前文本、文件名、目录、source、metadata、params 等。规则不能直接修改公共 Metadata。
+
+允许的通用能力为 JavaScript 标准字符串、数组及正则操作、Go RE2 正则函数 `reSearch/reFindAll/reSub` 及 `trace/print`。不提供文件、网络、模块加载、系统命令和环境变量访问。
 
 日志层次：
 
 - 执行器自动记录每条规则的输入、结果、字段采用或拒绝。
-- 脚本环境自动记录正则调用、返回／错误以及源码行列号。
+- 脚本环境自动记录 RE2 辅助函数调用、返回／错误以及源码行列号。
 - `trace(message, data)` 或 `print` 展示作者认为重要的中间值。
 - 普通变量赋值不会自动逐行记录。要解释算法分支，应在脚本关键处补 `trace`。
 - `cleanFilename` 的清理也是脚本，使用 `config.sourceCode`，步骤快照保留实际源码。
 
-当前限制：单个脚本 32 KiB、100000 执行步、250 ms；每脚本最多保留 128 条过程事件（超出有省略提示）；单次正则结果最多 512 项。脚本超限作为该规则 error，不抹掉此前轨迹。
+当前限制：单个脚本 32 KiB、250 ms 执行时限与 256 层调用栈；每脚本最多保留 128 条过程事件（超出有省略提示）；单次正则结果最多 512 项。脚本超限作为该规则 error，不抹掉此前轨迹。
 
 规则只维护当前 script/regex 模型，不提供旧处理器迁移、旧接口或双格式读写。已有的当前链由用户编辑保存，不被默认脚本自动覆盖。
 
@@ -426,8 +428,8 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 ## 16. 后续修改建议与当前取舍
 
 1. 调整提取行为优先编辑脚本、补路径样例；只有运行环境能力不足时才修改 script.go。避免重新增加不可查看的领域处理器。
-2. 新增 Metadata 字段要同步 target 枚举、转换校验、前端模型、编辑器与展示，以及必要的旧消费 DTO 适配；不要在脚本返回任意字段字典。
-3. TMDB 匹配策略继续留在应用层，现阶段不属于可排序的路径提取链。新引擎的 Step 仅追踪路径提取，不能据此声称已持久化完整 TMDB 决策链。
+2. 新增 Metadata 字段要同步 target 枚举、转换校验、前端模型、编辑器与展示，以及所有消费方；不要在脚本返回任意字段字典。
+3. TMDB 匹配策略继续留在 matching 模块，现阶段不属于可排序的路径提取链。新引擎的 Step 仅追踪路径提取，不能据此声称已持久化完整 TMDB 决策链。
 4. 规则单步错误容错继续执行，最终结果可能是部分字段。需要严格拒绝某种结果时在消费边界明确处理，避免把规则运行 error 和网络 failed 混为一种状态。
 5. 轨迹长期保留、没有自动清理，较大目录会持续增加数据库体积；当前只支持手动清理已结束记录。
 6. 当前规则保存不做多编辑者版本冲突控制，后保存者替换当前链；工作区修正和设置则分别有 revision/version。

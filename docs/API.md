@@ -67,7 +67,7 @@
 
 新调试页使用 `POST /extraction/test`，只解析路径文本，不读取媒体文件、不访问 TMDB，无需 Token。支持不存在的路径；`root` 必须为其父级绝对目录，省略时路径在源目录内采用源目录，否则 `/`。`rules` 省略时使用当前链，显式 `[]` 表示空链。试跑与样例不创建工作区、预览、整理记录或历史轨迹。前端 90 秒超时，取消或离开页面时中止请求并忽略过期响应。
 
-`GET /extraction/rules` 返回 `{rules,defaults,catalog,targets,sources,sourceScripts,scriptLanguage}`，`scriptLanguage` 为 `starlark`；模板为 `{id,name,target,description,sources,config:{code,params?}}`，源码可直接编辑。规则类型为 `script` 或 `regex`；脚本配置为 `{code,params?,sourceCode?}`，正则配置仍为 `{pattern,capture|value,sourceCode?}`。`sourceCode` 仅用于 `cleanFilename` 来源的清理过程。仅接受当前 script/regex 配置，不支持处理器字段或 builtin 类型。
+`GET /extraction/rules` 返回 `{rules,defaults,catalog,targets,sources,sourceScripts,scriptLanguage}`，`scriptLanguage` 为 `javascript`；模板为 `{id,name,target,description,sources,config:{code,params?}}`，源码可直接编辑。规则类型为 `script` 或 `regex`；脚本配置为 `{code,params?,sourceCode?}`，正则配置仍为 `{pattern,capture|value,sourceCode?}`。`sourceCode` 仅用于 `cleanFilename` 来源的清理过程。仅接受当前 script/regex 配置，不支持处理器字段或 builtin 类型。
 
 `Step.attempts[].trace` 保存脚本的正则调用、`trace/print` 中间值、阶段和源码行列号。脚本语法、参数结构错误在保存或试跑时返回 HTTP 400；运行错误和超限作为该规则的 `error` 步骤保留日志，继续执行后续规则。历史详情中的配置与源码均来自当次快照。
 
