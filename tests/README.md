@@ -15,6 +15,7 @@ tests/
 │   ├── trace/
 │   └── webui/
 ├── frontend/         # Vitest 测试
+│   ├── app/          # 路由、导航、查询缓存与登录隔离
 │   └── recognition/
 ├── scripts/          # Python 脚本测试
 └── run_backend.py    # Go 测试入口

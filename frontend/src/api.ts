@@ -91,7 +91,14 @@ export interface Run {
 }
 export interface RecognitionItem extends MediaFile {
   traceId?: string
-  parsed: { title: string; year: number; type: string; tmdbId: number; season: number; episodes: number[] }
+  parsed: {
+    title: string
+    year: number
+    type: string
+    tmdbId: number
+    season: number
+    episodes: number[]
+  }
   group: string
   entry: Entry | null
   candidates: Entry[]
@@ -111,17 +118,38 @@ export interface Recognition {
   error: string
   created: string
 }
-export interface Batch { id: string; runs: Run[]; active: boolean }
-export interface BatchPreview extends Preview { groups: (Preview & { type: string; tmdbId: number })[] }
+export interface Batch {
+  id: string
+  runs: Run[]
+  active: boolean
+}
+export interface BatchPreview extends Preview {
+  groups: (Preview & { type: string; tmdbId: number })[]
+}
+let requestEpoch = 0
+export function invalidateRequests() {
+  requestEpoch++
+}
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
 export async function api<T>(
   path: string,
   body?: unknown,
-  method = 'POST',
+  method = body === undefined ? 'GET' : 'POST',
   options: Pick<RequestInit, 'signal'> = {},
 ): Promise<T> {
+  const epoch = requestEpoch
   const response = await fetch(`/api${path}`, {
     ...options,
     credentials: 'same-origin',
+    method,
     ...(body === undefined
       ? {}
       : {
@@ -130,16 +158,16 @@ export async function api<T>(
           body: JSON.stringify(body),
         }),
   })
-  const value = await response
-    .json()
-    .catch((error) => {
-      if (options.signal?.aborted) throw error
-      return { message: '服务暂时不可用，请检查后端是否启动' }
-    })
+  const value = await response.json().catch((error) => {
+    if (options.signal?.aborted) throw error
+    return { message: '服务暂时不可用，请检查后端是否启动' }
+  })
+  if (epoch !== requestEpoch)
+    throw new DOMException('登录状态已变化，忽略过期响应', 'AbortError')
   if (!response.ok) {
-    if (response.status === 401)
+    if (response.status === 401 && typeof window !== 'undefined')
       window.dispatchEvent(new Event('session-expired'))
-    throw new Error(value.message || '请求失败')
+    throw new ApiError(value.message || '请求失败', response.status)
   }
   return value
 }

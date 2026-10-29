@@ -1,2 +1,4 @@
 storeDir: ../local/cache/pnpm
 cacheDir: ../local/cache/pnpm-meta
+allowBuilds:
+  vue-demi: true

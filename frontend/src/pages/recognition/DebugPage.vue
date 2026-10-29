@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import { useExtraction } from '../features/extraction/useExtraction'
-import ExtractionResult from '../features/extraction/ExtractionResult.vue'
-defineEmits<{ back: [] }>()
+import { useExtraction } from '../../features/extraction/useExtraction'
+import ExtractionResult from '../../features/extraction/ExtractionResult.vue'
+import { RouterLink } from 'vue-router'
+import PageHeader from '../../components/ui/PageHeader.vue'
 const { path, root, busy, error, notice, result, run, cancel } = useExtraction()
 </script>
 <template>
   <section class="debug-page" aria-label="识别调试页面">
-    <header class="heading">
-      <div>
-        <span class="eyebrow">PATH METADATA</span>
-        <h1>识别调试<span class="heading-dot">.</span></h1>
-        <p class="muted">绝对路径 → 当前规则链 → 文件元数据</p>
-      </div>
-      <button class="button" @click="$emit('back')">返回自动识别</button>
-    </header>
+    <PageHeader
+      title="识别调试"
+      eyebrow="PATH METADATA"
+      description="绝对路径 → 当前规则链 → 文件元数据"
+      ><template #actions
+        ><RouterLink class="button" :to="{ name: 'automatic-recognition' }"
+          >返回识别工作区</RouterLink
+        ></template
+      ></PageHeader
+    >
     <form class="pane debug-form" @submit.prevent="run()">
       <label for="debug-path">完整文件路径</label
       ><input

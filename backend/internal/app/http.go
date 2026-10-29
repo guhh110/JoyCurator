@@ -316,13 +316,24 @@ func (a *App) Handler(frontend fs.FS) http.Handler {
 		return nil
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			errorReply(w, 404, "接口不存在")
 			return
 		}
 		if frontend == nil {
 			http.Error(w, "前端请访问 http://localhost:5175；单文件部署请使用 make build", 503)
 			return
+		}
+		// Client pages have real URLs. Only extensionless GET/HEAD navigation
+		// falls back to the SPA entry; missing assets and APIs retain their 404.
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && filepath.Ext(r.URL.Path) == "" && !strings.HasPrefix(r.URL.Path, "/assets/") {
+			name := strings.TrimPrefix(r.URL.Path, "/")
+			if _, err := fs.Stat(frontend, name); err != nil {
+				request := r.Clone(r.Context())
+				request.URL.Path = "/"
+				http.FileServer(http.FS(frontend)).ServeHTTP(w, request)
+				return
+			}
 		}
 		http.FileServer(http.FS(frontend)).ServeHTTP(w, r)
 	})
