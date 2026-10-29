@@ -1,8 +1,9 @@
 package planning
 
 import (
-	"joycurator/internal/model"
 	"time"
+
+	"joycurator/internal/model"
 )
 
 type Row struct {

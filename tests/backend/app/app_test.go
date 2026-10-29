@@ -58,7 +58,7 @@ func mediaFile(t *testing.T, a *App, root, name string) model.File {
 	if err != nil || len(files) != 1 {
 		t.Fatalf("scan: %#v %v", files, err)
 	}
-	return files[0]
+	return files[0].File
 }
 func done(t *testing.T, a *App, r organizer.Run) organizer.Run {
 	t.Helper()

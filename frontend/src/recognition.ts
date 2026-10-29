@@ -25,7 +25,7 @@ export function recognitionGroups(items: RecognitionItem[]) {
       id,
       files,
       entry,
-      title: entry?.title || files[0]!.parsed.title || '未识别作品',
+      title: entry?.title || files[0]!.metadata.title || '未识别作品',
       state,
     }
   })

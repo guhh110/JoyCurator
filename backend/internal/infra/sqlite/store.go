@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"joycurator/internal/model"
 	"joycurator/internal/recognition"
@@ -73,3 +74,9 @@ CREATE TABLE IF NOT EXISTS extraction_rules(id INTEGER PRIMARY KEY CHECK(id=1),v
 	return a, nil
 }
 func jsonText(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+func decode(raw string, value any) error {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(value)
+}

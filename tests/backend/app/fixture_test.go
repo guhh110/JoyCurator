@@ -12,8 +12,6 @@ import (
 	"testing"
 
 	"joycurator/internal/infra/fsops"
-	"joycurator/internal/infra/tmdb"
-	"joycurator/internal/model"
 )
 
 var fixtureDatabases sync.Map
@@ -42,9 +40,6 @@ func testDB(t *testing.T, a *App) *sql.DB {
 	return v.(*sql.DB)
 }
 
-func testClient(t *testing.T, a *App, s model.Settings) (*tmdb.Client, error) {
-	return tmdb.New(a.store, s.Token, s.ProxyURL, s.Language)
-}
 func testUpdateSettings(t *testing.T, a *App, w *httptest.ResponseRecorder, r *http.Request) error {
 	t.Helper()
 	if err := a.dependencies.Auth.Setup(context.Background(), "admin", "fixture-password-2026"); err != nil && !strings.Contains(err.Error(), "already initialized") {

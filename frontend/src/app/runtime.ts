@@ -21,13 +21,19 @@ export function createRuntime() {
     entry = ref<Entry | null>(null)
   try {
     const stored = JSON.parse(localStorage.getItem('joycurator-files') || '[]')
-    if (Array.isArray(stored))
-      files.value = stored
-        .filter(
-          (file) =>
-            typeof file.path === 'string' && Array.isArray(file.episodes),
-        )
-        .slice(0, 2000)
+    if (
+      !Array.isArray(stored) ||
+      !stored.every(
+        (file) =>
+          file &&
+          typeof file.path === 'string' &&
+          Array.isArray(file.episodes) &&
+          file.metadata &&
+          Array.isArray(file.metadata.episodes),
+      )
+    )
+      throw new Error('本地工作区数据格式无效，请重新导入文件')
+    files.value = stored.slice(0, 2000)
     const storedEntry = JSON.parse(
       localStorage.getItem('joycurator-entry') || 'null',
     )
@@ -37,7 +43,9 @@ export function createRuntime() {
       Number.isInteger(storedEntry.tmdbId)
     )
       entry.value = storedEntry
-  } catch {}
+  } catch {
+    error.value = '本地工作区数据格式无效，请重新导入文件'
+  }
   const persist = (key: string, value: unknown) => {
     try {
       localStorage.setItem(key, JSON.stringify(value))

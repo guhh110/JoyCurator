@@ -14,7 +14,6 @@ import (
 	"joycurator/internal/matching"
 	"joycurator/internal/metadata"
 	"joycurator/internal/model"
-	"joycurator/internal/recognition"
 	"joycurator/internal/rules"
 )
 
@@ -154,7 +153,7 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		src := model.Source{Path: f.Path, Parsed: recognition.ParsedMetadata(extracted.Metadata), Probe: scanner.Probe(ctx, a.access, f.Path), Entry: &entry, Season: f.Season, Episodes: f.Episodes}
+		src := model.Source{Path: f.Path, Metadata: extracted.Metadata, Probe: scanner.Probe(ctx, a.access, f.Path), Entry: &entry, Season: f.Season, Episodes: f.Episodes}
 		target, e := rules.Target(src, s)
 		if e != nil {
 			fail(e.Error())

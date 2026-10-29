@@ -12,6 +12,13 @@ def imports(source):
 
 
 class ArchitectureTest(unittest.TestCase):
+    def test_development_has_no_compatibility_implementations(self):
+        for source in INTERNAL.rglob('*.go'):
+            if 'webui/dist' in str(source):
+                continue
+            self.assertNotRegex(source.stem.lower(), r'compat|migration|legacy')
+            self.assertNotRegex(source.read_text(), r'\b(?:MigrateLegacyRules|ParsedMetadata|MetadataFromParsed|type Parsed)\b')
+
     def test_four_modules_do_not_access_sql_or_http(self):
         for module in ('recognition', 'matching', 'planning', 'organizer'):
             self.assertTrue((INTERNAL / module).is_dir())

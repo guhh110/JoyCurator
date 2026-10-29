@@ -15,12 +15,13 @@ function file(
     season: -1,
     episodes: [],
     probe: { resolution: '', codec: '' },
-    parsed: {
+    metadata: {
+      releaseTag: null,
       title: '片名',
       year: 2024,
-      type: '',
-      tmdbId: 0,
-      season: -1,
+      mediaType: null,
+      tmdbId: null,
+      season: null,
       episodes: [],
     },
     entry: null,

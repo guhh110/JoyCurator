@@ -57,7 +57,7 @@ main → app.Open
   → fsops.New：启动授权范围
   → sqlite.Open：WAL、单连接、原有表及历史中断恢复
   → organizer.NewCoordinator
-  → recognition.New：读取规则、迁移旧 builtin、编译当前链
+  → recognition.New：读取并编译当前规则链
   → ConfigService / FileService / WorkspaceService
   → matching.New / planning.New / organizer.New
   → HTTP Dependencies
@@ -101,7 +101,7 @@ Metadata → 查询作品候选 → 纯候选策略 → Entry / candidates / sta
 
 明确 ID 优先；跨类型 ID 重复需消歧。模糊、同名、年份冲突和回退搜索需确认。缺少季号仅在唯一常规季且集数有效时补全。人工选定作品仍使用同一季集校验，不另写手动逻辑。
 
-`matching.Item` 内部保留原始 Metadata，作品 Entry 与校验后的季集分开，不用 TMDB 结果覆盖路径提取依据。为兼容旧接口和 SQLite，序列化边界仍读写原 `parsed` 字段；内部没有并行维护另一份 Parsed 状态。
+`matching.Item`、工作区接口和 SQLite 统一保存原始 `metadata`，作品 Entry 与校验后的季集分开，不用 TMDB 结果覆盖路径提取依据。扫描接口同样返回 Metadata，不存在 parsed 字段或双格式序列化。
 
 `matching.Service` 提供手动搜索、季和集查询。现有工作区模型保留在 matching；异步流程、人工修正提交与页面工作区协调放在 app。
 
@@ -149,9 +149,9 @@ Planning.Submit → Execute / ExecuteBatch
 
 ## 数据与安全
 
-表及历史 JSON 格式保持兼容，数据库无需重建：管理员、会话、配置、TMDB 缓存、工作区、规则、轨迹、步骤及 runs。批次由 Run.batchId 关联，不增加批次表。正常响应缓存仍为 24 小时，轨迹不自动清理。
+开发阶段只维护当前表结构、接口与 JSON 格式：管理员、会话、配置、TMDB 缓存、工作区、规则、轨迹、步骤及 runs。格式变更直接同步调用方；不提供旧数据迁移、旧接口或字段适配。读取不支持的字段直接报错，不自动重写或删除数据。批次由 Run.batchId 关联，不增加批次表。正常响应缓存仍为 24 小时，轨迹不自动清理。
 
-启动将未完成 Run、工作区和轨迹标为 interrupted，不自动恢复文件操作。旧 builtin 原子迁移成脚本，已有脚本与历史快照不覆盖。
+启动将未完成 Run、工作区和轨迹标为 interrupted，不自动恢复文件操作。规则仅接受 script/regex，不存在 builtin 处理器或转换器。任务中断恢复属于当前业务生命周期，不是版本迁移。
 
 Token 不返回前端、不写入调试轨迹；认证和同源检查保留。路径试跑只处理文本，正式导入、预览、执行仍进行授权与文件身份检查。
 
@@ -160,10 +160,10 @@ Token 不返回前端、不写入调试轨迹；认证和同源检查保留。�
 全部测试在根目录 `tests/`，使用 `tests/run_backend.py` 的 Go overlay 加载。直接 `go test` 不包含集中测试。
 
 - recognition：路径回归、脚本、规则保存、轨迹、取消及调用一致性。
-- matching：纯候选／季集策略、模拟 TMDB、Metadata 与旧 JSON 兼容。
+- matching：纯候选／季集策略、模拟 TMDB、Metadata 接口与存储契约。
 - planning 与 app：预览编辑删除、旧确认失效、真实装配、来源与空间、手动／批量流程及 HTTP。
 - organizer：执行竞争、批次间隙占用、失败继续、取消、独立重试撤销、关闭等待。
-- infra/sqlite：旧数据、事务回滚、分页、快照、清理、缓存与重启中断。
+- infra/sqlite：当前数据校验、事务回滚、分页、快照、清理、缓存与重启中断。
 - scripts：依赖边界和发布隐私检查。
 
 执行 `make check`、`make build`、`python3 tests/run_backend.py test -tags production ./internal/webui ./internal/app`。接手建议按 recognition → matching → planning → organizer 阅读，随后追 app 的工作区流程和 infra 实现。

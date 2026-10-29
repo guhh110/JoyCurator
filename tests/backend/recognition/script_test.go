@@ -16,7 +16,7 @@ func scriptRule(id string, target r.Target, code string) r.Rule {
 }
 func TestDefaultRulesAreEditableScriptsWithAutomaticRegexTrace(t *testing.T) {
 	for _, rule := range r.DefaultRules() {
-		if rule.Kind != "script" || rule.Config.Code == "" || rule.Config.Handler != "" {
+		if rule.Kind != "script" || rule.Config.Code == "" {
 			t.Fatal("opaque default", rule.ID)
 		}
 	}
@@ -140,25 +140,4 @@ func TestScriptInvocationsDoNotShareGlobals(t *testing.T) {
 		}()
 	}
 	group.Wait()
-}
-func TestLegacyRulesMigrateWithoutChangingUserChoices(t *testing.T) {
-	legacy := r.Rule{ID: "custom-id", Name: "custom name", Description: "keep", Target: r.Year, Source: r.Directories, Kind: "builtin", Order: 71, Enabled: false, Overwrite: true, Config: r.Config{Handler: "year", Params: json.RawMessage(`{"min":1980,"max":2030}`)}, Examples: []r.Example{{Path: "/Film.2024.mkv", Expected: json.RawMessage(`2024`)}}}
-	migrated, changed, err := r.MigrateLegacyRules([]r.Rule{legacy})
-	if err != nil || !changed {
-		t.Fatal(changed, err)
-	}
-	got := migrated[0]
-	if got.Kind != "script" || got.ID != legacy.ID || got.Name != legacy.Name || got.Source != legacy.Source || got.Order != 71 || got.Enabled || !got.Overwrite || got.Config.Handler != "" || got.Config.Code == "" || !reflect.DeepEqual(got.Examples, legacy.Examples) {
-		t.Fatal(got)
-	}
-	if _, err := r.Compile(migrated); err != nil {
-		t.Fatal(err)
-	}
-	if legacy.Config.Code != "" || legacy.Kind != "builtin" {
-		t.Fatal("migration mutated input")
-	}
-	repeated, changed, err := r.MigrateLegacyRules(migrated)
-	if err != nil || changed || !reflect.DeepEqual(repeated, migrated) {
-		t.Fatal(changed, err)
-	}
 }

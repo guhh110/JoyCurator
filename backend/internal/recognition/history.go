@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"joycurator/internal/model"
+	"crypto/rand"
 )
 
 func (a *Service) ExtractFile(ctx context.Context, path, root, workspace string) (Result, string, error) {
 	engine := a.Current()
-	id := model.Key()
+	id := rand.Text()
 	started := time.Now().UTC().Format(time.RFC3339Nano)
 	trace := Trace{ID: id, Path: path, Root: root, WorkspaceID: workspace, Status: "running", StartedAt: started}
 	if err := a.store.StartTrace(trace); err != nil {

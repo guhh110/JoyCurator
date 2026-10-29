@@ -74,7 +74,7 @@ func Compile(rules []Rule) (*Engine, error) {
 		}
 		switch rule.Kind {
 		case "script":
-			if rule.Config.Handler != "" || rule.Config.Pattern != "" || rule.Config.Capture != "" || rule.Config.Value != nil {
+			if rule.Config.Pattern != "" || rule.Config.Capture != "" || rule.Config.Value != nil {
 				return nil, errors.New("脚本规则不能包含内置处理器或正则规则配置")
 			}
 			if len(rule.Config.Params) > 16384 {
@@ -96,7 +96,7 @@ func Compile(rules []Rule) (*Engine, error) {
 				return nil, fmt.Errorf("规则 %s 的脚本无效：%w", rule.Name, err)
 			}
 		case "regex":
-			if rule.Config.Handler != "" || rule.Config.Code != "" || len(rule.Config.Params) > 0 {
+			if rule.Config.Code != "" || len(rule.Config.Params) > 0 {
 				return nil, errors.New("正则规则不能包含脚本或内置处理器配置")
 			}
 			if rule.Config.Pattern == "" || len(rule.Config.Pattern) > 16384 {
@@ -118,7 +118,7 @@ func Compile(rules []Rule) (*Engine, error) {
 				return nil, err
 			}
 		default:
-			return nil, errors.New("规则类型必须为 script 或 regex；旧内置规则请迁移为脚本")
+			return nil, errors.New("规则类型必须为 script 或 regex")
 		}
 		for _, example := range rule.Examples {
 			if _, err := prepare(Input{Path: example.Path, Root: example.Root}); err != nil {

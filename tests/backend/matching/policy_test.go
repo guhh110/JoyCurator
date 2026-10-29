@@ -17,13 +17,13 @@ func TestCandidatePolicyFromSuppliedFacts(t *testing.T) {
 		state  string
 		wantID int
 	}{
-		{"unique title and year", recognition.MetadataFromParsed(model.Parsed{Title: "The.Matrix", Year: 1999}), []Candidate{{Entry: movie}}, "ready", 603},
-		{"same title ambiguity", recognition.MetadataFromParsed(model.Parsed{Title: "The Matrix"}), []Candidate{{Entry: movie}, {Entry: movie}}, "review", 0},
-		{"year fallback", recognition.MetadataFromParsed(model.Parsed{Title: "The Matrix", Year: 1999}), []Candidate{{Entry: movie, Relaxed: true}}, "review", 0},
-		{"year conflict", recognition.MetadataFromParsed(model.Parsed{Title: "The Matrix", Year: 2000}), []Candidate{{Entry: movie}}, "review", 0},
-		{"id collision unknown title", recognition.MetadataFromParsed(model.Parsed{TMDBID: 603}), []Candidate{{Entry: movie}, {Entry: tv}}, "review", 0},
-		{"id title disambiguation", recognition.MetadataFromParsed(model.Parsed{TMDBID: 603, Title: "The Matrix", Year: 1999}), []Candidate{{Entry: movie}, {Entry: tv}}, "ready", 603},
-		{"no results", recognition.MetadataFromParsed(model.Parsed{Title: "Missing"}), nil, "unmatched", 0},
+		{"unique title and year", recognition.Metadata{Title: ptr("The.Matrix"), Year: ptr(1999)}, []Candidate{{Entry: movie}}, "ready", 603},
+		{"same title ambiguity", recognition.Metadata{Title: ptr("The Matrix")}, []Candidate{{Entry: movie}, {Entry: movie}}, "review", 0},
+		{"year fallback", recognition.Metadata{Title: ptr("The Matrix"), Year: ptr(1999)}, []Candidate{{Entry: movie, Relaxed: true}}, "review", 0},
+		{"year conflict", recognition.Metadata{Title: ptr("The Matrix"), Year: ptr(2000)}, []Candidate{{Entry: movie}}, "review", 0},
+		{"id collision unknown title", recognition.Metadata{TMDBID: ptr(603)}, []Candidate{{Entry: movie}, {Entry: tv}}, "review", 0},
+		{"id title disambiguation", recognition.Metadata{TMDBID: ptr(603), Title: ptr("The Matrix"), Year: ptr(1999)}, []Candidate{{Entry: movie}, {Entry: tv}}, "ready", 603},
+		{"no results", recognition.Metadata{Title: ptr("Missing")}, nil, "unmatched", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			decision := DecideMatch(tc.parsed, tc.facts)

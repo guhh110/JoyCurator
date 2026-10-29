@@ -1,15 +1,13 @@
 package matching
 
 import (
-	"encoding/json"
-
 	"joycurator/internal/model"
 	"joycurator/internal/recognition"
 )
 
 type Item struct {
 	model.File
-	Metadata   recognition.Metadata `json:"-"`
+	Metadata   recognition.Metadata `json:"metadata"`
 	Group      string               `json:"group"`
 	Entry      *model.Entry         `json:"entry"`
 	Candidates []model.Entry        `json:"candidates"`
@@ -45,26 +43,4 @@ type Edit struct {
 type Update struct {
 	Revision int    `json:"revision"`
 	Items    []Edit `json:"items"`
-}
-
-// The legacy parsed field stays on the wire and in SQLite, not in matching logic.
-func (i Item) MarshalJSON() ([]byte, error) {
-	type fields Item
-	return json.Marshal(struct {
-		fields
-		Parsed model.Parsed `json:"parsed"`
-	}{fields(i), recognition.ParsedMetadata(i.Metadata)})
-}
-func (i *Item) UnmarshalJSON(data []byte) error {
-	type fields Item
-	var wire struct {
-		fields
-		Parsed model.Parsed `json:"parsed"`
-	}
-	if err := json.Unmarshal(data, &wire); err != nil {
-		return err
-	}
-	*i = Item(wire.fields)
-	i.Metadata = recognition.MetadataFromParsed(wire.Parsed)
-	return nil
 }

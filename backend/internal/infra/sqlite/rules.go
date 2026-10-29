@@ -1,8 +1,6 @@
 package sqlite
 
 import (
-	"encoding/json"
-
 	"joycurator/internal/recognition"
 	_ "modernc.org/sqlite"
 )
@@ -18,6 +16,6 @@ func (a *Store) LoadRules() ([]recognition.Rule, error) {
 		return nil, err
 	}
 	var rules []recognition.Rule
-	err = json.Unmarshal([]byte(raw), &rules)
+	err = decode(raw, &rules)
 	return rules, err
 }

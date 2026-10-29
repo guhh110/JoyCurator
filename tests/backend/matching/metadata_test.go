@@ -8,15 +8,8 @@ import (
 	"joycurator/internal/recognition"
 )
 
-func TestLegacyWorkspaceDTOProducesMetadataWithoutChangingWireFields(t *testing.T) {
-	raw := []byte(`{"path":"/source/Show.S00E01.mkv","season":0,"episodes":[1],"parsed":{"title":"Show","year":0,"type":"tv","season":0,"episodes":[1],"tmdbId":0,"releaseTag":""},"group":"manual","state":"review","selected":false,"removed":false,"edited":true}`)
-	var item Item
-	if err := json.Unmarshal(raw, &item); err != nil {
-		t.Fatal(err)
-	}
-	if item.Metadata.Title == nil || *item.Metadata.Title != "Show" || item.Metadata.Season == nil || *item.Metadata.Season != 0 || item.Metadata.Year != nil || item.Metadata.TMDBID != nil {
-		t.Fatal(item.Metadata)
-	}
+func TestMetadataIsTheOnlyWorkspaceRepresentation(t *testing.T) {
+	item := Item{Metadata: recognition.Metadata{Title: ptr("Show"), MediaType: ptr("tv"), Season: ptr(0), Episodes: []int{1}}, State: "review"}
 	encoded, err := json.Marshal(item)
 	if err != nil {
 		t.Fatal(err)
@@ -25,18 +18,18 @@ func TestLegacyWorkspaceDTOProducesMetadataWithoutChangingWireFields(t *testing.
 	if err = json.Unmarshal(encoded, &wire); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := wire["metadata"]; ok {
-		t.Fatal("legacy response gained an unexpected field")
+	if _, ok := wire["parsed"]; ok {
+		t.Fatal("obsolete field returned")
 	}
-	if _, ok := wire["parsed"]; !ok {
-		t.Fatal("legacy parsed field missing")
+	if _, ok := wire["metadata"]; !ok {
+		t.Fatal("metadata missing")
 	}
 	var reloaded Item
 	if err = json.Unmarshal(encoded, &reloaded); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(item.Metadata, reloaded.Metadata) {
-		t.Fatal("metadata round-trip differs")
+		t.Fatal(reloaded.Metadata)
 	}
 }
 

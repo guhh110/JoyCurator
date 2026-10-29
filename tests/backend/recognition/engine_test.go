@@ -115,7 +115,7 @@ func TestConversionsAndMergedEpisodes(t *testing.T) {
 }
 func TestValidationAndImmutableConfiguration(t *testing.T) {
 	base := regexRule("one", 10, r.Title, `(?P<value>.+)`)
-	for _, mutate := range []func(*r.Rule){func(v *r.Rule) { v.Config.Pattern = "(" }, func(v *r.Rule) { v.Config.Capture = "missing" }, func(v *r.Rule) { v.Target = "titles" }, func(v *r.Rule) { v.Config.Value = json.RawMessage(`"fixed"`) }, func(v *r.Rule) { v.Kind = "builtin"; v.Config = r.Config{Handler: "season-sxe"} }, func(v *r.Rule) { v.Source = "filesystem" }} {
+	for _, mutate := range []func(*r.Rule){func(v *r.Rule) { v.Config.Pattern = "(" }, func(v *r.Rule) { v.Config.Capture = "missing" }, func(v *r.Rule) { v.Target = "titles" }, func(v *r.Rule) { v.Config.Value = json.RawMessage(`"fixed"`) }, func(v *r.Rule) { v.Kind = "builtin"; v.Config = r.Config{} }, func(v *r.Rule) { v.Source = "filesystem" }} {
 		candidate := base
 		mutate(&candidate)
 		if _, err := r.Compile([]r.Rule{candidate}); err == nil {

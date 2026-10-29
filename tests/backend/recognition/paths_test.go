@@ -1,9 +1,12 @@
 package recognition_test
 
 import (
+	"context"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"joycurator/internal/recognition"
 )
 
 func TestRecognitionPath(t *testing.T) {
@@ -35,19 +38,34 @@ func TestRecognitionPath(t *testing.T) {
 		{"01.mkv", "01", "", 0, -1, 0, []int{}},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
-			p := RecognitionPath(filepath.Join("/source", tc.path), "/source")
-			if p.Title != tc.title || p.Type != tc.kind || p.Year != tc.year || p.Season != tc.season || p.TMDBID != tc.id || !reflect.DeepEqual(p.Episodes, tc.episodes) {
+			p := extractMetadata(t, filepath.Join("/source", tc.path), "/source")
+			if value(p.Title, "") != tc.title || value(p.MediaType, "") != tc.kind || value(p.Year, 0) != tc.year || value(p.Season, -1) != tc.season || value(p.TMDBID, 0) != tc.id || !reflect.DeepEqual(p.Episodes, tc.episodes) {
 				t.Fatalf("got %+v", p)
 			}
 		})
 	}
 }
 func TestRecognitionNeverUsesSourceName(t *testing.T) {
-	p := RecognitionPath("/library/Show [tmdb-999]/source/Season 2/01.mkv", "/library/Show [tmdb-999]/source")
-	if p.Title != "" || p.TMDBID != 0 || p.Season != 2 {
+	p := extractMetadata(t, "/library/Show [tmdb-999]/source/Season 2/01.mkv", "/library/Show [tmdb-999]/source")
+	if p.Title != nil || p.TMDBID != nil || value(p.Season, -1) != 2 {
 		t.Fatal(p)
 	}
-	if MatchTitle("SHOW.Name：星空") != MatchTitle("show name 星空") {
+	if recognition.NormalizeTitle("SHOW.Name：星空") != recognition.NormalizeTitle("show name 星空") {
 		t.Fatal("punctuation normalization")
 	}
+}
+
+func value[T any](v *T, zero T) T {
+	if v == nil {
+		return zero
+	}
+	return *v
+}
+func extractMetadata(t *testing.T, path, root string) recognition.Metadata {
+	t.Helper()
+	result, err := recognition.DefaultEngine().Extract(context.Background(), recognition.Input{Path: path, Root: root}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result.Metadata
 }

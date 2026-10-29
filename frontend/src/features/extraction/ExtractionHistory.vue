@@ -136,7 +136,7 @@ async function remove(id: string) {
       @retry="listQuery.refetch()"
       ><section class="pane">
         <p v-if="!items.length" class="history-padding muted">
-          暂无规则执行轨迹。旧识别结果不会自动补写轨迹。
+          暂无规则执行轨迹。
         </p>
         <article v-for="item in items" :key="item.id" class="trace-row">
           <div>

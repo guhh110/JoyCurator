@@ -271,7 +271,7 @@ const {
                   ><span class="muted"
                     >{{
                       group.entry?.year ||
-                      group.files[0]?.parsed.year ||
+                      group.files[0]?.metadata.year ||
                       '年份未知'
                     }}
                     ·

@@ -1,10 +1,8 @@
 package app
 
 import (
-	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	"joycurator/internal/matching"
 )
@@ -46,15 +44,5 @@ func identificationRoutes(a Dependencies, add func(string, endpoint)) {
 	})
 	add("POST /api/recognitions/{id}/cancel", func(w http.ResponseWriter, r *http.Request) error {
 		return respond(w, map[string]bool{"ok": true}, a.Workspace.Cancel(r.PathValue("id")))
-	})
-	add("POST /api/recognitions/debug", func(w http.ResponseWriter, r *http.Request) error {
-		var in RecognitionDebugRequest
-		if e := read(r, &in); e != nil {
-			return e
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
-		defer cancel()
-		v, e := a.Workspace.Debug(ctx, in)
-		return respond(w, v, e)
 	})
 }

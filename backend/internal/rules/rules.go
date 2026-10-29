@@ -123,7 +123,7 @@ func values(file model.Source, rule model.Rules) map[string]string {
 		"episode_range":  EpisodeRange(file.Season, file.Episodes),
 		"resolution":     file.Probe.Resolution,
 		"codec":          file.Probe.Codec,
-		"release_tag":    file.Parsed.ReleaseTag,
+		"release_tag":    releaseTag(file.Metadata.ReleaseTag),
 		"original_stem":  strings.TrimSuffix(filepath.Base(file.Path), filepath.Ext(file.Path)),
 		"ext":            strings.TrimPrefix(filepath.Ext(file.Path), "."),
 	}
@@ -243,4 +243,11 @@ func ShowRoot(file model.Source, settings model.Settings) (string, error) {
 		return "", err
 	}
 	return filepath.Join(settings.TargetRoot, path), nil
+}
+
+func releaseTag(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

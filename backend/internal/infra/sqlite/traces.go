@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 
 	"joycurator/internal/recognition"
@@ -59,7 +58,7 @@ func (a *Store) TraceHistory(page int, path, workspace string) ([]recognition.Tr
 		if err = rows.Scan(&value.ID, &value.Path, &value.Root, &value.WorkspaceID, &value.Status, &value.StartedAt, &value.FinishedAt, &raw, &value.Error, &value.StepCount); err != nil {
 			return nil, 0, err
 		}
-		if err = json.Unmarshal([]byte(raw), &value.Metadata); err != nil {
+		if err = decode(raw, &value.Metadata); err != nil {
 			return nil, 0, err
 		}
 		if value.Metadata.Episodes == nil {
@@ -79,7 +78,7 @@ func (a *Store) TraceDetail(id string) (recognition.Trace, []recognition.Step, e
 	if err != nil {
 		return item, nil, err
 	}
-	if err = json.Unmarshal([]byte(raw), &item.Metadata); err != nil {
+	if err = decode(raw, &item.Metadata); err != nil {
 		return item, nil, err
 	}
 	if item.Metadata.Episodes == nil {
@@ -97,7 +96,7 @@ func (a *Store) TraceDetail(id string) (recognition.Trace, []recognition.Step, e
 		if err = rows.Scan(&text); err != nil {
 			return item, nil, err
 		}
-		if err = json.Unmarshal([]byte(text), &step); err != nil {
+		if err = decode(text, &step); err != nil {
 			return item, nil, err
 		}
 		steps = append(steps, step)

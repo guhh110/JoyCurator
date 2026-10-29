@@ -39,7 +39,6 @@ export async function clearSession() {
     'joycurator-files',
     'joycurator-entry',
     'joycurator-active',
-    'joycurator-view',
   ])
     localStorage.removeItem(key)
 }

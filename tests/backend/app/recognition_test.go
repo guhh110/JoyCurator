@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"net/http"
+
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
@@ -10,30 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"joycurator/internal/infra/tmdb"
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
 )
 
-type recognitionTransport func(*http.Request) (*http.Response, error)
-
-func (f recognitionTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
-func mockRecognitionClient(t *testing.T, handler http.HandlerFunc) *tmdb.Client {
-	t.Helper()
-
-	client, _ := tmdb.New(nil, "test-token", "", "zh-CN")
-	client.HTTP = &http.Client{Transport: recognitionTransport(func(request *http.Request) (*http.Response, error) {
-		if err := request.Context().Err(); err != nil {
-			return nil, err
-		}
-		recorder := httptest.NewRecorder()
-		handler(recorder, request)
-		return recorder.Result(), nil
-	})}
-	client.RetryWait = time.Millisecond
-	return client
-}
 func seedRecognitionCache(t *testing.T, a *App, path, body string) {
 	t.Helper()
 	if _, err := testDB(t, a).Exec("INSERT OR REPLACE INTO tmdb_cache VALUES(?,?,?)", path, body, time.Now().Add(time.Hour).Unix()); err != nil {

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -243,55 +242,6 @@ func TestHistoryPaginationRestartInterruptionAndCleanup(t *testing.T) {
 	s.call(t, "DELETE", "/api/extraction/traces/"+history.Items[0].ID, nil, 200)
 }
 
-func TestSavedLegacyChainMigratesAndHistoryKeepsOriginalSnapshot(t *testing.T) {
-	s := newService(t)
-	if err := s.app.Close(); err != nil {
-		t.Fatal(err)
-	}
-	s.app = nil
-	db, err := sql.Open("sqlite", filepath.Join(s.base, "data", "joycurator.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := []r.Rule{{ID: "my-year", Name: "custom year", Target: r.Year, Source: r.Filename, Order: 17, Enabled: true, Kind: "builtin", Config: r.Config{Handler: "year", Params: json.RawMessage(`{"min":2000,"max":2030}`)}, Overwrite: true, Examples: []r.Example{{Path: "/Film.2024.mkv", Expected: json.RawMessage(`2024`)}}}}
-	raw, _ := json.Marshal(old)
-	if _, err = db.Exec("UPDATE extraction_rules SET value=? WHERE id=1", string(raw)); err != nil {
-		t.Fatal(err)
-	}
-	stepRaw, _ := json.Marshal(r.Step{RuleID: old[0].ID, RuleName: old[0].Name, RuleConfig: old[0], Target: r.Year, Status: "matched", ExtractedValue: 2024, After: 2024})
-	if _, err = db.Exec("INSERT INTO extraction_traces(id,path,root,workspace_id,status,started_at) VALUES('old','/Film.2024.mkv','/','','completed','2024-01-01')"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = db.Exec("INSERT INTO extraction_steps(trace_id,position,value) VALUES('old',1,?)", string(stepRaw)); err != nil {
-		t.Fatal(err)
-	}
-	_ = db.Close()
-	s.open(t)
-	library := decodeResponse[struct{ Rules []r.Rule }](t, s.call(t, "GET", "/api/extraction/rules", nil, 200))
-	if len(library.Rules) != 1 || library.Rules[0].ID != "my-year" || library.Rules[0].Order != 17 || !library.Rules[0].Overwrite || library.Rules[0].Config.Code == "" || library.Rules[0].Kind != "script" {
-		t.Fatal(library)
-	}
-	detail := decodeResponse[r.Result](t, s.call(t, "GET", "/api/extraction/traces/old", nil, 200))
-	if len(detail.Steps) != 1 || detail.Steps[0].RuleConfig.Kind != "builtin" || detail.Steps[0].RuleConfig.Config.Code != "" {
-		t.Fatal("old trace reinterpreted", detail)
-	}
-	result := decodeResponse[r.Result](t, s.call(t, "POST", "/api/extraction/test", map[string]any{"path": "/Film.2024.mkv"}, 200))
-	if result.Metadata.Year == nil || *result.Metadata.Year != 2024 || len(result.Steps[0].Attempts[0].Trace) == 0 {
-		t.Fatal(result)
-	}
-	db, err = sql.Open("sqlite", filepath.Join(s.base, "data", "joycurator.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	var saved string
-	if err = db.QueryRow("SELECT value FROM extraction_rules WHERE id=1").Scan(&saved); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(saved, `"kind":"script"`) || strings.Contains(saved, `"handler"`) {
-		t.Fatal("migration not saved")
-	}
-}
 func TestScriptHTTPTrialInvalidSaveAndFormalScan(t *testing.T) {
 	s := newService(t)
 	path := filepath.Join(s.source, "Film.mkv")

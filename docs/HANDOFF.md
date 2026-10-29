@@ -1,6 +1,6 @@
 # JoyCurator 技术交接文档
 
-本文描述当前仓库中的实现，供接手开发、定位问题和继续迭代使用。范围包含路径提取、自动识别、手动整理、执行队列，以及本次拆分后的前端路由与查询管理。
+本文描述当前仓库中的实现，供接手开发、定位问题和继续迭代使用。开发阶段只维护当前接口与数据模型，不保留旧接口、字段适配、迁移或降级分支；格式不符直接报错，不自动删除现有数据。范围包含路径提取、自动识别、手动整理、执行队列，以及本次拆分后的前端路由与查询管理。
 
 配套文档：[后端模块与调用链](BACKEND.md)、[启动与使用](../README.md)、[接口字段](API.md)、[规则与脚本规范](RECOGNITION.md)、[前端目录与路由](FRONTEND.md)、[测试入口](../tests/README.md)。接口的完整请求格式以 `API.md` 和相应处理函数为准。
 
@@ -77,7 +77,7 @@ main.main
     → 建表、写入首次默认设置
     → sqlite.Open：原有表与历史中断恢复
     → 创建 organizer.Coordinator
-    → recognition.New：迁移旧规则、编译当前链
+    → recognition.New：读取并编译当前链
     → 装配设置、目录、识别、规划、执行与 HTTP 服务
     → 校验设置
     → 将遗留 running / queued 整理任务及运行中识别标为 interrupted
@@ -124,7 +124,7 @@ main.main
 }
 ```
 
-单值未知为 `null`，集数未知为 `[]`。`season: 0` 是特别篇；电影与剧集共用 `title`，`mediaType` 只接受 `movie/tv/null`。原有消费 DTO 的未知季号为 `-1`，仅在 `recognition/compat.go:ParsedMetadata` 做兼容转换，不能把 `-1` 引入新模型。
+单值未知为 `null`，集数未知为 `[]`。`season: 0` 是特别篇；电影与剧集共用 `title`，`mediaType` 只接受 `movie/tv/null`。接口、存储和内部业务统一使用 Metadata，没有 Parsed 转换；用于整理的可编辑季集映射与原始 Metadata 分开。
 
 ### 4.3 Step：说明每条规则做了什么
 
@@ -182,7 +182,7 @@ prepare(Input)：验证 /… 绝对路径、文本规范化、确认边界
 
 当前限制：单个脚本 32 KiB、100000 执行步、250 ms；每脚本最多保留 128 条过程事件（超出有省略提示）；单次正则结果最多 512 项。脚本超限作为该规则 error，不抹掉此前轨迹。
 
-启动时 `MigrateLegacyRules` 将旧 builtin 保存配置转换为脚本，保留原 ID、顺序、参数和其他配置；历史快照不改写。已经保存的脚本不自动被新版本默认源码覆盖。因此修改仓库默认脚本后，需要在管理页加载默认链并确认保存，或明确实施迁移；不能假定升级会覆盖用户编辑内容。
+规则只维护当前 script/regex 模型，不提供旧处理器迁移、旧接口或双格式读写。已有的当前链由用户编辑保存，不被默认脚本自动覆盖。
 
 ## 7. 当前链保存、试跑与正式轨迹
 
@@ -370,7 +370,7 @@ main.ts
 
 新增页面时在 routes 和 navigation 各登记一次，优先复用 `PageHeader`、`QueryState`、`Notices`、`Pagination`；业务状态放对应 feature，避免继续向 App.vue 堆逻辑。
 
-## 13. 安全、限制与兼容边界
+## 13. 安全与限制
 
 路径调试只验证文本，不验证文件存在、权限或真实授权。正式扫描／预览／执行使用 `fsops` 和 `sourceAllowed` 再校验，不能因试跑成功而跳过文件授权。
 
@@ -378,7 +378,7 @@ main.ts
 
 登录之外的敏感接口沿用 Cookie 登录保护；写请求检查同源。Token、认证头、代理凭据与原始上游错误不能写入轨迹或返回前端。规则源码和路径是用户配置／数据，历史详情只向已登录用户提供。
 
-`POST /api/recognitions/debug` 是保留的兼容接口，支持旧 full/parse 模式；full 会访问 TMDB，使用原 `trace.Recorder` 记录完整识别过程。新调试页面调用 `/api/extraction/test`，只展示纯路径链。不要把两种调试接口或两类轨迹混为一谈。
+识别调试统一使用 `POST /api/extraction/test`，只展示路径元数据规则链；不提供另一套 full/parse 调试接口。
 
 ## 14. 如何定位常见问题
 
@@ -414,9 +414,9 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 
 关键回归入口：
 
-- `tests/backend/recognition/`：纯提取、脚本、目录边界、季集、Matrix、覆盖／取消／旧规则迁移。
-- `tests/backend/matching/` 与 `tests/backend/app/recognition*_test.go`：纯策略、查询协调、工作区、兼容调试与修正。
-- `tests/backend/app/batch_test.go`、`tests/backend/organizer/` 与 `tests/backend/infra/sqlite/`：跨作品冲突、空间、事务、队列、取消、单部失败继续、关闭与兼容恢复。
+- `tests/backend/recognition/`：纯提取、脚本、目录边界、季集、Matrix、覆盖／取消／当前配置验证。
+- `tests/backend/matching/` 与 `tests/backend/app/recognition*_test.go`：纯策略、查询协调、工作区、调试与修正。
+- `tests/backend/app/batch_test.go`、`tests/backend/organizer/` 与 `tests/backend/infra/sqlite/`：跨作品冲突、空间、事务、队列、取消、单部失败继续、关闭与中断恢复。
 - `tests/backend/app/spa_test.go`：生产前端路由回退、API 与资源 404。
 - `tests/frontend/recognition/`：规则模型、调试取消、工作区行为与脚本展示。
 - `tests/frontend/app/`：路由、登录跳转、侧边导航、Query 去重／取消／失效、会话隔离。

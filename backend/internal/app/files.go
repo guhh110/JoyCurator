@@ -14,6 +14,11 @@ import (
 	"joycurator/internal/recognition"
 )
 
+type ScannedFile struct {
+	model.File
+	Metadata recognition.Metadata `json:"metadata"`
+}
+
 type FileService struct {
 	access   *fsops.FS
 	settings SettingsReader
@@ -23,7 +28,7 @@ type FileService struct {
 func NewFiles(access *fsops.FS, settings SettingsReader, extract *recognition.Service) *FileService {
 	return &FileService{access: access, settings: settings, extract: extract}
 }
-func (a *FileService) Scan(ctx context.Context, paths []string) ([]model.File, error) {
+func (a *FileService) Scan(ctx context.Context, paths []string) ([]ScannedFile, error) {
 	if len(paths) == 0 || len(paths) > 200 {
 		return nil, errors.New("请选择 1–200 个文件或目录")
 	}
@@ -36,7 +41,7 @@ func (a *FileService) Scan(ctx context.Context, paths []string) ([]model.File, e
 			return nil, errors.New("只能添加源目录内的文件或文件夹，目标目录不能作为来源")
 		}
 	}
-	items := []model.File{}
+	items := []ScannedFile{}
 	err = scanner.Walk(ctx, a.access, paths, []string{s.TargetRoot}, func(path string, info os.FileInfo) error {
 		if len(items) >= 2000 {
 			return errors.New("单次最多导入 2000 个视频，请分批添加")
@@ -45,8 +50,11 @@ func (a *FileService) Scan(ctx context.Context, paths []string) ([]model.File, e
 		if extractErr != nil {
 			return extractErr
 		}
-		p := recognition.ParsedMetadata(extracted.Metadata)
-		items = append(items, model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: p.Season, Episodes: p.Episodes, Probe: scanner.Probe(ctx, a.access, path)})
+		season := -1
+		if extracted.Metadata.Season != nil {
+			season = *extracted.Metadata.Season
+		}
+		items = append(items, ScannedFile{File: model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: season, Episodes: extracted.Metadata.Episodes, Probe: scanner.Probe(ctx, a.access, path)}, Metadata: extracted.Metadata})
 		return nil
 	})
 	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })

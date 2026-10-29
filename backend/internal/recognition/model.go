@@ -32,14 +32,12 @@ const (
 )
 
 type Config struct {
-	Code       string `json:"code,omitempty"`
-	SourceCode string `json:"sourceCode,omitempty"`
-	// Handler is retained only for migrating saved rules and reading old traces.
-	Handler string          `json:"handler,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Pattern string          `json:"pattern,omitempty"`
-	Capture string          `json:"capture,omitempty"`
-	Value   json.RawMessage `json:"value,omitempty"`
+	Code       string          `json:"code,omitempty"`
+	SourceCode string          `json:"sourceCode,omitempty"`
+	Params     json.RawMessage `json:"params,omitempty"`
+	Pattern    string          `json:"pattern,omitempty"`
+	Capture    string          `json:"capture,omitempty"`
+	Value      json.RawMessage `json:"value,omitempty"`
 }
 type Example struct {
 	Path     string          `json:"path"`

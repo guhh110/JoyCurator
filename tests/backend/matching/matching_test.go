@@ -57,7 +57,7 @@ func TestRecognitionCandidates(t *testing.T) {
 				}
 				fmt.Fprintf(w, `{"results":%s}`, items)
 			})
-			item := Item{Metadata: recognition.MetadataFromParsed(model.Parsed{Title: tc.title, Year: tc.year})}
+			item := Item{Metadata: recognition.Metadata{Title: ptr(tc.title), Year: ptr(tc.year)}}
 			NewResolver(client).Match(context.Background(), &item)
 			if item.State != tc.state {
 				t.Fatalf("%+v", item)
@@ -80,7 +80,7 @@ func TestRecognitionYearFallbackAndQueryDeduplication(t *testing.T) {
 	})
 	memo := NewResolver(client)
 	for i := 0; i < 3; i++ {
-		item := Item{Metadata: recognition.MetadataFromParsed(model.Parsed{Title: "Show", Type: "tv", Year: 2020})}
+		item := Item{Metadata: recognition.Metadata{Title: ptr("Show"), MediaType: ptr("tv"), Year: ptr(2020)}}
 		memo.Match(context.Background(), &item)
 		if item.State != "review" || !strings.Contains(item.Reason, "年份") {
 			t.Fatal(item)
@@ -104,7 +104,7 @@ func TestRecognitionIDAndFailure(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := mockRecognitionClient(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(tc.status); fmt.Fprint(w, tc.body) })
-			item := Item{Metadata: recognition.MetadataFromParsed(model.Parsed{Type: "tv", TMDBID: 7})}
+			item := Item{Metadata: recognition.Metadata{MediaType: ptr("tv"), TMDBID: ptr(7)}}
 			NewResolver(client).Match(context.Background(), &item)
 			if item.State != tc.state {
 				t.Fatal(item)
@@ -117,7 +117,7 @@ func TestRecognitionIDAndFailure(t *testing.T) {
 	client := mockRecognitionClient(t, func(w http.ResponseWriter, r *http.Request) { t.Error("cancelled request reached server") })
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	item := Item{Metadata: recognition.MetadataFromParsed(model.Parsed{Type: "tv", Title: "Show"})}
+	item := Item{Metadata: recognition.Metadata{MediaType: ptr("tv"), Title: ptr("Show")}}
 	NewResolver(client).Match(ctx, &item)
 	if item.State != "failed" {
 		t.Fatal(item)
@@ -158,7 +158,7 @@ func TestRecognitionIDCollisionNeedsConfirmation(t *testing.T) {
 	client := mockRecognitionClient(t, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"id":7,"title":"Film","name":"Show","overview":"Description"}`)
 	})
-	item := Item{Metadata: recognition.MetadataFromParsed(model.Parsed{TMDBID: 7})}
+	item := Item{Metadata: recognition.Metadata{TMDBID: ptr(7)}}
 	NewResolver(client).Match(context.Background(), &item)
 	if item.State != "review" || item.Entry != nil || len(item.Candidates) != 2 {
 		t.Fatal(item)
@@ -185,7 +185,7 @@ func TestIDDisambiguationRequiresUniqueExactTitleAndYear(t *testing.T) {
 				}
 				fmt.Fprintf(w, `{"id":7,"title":%q,"original_title":%q,"name":%q,"original_name":%q,"release_date":"%d-01-01","first_air_date":"%d-01-01","overview":"fixture"}`, title, title, title, title, year, year)
 			})
-			item := Item{Metadata: recognition.MetadataFromParsed(model.Parsed{TMDBID: 7, Title: "Same", Year: 2020})}
+			item := Item{Metadata: recognition.Metadata{TMDBID: ptr(7), Title: ptr("Same"), Year: ptr(2020)}}
 			NewResolver(client).Match(context.Background(), &item)
 			if item.State != tc.want {
 				t.Fatal(item)

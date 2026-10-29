@@ -2,9 +2,8 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"joycurator/internal/matching"
@@ -12,6 +11,24 @@ import (
 	"joycurator/internal/organizer"
 	"joycurator/internal/recognition"
 )
+
+func TestWorkspaceRejectsUnknownFieldsWithoutRewritingData(t *testing.T) {
+	store := openStore(t)
+	raw := `{"id":"invalid","revision":1,"state":"completed","items":[],"unexpectedField":true}`
+	if _, err := store.db.Exec("INSERT INTO recognitions(id,value) VALUES(?,?)", "invalid", raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Workspace("invalid"); err == nil || !strings.Contains(err.Error(), "unexpectedField") {
+		t.Fatal("unsupported data silently accepted", err)
+	}
+	if _, err := store.LatestWorkspace(); err == nil {
+		t.Fatal("unsupported latest workspace silently accepted")
+	}
+	var stored string
+	if err := store.db.QueryRow("SELECT value FROM recognitions WHERE id='invalid'").Scan(&stored); err != nil || stored != raw {
+		t.Fatal("invalid data was rewritten", stored, err)
+	}
+}
 
 func openStore(t *testing.T) *Store {
 	t.Helper()
@@ -35,47 +52,6 @@ func TestBatchTransactionRollsBackEveryQueuedRecord(t *testing.T) {
 	all, err := store.AllRuns()
 	if err != nil || len(all) != 0 {
 		t.Fatalf("partial transaction persisted: %+v %v", all, err)
-	}
-}
-
-func TestLegacyRowsRecoverWithoutRewritingCompletedHistory(t *testing.T) {
-	dir := t.TempDir()
-	db, err := sql.Open("sqlite", filepath.Join(dir, "joycurator.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Build pre-refactor tables and JSON directly rather than round-tripping new DTOs.
-	_, err = db.Exec(`CREATE TABLE config(id INTEGER PRIMARY KEY,value TEXT,token TEXT);
- CREATE TABLE runs(id TEXT PRIMARY KEY,value TEXT);
- CREATE TABLE recognitions(id TEXT PRIMARY KEY,value TEXT);
- INSERT INTO config VALUES(1,'{"version":4,"sourceRoot":"/source","targetRoot":"/target","proxyURL":"","language":"zh-CN","nfo":false,"images":false,"rules":{"movieFolder":"movies","movieFile":"{title}.{ext}","tvFolder":"tv","tvFile":"{title}.{ext}","categories":[]}}','stored-token');
- INSERT INTO runs VALUES('old','{"id":"old","state":"completed","ops":[{"kind":"video","source":"/source/file.mkv","target":"/target/file.mkv","status":"completed","hash":"sha","identity":"identity","temp":"/target/.part"}]}');
- INSERT INTO runs VALUES('queue','{"id":"queue","state":"queued","batchId":"batch","version":4}');
- INSERT INTO recognitions VALUES('workspace','{"id":"workspace","revision":9,"state":"running","items":[{"path":"/source/file.mkv","group":"manual","edited":true,"selected":false,"season":0,"episodes":[1]}]}');`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.Close()
-	store, err := Open(dir, model.DefaultSettings())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	config, err := store.LoadSettings()
-	if err != nil || config.Version != 4 || config.Token != "stored-token" {
-		t.Fatal(config, err)
-	}
-	old, err := store.Run("old")
-	if err != nil || old.State != "completed" || old.Ops[0].Hash != "sha" || old.Ops[0].Temp != "/target/.part" {
-		t.Fatal(old, err)
-	}
-	queued, err := store.Run("queue")
-	if err != nil || queued.State != "interrupted" || queued.BatchID != "batch" {
-		t.Fatal(queued, err)
-	}
-	workspace, err := store.Workspace("workspace")
-	if err != nil || workspace.State != "interrupted" || workspace.Revision != 9 || !workspace.Items[0].Edited || workspace.Items[0].Season != 0 {
-		t.Fatal(workspace, err)
 	}
 }
 

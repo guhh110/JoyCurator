@@ -1,4 +1,6 @@
+import type { Metadata } from './features/extraction/model'
 export interface MediaFile {
+  metadata: Metadata
   path: string
   size: number
   mtime: string
@@ -91,14 +93,6 @@ export interface Run {
 }
 export interface RecognitionItem extends MediaFile {
   traceId?: string
-  parsed: {
-    title: string
-    year: number
-    type: string
-    tmdbId: number
-    season: number
-    episodes: number[]
-  }
   group: string
   entry: Entry | null
   candidates: Entry[]

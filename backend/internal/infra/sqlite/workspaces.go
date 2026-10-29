@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 
 	"joycurator/internal/matching"
@@ -24,7 +23,7 @@ func (a *Store) Workspace(id string) (matching.Workspace, error) {
 	if err != nil {
 		return task, err
 	}
-	err = json.Unmarshal([]byte(raw), &task)
+	err = decode(raw, &task)
 	return task, err
 }
 func (a *Store) LatestWorkspace() (*matching.Workspace, error) {
@@ -37,6 +36,6 @@ func (a *Store) LatestWorkspace() (*matching.Workspace, error) {
 		return nil, err
 	}
 	var w matching.Workspace
-	err = json.Unmarshal([]byte(raw), &w)
+	err = decode(raw, &w)
 	return &w, err
 }

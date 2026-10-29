@@ -295,11 +295,11 @@ export function useAutomaticRecognition() {
     if (!current.value) return
     searchGroup.value = current.value.id
     searchQuery.value =
-      current.value.entry?.title || current.value.files[0]!.parsed.title
-    searchYear.value = String(current.value.files[0]!.parsed.year || '')
+      current.value.entry?.title || current.value.files[0]!.metadata.title || ''
+    searchYear.value = String(current.value.files[0]!.metadata.year || '')
     searchKind.value =
       current.value.entry?.type ||
-      (current.value.files[0]!.parsed.type === 'tv' ? 'tv' : 'movie')
+      (current.value.files[0]!.metadata.mediaType === 'tv' ? 'tv' : 'movie')
     const found = new Map<string, Entry>()
     for (const file of current.value.files)
       for (const candidate of file.candidates)

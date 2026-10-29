@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 
 	"joycurator/internal/model"
@@ -33,7 +32,7 @@ func (a *Store) Run(id string) (organizer.Run, error) {
 	var raw string
 	err := a.db.QueryRow("SELECT value FROM runs WHERE id=?", id).Scan(&raw)
 	if err == nil {
-		err = json.Unmarshal([]byte(raw), &r)
+		err = decode(raw, &r)
 	}
 	return r, err
 }
@@ -54,7 +53,7 @@ func (a *Store) Runs(page int) (map[string]any, error) {
 		if err = rows.Scan(&raw); err != nil {
 			return nil, err
 		}
-		if err = json.Unmarshal([]byte(raw), &r); err != nil {
+		if err = decode(raw, &r); err != nil {
 			return nil, err
 		}
 		r.Ops = nil
@@ -80,7 +79,7 @@ func (a *Store) readRuns(query string, args ...any) ([]organizer.Run, error) {
 		if err = rows.Scan(&raw); err != nil {
 			return nil, err
 		}
-		if err = json.Unmarshal([]byte(raw), &r); err != nil {
+		if err = decode(raw, &r); err != nil {
 			return nil, err
 		}
 		items = append(items, r)
@@ -107,7 +106,7 @@ func (a *Store) Owned(target string) (*model.Work, error) {
 		return nil, err
 	}
 	var work model.Work
-	err = json.Unmarshal([]byte(raw), &work)
+	err = decode(raw, &work)
 	return &work, err
 }
 func (a *Store) Shared(id, target string) (bool, error) {

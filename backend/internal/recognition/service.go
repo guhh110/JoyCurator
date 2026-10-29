@@ -17,18 +17,9 @@ func New(store Store, closing func() bool) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	rules, changed, err := MigrateLegacyRules(rules)
-	if err != nil {
-		return nil, err
-	}
 	engine, err := Compile(rules)
 	if err != nil {
 		return nil, err
-	}
-	if changed {
-		if err = store.SaveRules(engine.Rules()); err != nil {
-			return nil, err
-		}
 	}
 	return &Service{store: store, engine: engine, closing: closing}, nil
 }

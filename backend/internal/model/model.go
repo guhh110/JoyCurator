@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+
+	"joycurator/internal/recognition"
 )
 
 type Category struct {
@@ -84,17 +86,6 @@ type Entry struct {
 	BackdropPath  string   `json:"backdropPath"`
 }
 
-// Parsed is what the file name and its folders yield.
-type Parsed struct {
-	Title      string `json:"title"`
-	Year       int    `json:"year"`
-	Type       string `json:"type"`
-	Season     int    `json:"season"`
-	Episodes   []int  `json:"episodes"`
-	TMDBID     int    `json:"tmdbId"`
-	ReleaseTag string `json:"releaseTag"`
-}
-
 // Probe is what ffprobe reported about the file.
 type Probe struct {
 	Resolution string  `json:"resolution"`
@@ -105,12 +96,12 @@ type Probe struct {
 
 // Source contains the inputs used to render naming rules.
 type Source struct {
-	Path     string `json:"path"`
-	Parsed   Parsed `json:"parsed"`
-	Probe    Probe  `json:"probe"`
-	Entry    *Entry `json:"entry,omitempty"`
-	Season   int    `json:"season"`
-	Episodes []int  `json:"episodes"`
+	Path     string               `json:"path"`
+	Metadata recognition.Metadata `json:"metadata"`
+	Probe    Probe                `json:"probe"`
+	Entry    *Entry               `json:"entry,omitempty"`
+	Season   int                  `json:"season"`
+	Episodes []int                `json:"episodes"`
 }
 
 // Operation is one file action the organizer knows how to run and reverse.
