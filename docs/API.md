@@ -19,7 +19,7 @@
 | `GET /search?type=&q=&year=` | 搜索 TMDB，`type` 为 `movie` 或 `tv` |
 | `GET /seasons?id=` | 作品的季列表 |
 | `GET /episodes?id=&season=` | 指定季的集列表，季号 0 为特别篇 |
-| `POST /preview` | `{type,tmdbId,mode,files}`，创建后端预览 |
+| `POST /preview` | `{type,tmdbId,mode,files,duplicatePolicy}`，创建后端预览；重复策略必填 `error/skip/overwrite` |
 | `POST /execute` | `{id}`，执行已确认的预览，返回任务 |
 | `GET /recognitions` | 最近的识别工作区，无记录时返回 `null` |
 | `POST /recognitions` | `{paths,id?}`，创建异步识别任务；提供 `id` 时补充现有工作区并保留修正 |
@@ -34,7 +34,7 @@
 | `PUT /recognitions/{id}` | `{revision,items}`，保存人工修正并校验作品与季集；拒绝过期版本 |
 | `POST /recognitions/{id}/cancel` | 取消识别，已完成结果保留 |
 | `POST /recognitions/{id}/retry` | 重试失败与未完成项，保留已处理文件的人工修正 |
-| `POST /batches/preview` | `{recognitionId,revision,mode}`，预览选中文件，统一检查跨作品目标冲突及空间 |
+| `POST /batches/preview` | `{recognitionId,revision,mode,duplicatePolicy}`，预览选中文件，统一检查跨作品目标冲突及空间；重复策略必填 `error/skip/overwrite` |
 | `POST /batches/execute` | `{id}`，确认批量预览，持久化逐作品队列，返回 `{id,runs,active}` |
 | `GET /batches` | 最近的自动整理批次，无记录时返回 `null` |
 | `GET /batches/{id}` | `{id,runs,active}`，逐作品状态与批次是否仍在执行 |

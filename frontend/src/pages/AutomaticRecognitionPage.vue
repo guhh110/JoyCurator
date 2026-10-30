@@ -34,8 +34,6 @@ import { useAutomaticRecognition } from '../features/automatic/useAutomaticRecog
 const {
   runtime,
   busy,
-  error,
-  notice,
   task,
   preview,
   browser,
@@ -51,18 +49,15 @@ const {
   searchKind,
   searchResults,
   searchBusy,
-  searchError,
   editing,
   editSeason,
   editEpisodes,
   seasons,
-  editError,
   transfer,
   transferGroup,
-  groupSeason,
+  comparisonSeason,
   detailView,
-  savingSeason,
-  changeGroupSeason,
+  viewSeason,
   episodeQuery,
   retryComparison,
   assignEpisode,
@@ -83,6 +78,9 @@ const {
   modes,
   previewPage,
   previewRows,
+  duplicatePolicy,
+  changeDuplicatePolicy,
+  previewReady,
   taskQuery,
   loading,
   act,
@@ -161,13 +159,6 @@ function conflictTargets(issues: string[]) {
       :error="taskQuery.error.value || runtime.batchQuery.error.value"
       @retry="poll"
     />
-    <p v-if="error" class="notice error" role="alert">
-      {{ error
-      }}<button class="text-button" :disabled="busy" @click="act(poll)">
-        重新加载
-      </button>
-    </p>
-    <p v-if="notice" class="notice good" role="status">{{ notice }}</p>
     <div v-if="loading && !task" class="pane empty auto-initial-loading">
       <LoaderCircle class="spin" />读取整理工作区…
     </div>
@@ -453,17 +444,6 @@ function conflictTargets(issues: string[]) {
                   <p v-if="groupSeasonsError" class="danger tiny" role="alert">{{ groupSeasonsError }}</p>
                 </div>
                 <div class="auto-work-actions">
-                  <div v-if="current.entry?.type === 'tv'" class="auto-season-controls">
-                    <span v-if="savingSeason" class="muted tiny" role="status"><LoaderCircle class="spin" :size="13" />保存并校验…</span>
-                    <Select
-                      :model-value="groupSeason === -1 ? undefined : String(groupSeason)"
-                      label="选择作品季度"
-                      :placeholder="groupSeasonsLoading ? '正在读取季度…' : '暂无可选季度'"
-                      :options="groupSeasons.map(season => ({ value: String(season.number), label: `${season.name} · ${season.count} 集` }))"
-                      :disabled="locked || groupSeasonsLoading || !groupSeasons.length"
-                      @update:model-value="value => changeGroupSeason(Number(value))"
-                    />
-                  </div>
                 <button v-if="current.entry?.type === 'tv'" class="button small"
                   :disabled="locked || groupSeasonsLoading || !groupSeasons.length" @click="openOffset">
                   <ArrowLeftRight :size="14" />批量修正季集
@@ -483,21 +463,34 @@ function conflictTargets(issues: string[]) {
               <div v-if="current.entry?.type === 'tv'" class="workspace-detail-tabs" role="group" aria-label="作品详情视图">
                 <button :aria-pressed="detailView === 'files'" @click="detailView = 'files'">文件 {{ current.files.length }}</button>
                 <button :aria-pressed="detailView === 'episodes'" @click="detailView = 'episodes'">单集对照</button>
-                <span>选择季度会修改本组文件季号，原集数保持不变</span>
               </div>
-              <EpisodeComparison
-                v-if="current.entry?.type === 'tv' && detailView === 'episodes'"
-                :key="`${current.id}:${groupSeason}`"
-                :episodes="episodeQuery.data.value || []"
-                :files="current.files"
-                :season="groupSeason"
-                :loading="groupSeasonsLoading || episodeQuery.isFetching.value"
-                :error="groupSeasonsError || episodeQuery.error.value?.message || ''"
-                :locked="locked"
-                @retry="retryComparison"
-                @edit="openEdit"
-                @assign="assignEpisode"
-              />
+              <template v-if="current.entry?.type === 'tv' && detailView === 'episodes'">
+                <div class="comparison-season-toolbar">
+                  <label for="comparison-season">查看季度</label>
+                  <Select
+                    id="comparison-season"
+                    :model-value="comparisonSeason === -1 ? undefined : String(comparisonSeason)"
+                    label="查看季度"
+                    :placeholder="groupSeasonsLoading ? '正在读取季度…' : '暂无可选季度'"
+                    :options="groupSeasons.map(season => ({ value: String(season.number), label: `${season.name} · ${season.count} 集` }))"
+                    :disabled="groupSeasonsLoading || !groupSeasons.length"
+                    @update:model-value="value => viewSeason(Number(value))"
+                  />
+                  <span>仅切换对照，不修改文件</span>
+                </div>
+                <EpisodeComparison
+                  :key="`${current.id}:${comparisonSeason}`"
+                  :episodes="episodeQuery.data.value || []"
+                  :files="current.files"
+                  :season="comparisonSeason"
+                  :loading="groupSeasonsLoading || episodeQuery.isFetching.value"
+                  :error="groupSeasonsError || episodeQuery.error.value?.message || ''"
+                  :locked="locked"
+                  @retry="retryComparison"
+                  @edit="openEdit"
+                  @assign="assignEpisode"
+                />
+              </template>
               <div v-else class="auto-files">
                 <article
                   v-for="file in visibleFiles"
@@ -524,7 +517,7 @@ function conflictTargets(issues: string[]) {
                             : episodeCode(file.season, file.episodes)
                         }}</span
                       ><strong :title="file.path">{{ name(file.path) }}</strong>
-                      <EliText :text="file.path" class="auto-file-path-hint" />
+                      <EliText :text="file.path" ellipsis="start" class="auto-file-path-hint" />
                     </div>
                     <p class="auto-file-meta tiny">
                       <span class="auto-state" :class="file.state"
@@ -671,7 +664,6 @@ function conflictTargets(issues: string[]) {
         <Search :size="16" />搜索
       </button>
     </form>
-    <p v-if="searchError" class="notice error">{{ searchError }}</p>
     <div class="search-results">
       <button
         v-for="entry in searchResults"
@@ -725,7 +717,6 @@ function conflictTargets(issues: string[]) {
     /><label
       >集数<input v-model="editEpisodes" placeholder="例如 1,3-5"
     /></label>
-    <p v-if="editError" class="notice error">{{ editError }}</p>
     <template #footer
       ><span class="muted">0 为特别篇</span
       ><button class="button primary" :disabled="busy || !seasons.some(season => season.number === editSeason)" @click="saveEdit">
@@ -751,7 +742,7 @@ function conflictTargets(issues: string[]) {
       </button></template
     ></Modal
   >
-  <Modal v-if="preview" title="确认多作品整理预览" wide @close="preview = null"
+  <Modal v-if="preview" title="确认多作品整理预览" wide :locked="busy" @close="preview = null"
     ><div class="auto-preview-summary">
       <strong
         >{{ preview.groups.length }} 部作品 ·
@@ -760,6 +751,14 @@ function conflictTargets(issues: string[]) {
         >{{ modes[preview.mode] }} · 需要 {{ bytes(preview.required) }}</span
       >
     </div>
+    <div class="auto-duplicate-policy">
+      <div><label for="duplicate-policy">重复文件处理</label><p class="muted tiny">按目标路径判断；已有 NFO 和海报保留。</p></div>
+      <Select id="duplicate-policy" :model-value="duplicatePolicy" label="重复文件处理" :disabled="busy"
+        :options="[{ value: 'skip', label: '跳过重复' }, { value: 'overwrite', label: '覆盖重复' }]" @update:model-value="changeDuplicatePolicy" />
+      <span class="muted tiny" role="status">{{ busy ? '正在更新预览…' : preview.duplicatePolicy !== duplicatePolicy ? '预览未更新，请重试' : `跳过 ${preview.rows.filter(row => row.action === 'skip').length} · 覆盖 ${preview.rows.filter(row => row.action === 'overwrite').length}` }}</span>
+      <button v-if="preview.duplicatePolicy !== duplicatePolicy && !busy" class="text-button" @click="prepare">重新预览</button>
+    </div>
+    <p v-if="duplicatePolicy === 'overwrite'" class="tiny muted">覆盖前备份已有视频和同名字幕，撤销时恢复；备份保留在目标目录中。</p>
     <p class="muted">每部作品单独记录并依次执行，可独立重试或撤销。</p>
     <div v-if="previewIssues.length" class="notice error">
       <p v-for="[issue, count] in previewIssues" :key="issue">
@@ -769,16 +768,16 @@ function conflictTargets(issues: string[]) {
     </div>
     <div class="auto-preview-rows">
       <article v-for="row in previewRows" :key="row.source">
-        <strong>{{ name(row.source) }}</strong>
-        <p class="muted tiny auto-path">{{ row.source }}</p>
+        <strong>{{ name(row.source) }}</strong><span class="auto-preview-action" :class="row.action">{{ row.action === 'skip' ? '跳过重复' : row.action === 'overwrite' ? '备份后覆盖' : '新增' }}</span>
+        <p class="muted tiny auto-path"><EliText :text="row.source" ellipsis="start" /></p>
         <p class="auto-path auto-preview-target" :class="{ 'auto-row-issue': conflictTargets([...row.issues, ...preview.issues]).includes(row.target) }">
-          <span>→ {{ row.target }}</span>
+          <span aria-hidden="true">→</span><EliText :text="row.target" ellipsis="start" />
           <Tooltip v-if="conflictTargets([...row.issues, ...preview.issues]).includes(row.target)" content="已存在">
             <CircleAlert :size="16" tabindex="0" role="img" aria-label="已存在" />
           </Tooltip>
         </p>
         <p v-for="target in conflictTargets(row.issues).filter(target => target !== row.target)" :key="target" class="auto-path auto-preview-target auto-row-issue">
-          <span>→ {{ target }}</span>
+          <span aria-hidden="true">→</span><EliText :text="target" ellipsis="start" />
           <Tooltip content="已存在">
             <CircleAlert :size="16" tabindex="0" role="img" aria-label="已存在" />
           </Tooltip>
@@ -813,13 +812,13 @@ function conflictTargets(issues: string[]) {
     </div>
     <template #footer
       ><span class="muted"
-        >确认后依次执行 {{ preview.groups.length }} 部作品</span
+        >确认后依次执行 {{ preview.groups.filter(group => group.rows.some(row => row.action !== 'skip')).length }} 部作品</span
       ><button
         class="button primary"
-        :disabled="busy || !!preview.issues.length"
+        :disabled="!previewReady"
         @click="execute"
       >
-        确认整理
+        {{ preview.rows.every(row => row.action === 'skip') ? '全部重复，无需整理' : '确认整理' }}
       </button></template
     ></Modal
   >

@@ -1,5 +1,27 @@
 import type { RecognitionItem } from './api'
 
+const pathOrder = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
+interface EpisodePosition {
+  season: number | null
+  episodes: readonly number[]
+  path: string
+}
+export function sortByEpisode<T>(items: readonly T[], position: (item: T) => EpisodePosition): T[] {
+  const known = (number: number | null) => number !== null && Number.isSafeInteger(number) && number >= 0
+  // Sort copies and precompute merged episode keys without changing saved mappings.
+  return items.map(item => {
+    const value = position(item)
+    return { item, path: value.path, season: known(value.season) ? value.season! : Infinity,
+      episodes: value.episodes.length && value.episodes.every(known) ? [...value.episodes].sort((a, b) => a - b) : [Infinity] }
+  }).sort((a, b) => {
+    if (a.season !== b.season) return a.season < b.season ? -1 : 1
+    for (let i = 0; i < Math.min(a.episodes.length, b.episodes.length); i++) {
+      if (a.episodes[i] !== b.episodes[i]) return a.episodes[i]! < b.episodes[i]! ? -1 : 1
+    }
+    return a.episodes.length - b.episodes.length || pathOrder.compare(a.path, b.path)
+  }).map(value => value.item)
+}
+
 export const recognitionStates: Record<string, string> = {
   ready: '可整理',
   review: '待确认',
@@ -23,7 +45,7 @@ export function recognitionGroups(items: RecognitionItem[]) {
       ) || 'review'
     return {
       id,
-      files,
+      files: sortByEpisode(files, file => file),
       entry,
       title: entry?.title || files[0]!.metadata.title || '未识别作品',
       state,

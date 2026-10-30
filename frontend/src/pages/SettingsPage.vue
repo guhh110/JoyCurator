@@ -16,9 +16,9 @@ import {
 } from '@lucide/vue'
 import FileBrowser from '../components/FileBrowser.vue'
 import QueryState from '../components/ui/QueryState.vue'
-import Notices from '../components/ui/Notices.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import Select from '../components/ui/Select.vue'
+import EliText from '../components/ui/EliText.vue'
 import { useSettingsForm } from '../features/settings/useSettingsForm'
 const {
   settings,
@@ -28,10 +28,7 @@ const {
   settingsSection,
   running,
   busy,
-  message,
-  success,
   categoryDragging,
-  categoryOrderNotice,
   categoryKey,
   moveCategory,
   finishCategorySort,
@@ -44,7 +41,7 @@ const {
 </script>
 <template>
   <div>
-    <Notices :error="message" :success="success" /><QueryState
+    <QueryState
       :loading="settingsQuery.isPending.value"
       :error="settingsQuery.error.value"
       @retry="settingsQuery.refetch()"
@@ -126,7 +123,7 @@ const {
                   已授权媒体根目录<code
                     v-for="root in settings.roots"
                     :key="root"
-                    >{{ root }}</code
+                    ><EliText :text="root" ellipsis="start" /></code
                   ><small
                     >通过 JOYCURATOR_SOURCE_DIR 和 JOYCURATOR_TARGET_DIR
                     配置授权范围。</small
@@ -264,9 +261,7 @@ const {
                         <span class="rule-index">{{
                           String(index + 1).padStart(2, '0')
                         }}</span
-                        ><span class="rule-name" :title="category.name">{{
-                          category.name || '未命名分类'
-                        }}</span>
+                        ><EliText class="rule-name" :text="category.name || '未命名分类'" ellipsis="start" />
                         <span class="rule-kind">{{
                           category.type === 'movie'
                             ? '电影'
@@ -338,8 +333,8 @@ const {
                       </div>
                     </details>
                   </VueDraggable>
-                  <p class="rule-order-status" role="status">
-                    {{ categoryOrderNotice }}
+                  <p class="rule-order-status">
+                    拖动左侧手柄调整优先级，保存设置后生效。
                   </p>
                 </section>
               </div></template

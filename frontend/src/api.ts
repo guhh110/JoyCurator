@@ -61,11 +61,14 @@ export interface PreviewRow {
   episodes: number[]
   artifacts: string[]
   issues: string[]
+  action: 'create' | 'skip' | 'overwrite'
 }
+export type DuplicatePolicy = 'error' | 'skip' | 'overwrite'
 export interface Preview {
   id: string
   title: string
   mode: string
+  duplicatePolicy: DuplicatePolicy
   rows: PreviewRow[]
   required: number
   issues: string[]
@@ -77,6 +80,7 @@ export interface Operation {
   status: string
   error: string
   owner: string
+  backup?: { target: string }
 }
 export interface Run {
   id: string
@@ -187,7 +191,7 @@ export function parseEpisodes(text: string): number[] {
     if (!match) throw new Error('集数使用数字、逗号或范围，例如 1,3-5')
     const first = Number(match[1]),
       last = Number(match[2] || match[1])
-    if (first < 1 || last > 9999 || last < first || last - first > 999)
+    if (first < 0 || last > 9999 || last < first || last - first > 999)
       throw new Error('集数范围无效')
     for (let n = first; n <= last; n++) {
       if (result.includes(n) || result.length >= 1000)

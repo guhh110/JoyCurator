@@ -50,7 +50,7 @@ func TestDefaultRulesAreEditableScriptsWithAutomaticRegexTrace(t *testing.T) {
 }
 
 func TestChineseEpisodeValidationAndTrace(t *testing.T) {
-	for _, numeral := range []string{"零", "十百", "一百百", "一百零零一", "一十二三"} {
+	for _, numeral := range []string{"十百", "一百百", "一百零零一", "一十二三"} {
 		got := extract(t, r.DefaultRules(), "/source/某剧/第"+numeral+"集.mp4", "/source")
 		if len(got.Metadata.Episodes) != 0 {
 			t.Fatal(numeral, got.Metadata)
@@ -78,6 +78,29 @@ func TestChineseEpisodeValidationAndTrace(t *testing.T) {
 		}
 	}
 	t.Fatal("missing Chinese episode conversion trace")
+}
+
+func TestEpisodeZeroAcrossDefaultFormats(t *testing.T) {
+	for _, path := range []string{"/source/Show.S01E00.mkv", "/source/Show.1x00.mkv", "/source/Show/00.mkv", "/source/某剧/第零集.mp4", "/source/Show - 00.mkv", "/source/Show.S01E00-E01.mkv"} {
+		t.Run(path, func(t *testing.T) {
+			got := extract(t, r.DefaultRules(), path, "/source")
+			want := []int{0}
+			if strings.Contains(path, "E00-E01") {
+				want = []int{0, 1}
+			}
+			if !reflect.DeepEqual(got.Metadata.Episodes, want) {
+				t.Fatal(got.Metadata)
+			}
+			if strings.Contains(path, "Show") && (got.Metadata.Title == nil || *got.Metadata.Title != "Show") {
+				t.Fatal("E0 must not remain in the work title", got.Metadata)
+			}
+			for _, step := range got.Steps {
+				if step.Status == "error" {
+					t.Fatal(step)
+				}
+			}
+		})
+	}
 }
 func TestScriptEditingChangesOutputAndSnapshot(t *testing.T) {
 	rule := scriptRule("editable", r.Title, "function extract(ctx) {\n  trace(\"original\", ctx.text);\n  return \"first\";\n}")

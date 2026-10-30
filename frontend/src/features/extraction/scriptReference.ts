@@ -102,7 +102,7 @@ export const scriptReturnTypes: Record<Target, { type: string; description: stri
   mediaType: { type: '"movie" | "tv"', description: '只接受 movie（电影）或 tv（剧集）。', example: '"tv"' },
   year: { type: 'number | string', description: '1–9999 的整数，也接受整数字符串。', example: '2024' },
   season: { type: 'number | string', description: '0–999 的整数；0 为特别篇。也接受整数字符串及支持的中文数字写法（如「二」「十二」）。', example: '2' },
-  episodes: { type: 'number[] | number | string', description: '推荐返回整数数组；也接受单集或范围字符串（如 "1-3,5"）。每集为 1–9999，不可重复，最多 1000 集；未命中返回 null，不要返回空数组。', example: '[3, 4]' },
+  episodes: { type: 'number[] | number | string', description: '推荐返回整数数组；也接受单集或范围字符串（如 "0-3,5"）。每集为 0–9999，不可重复，最多 1000 集；未命中返回 null，不要返回空数组。', example: '[3, 4]' },
   releaseTag: { type: 'string', description: '非空发布标签，自动去除两端空白。', example: '"GROUP"' },
 }
 

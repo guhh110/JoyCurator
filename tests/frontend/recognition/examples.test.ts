@@ -24,7 +24,7 @@ describe('save preflight examples', () => {
     expect(await state.run(rules.value)).toBe(false)
     expect(state.passed.value).toBe(false)
     expect(state.failures.value).toEqual(results)
-    const html = await renderToString(h(RuleExamples, { results: state.results.value, checked: true, busy: false, stale: false, error: '' }))
+    const html = await renderToString(h(RuleExamples, { results: state.results.value, checked: true, busy: false, stale: false }))
     expect(html).toContain('样例 0/1 通过')
     expect(html).toContain('执行错误：规则 season：broken script')
     expect(html).toContain('期望 null · 实际 null')

@@ -19,6 +19,7 @@ import type { Rule, Target } from './model'
 import { fieldOrder, targets } from './model'
 import RuleFieldTable from './RuleFieldTable.vue'
 import { useRuleDraft } from './useRuleDraft'
+import { useToastFeedback } from '../../app/toast'
 
 // Rule list page: manages the chain (enable, order inside a field, add, delete,
 // defaults, examples). Editing a rule happens on its own page.
@@ -32,6 +33,7 @@ const { drafts, dirty, validation, load, move, remove, markSaved } =
 const unsaved = computed(() => !!library.value && dirty.value)
 const error = ref(''),
   notice = ref('')
+useToastFeedback(error, notice, 'info')
 let initialized = false
 watch(
   library,
@@ -51,7 +53,7 @@ const syntaxProblems = computed(() => drafts.value.flatMap(draft => draftScriptD
 const saveMutation = useMutation({
   mutationFn: (rules: Rule[]) => api('/extraction/rules', { rules }, 'PUT'),
 })
-const { results: exampleResults, checkedKey, busy: checking, error: exampleError, stale: examplesStale, run: checkExamples, reset: resetExamples } = useRuleExamples(() => validation.value.errors.length ? undefined : validation.value.rules)
+const { results: exampleResults, checkedKey, busy: checking, stale: examplesStale, run: checkExamples, reset: resetExamples } = useRuleExamples(() => validation.value.errors.length ? undefined : validation.value.rules)
 const saving = saveMutation.isPending
 const submitting = ref(false)
 const resetting = ref(false)
@@ -97,6 +99,7 @@ async function reset() {
     load(library.value.defaults, library.value.sourceScripts, false)
     resetExamples()
     error.value = ''
+    notice.value = ''
     notice.value = '默认规则已载入，保存后生效'
   } finally {
     resetting.value = false
@@ -178,8 +181,6 @@ async function examples() {
         </button>
       </div>
 
-      <p v-if="error" class="notice error" role="alert">{{ error }}</p>
-      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
       <div v-if="validation.errors.length" class="banner" role="alert">
         <strong
           >{{ validation.errors.length }} 条规则需修正，修正前无法保存：</strong
@@ -193,7 +194,7 @@ async function examples() {
         </button>
       </div>
       <p v-if="syntaxProblems.length" class="notice error" role="alert">规则包含脚本错误，请进入编辑页修正后保存。</p>
-      <RuleExamples :results="exampleResults" :checked="!!checkedKey" :busy="checking" :stale="examplesStale" :error="exampleError" />
+      <RuleExamples :results="exampleResults" :checked="!!checkedKey" :busy="checking" :stale="examplesStale" />
 
       <fieldset class="list-area" :disabled="busy">
         <RuleFieldTable

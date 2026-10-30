@@ -148,7 +148,7 @@ func validateEpisodes(nums []int) (any, error) {
 	}
 	seen := map[int]bool{}
 	for _, n := range nums {
-		if n < 1 || n > 9999 || seen[n] {
+		if n < 0 || n > 9999 || seen[n] {
 			return nil, errors.New("集数超出范围或重复")
 		}
 		seen[n] = true

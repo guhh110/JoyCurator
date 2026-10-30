@@ -7,6 +7,7 @@ import {
   type Settings,
 } from '../api'
 import { keys } from './query'
+import { useToastFeedback } from './toast'
 
 export function createRuntime() {
   const client = useQueryClient()
@@ -15,6 +16,7 @@ export function createRuntime() {
     detailId = ref(''),
     detailTitle = ref(''),
     undoing = ref<Run | null>(null)
+  useToastFeedback(error)
   const settingsQuery = useQuery({
     queryKey: keys.settings,
     queryFn: ({ signal }) =>
@@ -25,7 +27,8 @@ export function createRuntime() {
     queryFn: ({ signal }) =>
       api<Batch | null>('/batches', undefined, 'GET', { signal }),
     staleTime: 0,
-    refetchInterval: (query) => (query.state.data?.active ? 1200 : 5000),
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => (query.state.data?.active ? 1200 : false),
   })
   const activeQuery = useQuery({
     queryKey: computed(() => keys.run(activeId.value)),

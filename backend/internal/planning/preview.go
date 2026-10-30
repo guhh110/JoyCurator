@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"joycurator/internal/infra/fsops"
 	"joycurator/internal/infra/scanner"
 	"joycurator/internal/matching"
 	"joycurator/internal/metadata"
@@ -34,6 +35,9 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 	if in.Mode != "copy" && in.Mode != "move" && in.Mode != "hardlink" {
 		return nil, errors.New("整理方式无效")
 	}
+	if in.DuplicatePolicy != "error" && in.DuplicatePolicy != "skip" && in.DuplicatePolicy != "overwrite" {
+		return nil, errors.New("重复处理方式无效")
+	}
 	if in.Type != "movie" && in.Type != "tv" || in.TMDBID <= 0 {
 		return nil, errors.New("请先选择作品")
 	}
@@ -51,7 +55,7 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 		return nil, err
 	}
 	entry := resolved.Entry
-	plan := &Plan{ID: model.Key(), Title: entry.Title, Type: in.Type, TMDBID: in.TMDBID, Mode: in.Mode, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(15 * time.Minute)}
+	plan := &Plan{ID: model.Key(), Title: entry.Title, Type: in.Type, TMDBID: in.TMDBID, Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(15 * time.Minute)}
 	seen := map[string]model.Operation{}
 	free := map[uint64]int64{}
 	needed := map[uint64]int64{}
@@ -67,7 +71,11 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 			return
 		}
 		seen[targetKey] = op
-		if _, e := a.access.Stat(op.Target); e == nil {
+		if existing, e := a.access.Stat(op.Target); e == nil {
+			if !existing.Mode().IsRegular() {
+				issue("目标不是普通文件，不能跳过或覆盖：" + op.Target)
+				return
+			}
 			if op.Kind == "nfo" || op.Kind == "image" {
 				row.Artifacts = append(row.Artifacts, "保留已有 "+filepath.Base(op.Target))
 				if owned, err := a.ownership.Owned(op.Target); err != nil {
@@ -79,8 +87,25 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 				}
 				return
 			}
-			issue("目标已存在：" + op.Target)
-			return
+			switch in.DuplicatePolicy {
+			case "skip":
+				if op.Kind == "video" {
+					row.Action = "skip"
+				}
+				row.Artifacts = append(row.Artifacts, "跳过已有 "+filepath.Base(op.Target))
+				return
+			case "overwrite":
+				row.Action = "overwrite"
+				op.Backup = &model.Operation{Kind: "backup", Mode: "move", Source: op.Target,
+					Target: filepath.Join(filepath.Dir(op.Target), ".joycurator-backup-"+model.Key()),
+					Size:   existing.Size(), MTime: existing.ModTime().UnixNano(), SourceIdentity: fsops.Identity(existing), Status: "pending"}
+				if op.Kind != "video" {
+					row.Artifacts = append(row.Artifacts, "覆盖已有 "+filepath.Base(op.Target))
+				}
+			default:
+				issue("目标已存在：" + op.Target)
+				return
+			}
 		} else if !errors.Is(e, os.ErrNotExist) {
 			issue(e.Error())
 			return
@@ -124,7 +149,7 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 			continue
 		}
 		files[f.Path] = true
-		row := Row{Source: f.Path, Season: f.Season, Episodes: f.Episodes, Artifacts: []string{}, Issues: []string{}}
+		row := Row{Source: f.Path, Season: f.Season, Episodes: f.Episodes, Artifacts: []string{}, Issues: []string{}, Action: "create"}
 		fail := func(msg string) { row.Issues = append(row.Issues, msg); plan.Issues = append(plan.Issues, msg) }
 		info, e := a.access.Stat(f.Path)
 		if e != nil || !info.Mode().IsRegular() || info.Size() != f.Size || info.ModTime().UnixNano() != f.MTime {
@@ -143,7 +168,7 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 				return nil, err
 			}
 			for _, check := range checks {
-				if !check.Exists || check.Duplicate {
+				if !check.NonNegative || !check.Exists || check.Duplicate {
 					fail(fmt.Sprintf("第 %d 季没有有效的第 %d 集", f.Season, check.Number))
 				}
 			}
@@ -162,6 +187,10 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 		}
 		row.Target = target
 		add(&row, model.Operation{Kind: "video", Mode: in.Mode, Source: f.Path, Target: target, Size: f.Size, MTime: f.MTime})
+		if row.Action == "skip" {
+			plan.Rows = append(plan.Rows, row)
+			continue
+		}
 		// Associate only subtitles with the exact video stem plus optional language/flags.
 		root, rel, e := a.access.Root(filepath.Dir(f.Path))
 		if e != nil {

@@ -12,6 +12,7 @@ import type {
   Batch,
   BatchPreview,
   Entry,
+  DuplicatePolicy,
   Episode,
   Recognition,
   RecognitionItem,
@@ -21,6 +22,7 @@ import type {
 import {
   recognitionEdits,
   recognitionGroups,
+  sortByEpisode,
   sourceOf,
   sourceSummaries,
 } from '../../recognition'
@@ -31,6 +33,7 @@ import { useAction } from '../../app/useAction'
 import { keys } from '../../app/query'
 import { confirmAction } from '../../app/confirm'
 import { useEpisodeOffset } from './useEpisodeOffset'
+import { useToastFeedback } from '../../app/toast'
 
 export function useAutomaticRecognition() {
   const runtime = useRuntime()
@@ -58,15 +61,16 @@ export function useAutomaticRecognition() {
     editEpisodes = ref(''),
     seasons = ref<Season[]>([]),
     editError = ref('')
+  useToastFeedback(searchError)
+  useToastFeedback(editError)
   const transfer = ref<RecognitionItem | null>(null),
     transferGroup = ref('new')
-  const groupSeason = ref<number>(1),
+  const comparisonSeason = ref<number>(1),
     freshImport = ref(false)
   const groupSeasons = ref<Season[]>([])
   const groupSeasonsLoading = ref(false)
   const groupSeasonsError = ref('')
   const detailView = ref<'files' | 'episodes'>('files')
-  const savingSeason = ref(false)
   let seasonRequest = 0
   let alive = true,
     searchRequest = 0,
@@ -133,7 +137,7 @@ export function useAutomaticRecognition() {
     const request = ++seasonRequest
     groupSeasons.value = []
     groupSeasonsError.value = ''
-    groupSeason.value = -1
+    comparisonSeason.value = -1
     groupSeasonsLoading.value = !!id
     if (!id) return
     try {
@@ -145,7 +149,7 @@ export function useAutomaticRecognition() {
       if (!alive || request !== seasonRequest) return
       groupSeasons.value = value
       const existing = current.value?.files[0]?.season
-      groupSeason.value = value.find((season) => season.number === existing)?.number ?? value[0]?.number ?? -1
+      comparisonSeason.value = value.find((season) => season.number === existing)?.number ?? value[0]?.number ?? -1
     } catch (e) {
       if (alive && request === seasonRequest) groupSeasonsError.value = (e as Error).message
     } finally {
@@ -153,15 +157,15 @@ export function useAutomaticRecognition() {
     }
   }
   const episodeQuery = useQuery({
-    queryKey: computed(() => ['tmdb', 'episodes', current.value?.entry?.tmdbId, groupSeason.value]),
-    enabled: computed(() => active.value && current.value?.entry?.type === 'tv' && groupSeason.value >= 0 && detailView.value === 'episodes'),
-    queryFn: ({ signal }) => api<Episode[]>(`/episodes?id=${current.value!.entry!.tmdbId}&season=${groupSeason.value}`, undefined, 'GET', { signal }),
+    queryKey: computed(() => ['tmdb', 'episodes', current.value?.entry?.tmdbId, comparisonSeason.value]),
+    enabled: computed(() => active.value && current.value?.entry?.type === 'tv' && comparisonSeason.value >= 0 && detailView.value === 'episodes'),
+    queryFn: ({ signal }) => api<Episode[]>(`/episodes?id=${current.value!.entry!.tmdbId}&season=${comparisonSeason.value}`, undefined, 'GET', { signal }),
     staleTime: 60_000,
   })
   async function retryComparison() {
     if (groupSeasonsError.value) {
       await loadGroupSeasons(current.value?.entry?.type === 'tv' ? current.value.entry.tmdbId : null)
-    } else if (groupSeason.value >= 0) {
+    } else if (comparisonSeason.value >= 0) {
       await episodeQuery.refetch()
     }
   }
@@ -198,13 +202,16 @@ export function useAutomaticRecognition() {
     hardlink: '硬链接',
   }
   const previewPage = ref(1)
-  const previewRows = computed(
-    () =>
-      preview.value?.rows.slice(
-        (previewPage.value - 1) * 30,
-        previewPage.value * 30,
-      ) || [],
-  )
+  const duplicatePolicy = ref<DuplicatePolicy>('skip')
+  const previewReady = computed(() => !!preview.value && preview.value.duplicatePolicy === duplicatePolicy.value && !busy.value && !preview.value.issues.length && preview.value.rows.some(row => row.action !== 'skip'))
+  const previewRows = computed(() => {
+    if (!preview.value) return []
+    const groupOrder = new Map(preview.value.groups.flatMap((group, index) => group.rows.map(row => [row.source, index] as const)))
+    const ungrouped = preview.value.groups.length
+    return sortByEpisode(preview.value.rows, row => ({ ...row, path: row.source }))
+      .sort((a, b) => (groupOrder.get(a.source) ?? ungrouped) - (groupOrder.get(b.source) ?? ungrouped))
+      .slice((previewPage.value - 1) * 30, previewPage.value * 30)
+  })
 
   const taskQuery = useQuery({
     queryKey: computed(() => keys.recognition(task.value?.id || 'latest')),
@@ -292,7 +299,7 @@ export function useAutomaticRecognition() {
           throw new Error('工作区已更新，请关闭弹窗后重新打开')
         await save(items)
         if (current.value?.entry?.tmdbId === offsetEditor.context.value?.tmdbId)
-          groupSeason.value = offsetEditor.season.value
+          comparisonSeason.value = offsetEditor.season.value
         saved = true
         notice.value = '季集映射已保存，请检查文件校验状态后重新生成整理预览'
       })
@@ -301,7 +308,7 @@ export function useAutomaticRecognition() {
   })
   function openOffset() {
     if (!current.value || groupSeasonsLoading.value) return
-    offsetEditor.open(current.value.files, groupSeasons.value, groupSeason.value, source.value)
+    offsetEditor.open(current.value.files, groupSeasons.value, comparisonSeason.value, source.value)
   }
   function openBrowser(fresh = false) {
     freshImport.value = fresh
@@ -479,6 +486,7 @@ export function useAutomaticRecognition() {
       }
   }
   async function saveEdit() {
+    editError.value = ''
     try {
       if (
         !seasons.value.some(season => season.number === editSeason.value)
@@ -497,29 +505,14 @@ export function useAutomaticRecognition() {
       editError.value = (e as Error).message
     }
   }
-  async function changeGroupSeason(season: number) {
-    const group = current.value
-    if (locked.value || !group || groupSeasonsLoading.value || !groupSeasons.value.some(item => item.number === season)) return
-    const previous = groupSeason.value
-    groupSeason.value = season
-    if (group.files.every(file => file.season === season)) return
-    savingSeason.value = true
-    let saved = false
-    try {
-      await act(async () => {
-        for (const file of group.files) file.season = season
-        await save()
-        saved = true
-      })
-    } finally {
-      savingSeason.value = false
-      if (!saved && current.value?.id === group.id) groupSeason.value = previous
-    }
+  function viewSeason(season: number) {
+    if (current.value?.entry?.type !== 'tv' || groupSeasonsLoading.value || !groupSeasons.value.some(item => item.number === season)) return
+    comparisonSeason.value = season
   }
   async function assignEpisode(file: RecognitionItem, number: number) {
     if (locked.value || !current.value?.files.includes(file)) return
     if (!episodeQuery.data.value?.some(episode => episode.number === number)) return
-    const season = groupSeason.value
+    const season = comparisonSeason.value
     await act(async () => {
       file.season = season
       file.episodes = [number]
@@ -548,15 +541,23 @@ export function useAutomaticRecognition() {
   async function prepare() {
     await act(async () => {
       if (!task.value) return
+      if (!preview.value) duplicatePolicy.value = 'skip'
       preview.value = await api<BatchPreview>('/batches/preview', {
         recognitionId: task.value.id,
         revision: task.value.revision,
         mode: mode.value,
+        duplicatePolicy: duplicatePolicy.value,
       })
       previewPage.value = 1
     })
   }
+  async function changeDuplicatePolicy(value: string) {
+    if (busy.value || !preview.value || !['skip', 'overwrite'].includes(value)) return
+    duplicatePolicy.value = value as DuplicatePolicy
+    await prepare()
+  }
   async function execute() {
+    if (!previewReady.value) return
     await act(async () => {
       if (!preview.value) return
       const value = await api<Batch>('/batches/execute', {
@@ -666,10 +667,9 @@ export function useAutomaticRecognition() {
     editError,
     transfer,
     transferGroup,
-    groupSeason,
+    comparisonSeason,
     detailView,
-    savingSeason,
-    changeGroupSeason,
+    viewSeason,
     episodeQuery,
     retryComparison,
     assignEpisode,
@@ -694,6 +694,9 @@ export function useAutomaticRecognition() {
     modes,
     previewPage,
     previewRows,
+    duplicatePolicy,
+    changeDuplicatePolicy,
+    previewReady,
     taskQuery,
     loading,
     act,

@@ -26,7 +26,7 @@ func batchFixture(t *testing.T) (*App, string, matching.Workspace, *planning.Pla
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
+	plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
 	if err != nil || len(plan.Issues) > 0 {
 		t.Fatal(plan, err)
 	}
@@ -121,7 +121,7 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 		s.Rules.TVFile = "video.{ext}"
 		s.Version++
 		_, _ = testDB(t, a).Exec("UPDATE config SET value=?", jsonText(s))
-		plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
+		plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +159,7 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 		if err := a.store.SaveWorkspace(&task); err != nil {
 			t.Fatal(err)
 		}
-		plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
+		plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
 		if err != nil {
 			t.Fatal(err)
 		}

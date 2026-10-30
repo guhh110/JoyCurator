@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"joycurator/internal/infra/fsops"
 	"joycurator/internal/model"
 )
 
@@ -25,7 +26,19 @@ func (a *Service) ValidateOps(ops []model.Work) error {
 				return errors.New("文件已变化，请重新预览：" + filepath.Base(op.Source))
 			}
 		}
-		if _, err := a.access.Stat(op.Target); err == nil {
+		if op.Backup != nil {
+			backup := op.Backup
+			info, err := a.access.Stat(op.Target)
+			if err != nil || !info.Mode().IsRegular() || info.Size() != backup.Size || info.ModTime().UnixNano() != backup.MTime || fsops.Identity(info) != backup.SourceIdentity {
+				return errors.New("待覆盖文件已变化，请重新预览：" + op.Target)
+			}
+			if backup.Source != op.Target || backup.Target == op.Target || backup.SourceIdentity == "" {
+				return errors.New("覆盖备份信息无效")
+			}
+			if _, err := a.access.Stat(backup.Target); !errors.Is(err, os.ErrNotExist) {
+				return errors.New("备份路径不可用，请重新预览：" + backup.Target)
+			}
+		} else if _, err := a.access.Stat(op.Target); err == nil {
 			return errors.New("目标已存在，请重新预览：" + op.Target)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err

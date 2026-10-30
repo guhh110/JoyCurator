@@ -80,8 +80,8 @@ func (m *Resolver) Validate(ctx context.Context, item *Item) {
 	}
 	m.log.Add("validate", "season-episodes", "info", "获取所选季的单集列表", map[string]any{"tmdbId": id, "season": item.Season, "episodes": episodes, "memoHit": ok})
 	for _, check := range CheckEpisodes(item.Episodes, episodes) {
-		if !check.Positive || !check.Exists || check.Duplicate {
-			m.log.Add("validate", "episode-check", "review", "集数无效、不存在或重复", map[string]any{"number": check.Number, "exists": check.Exists, "duplicate": check.Duplicate, "positive": check.Positive})
+		if !check.NonNegative || !check.Exists || check.Duplicate {
+			m.log.Add("validate", "episode-check", "review", "集数无效、不存在或重复", map[string]any{"number": check.Number, "exists": check.Exists, "duplicate": check.Duplicate, "nonNegative": check.NonNegative})
 			item.State, item.Reason = "review", "集数在 TMDB 中不存在或重复，请修正"
 			return
 		}

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('./', import.meta.url))
 const project = fileURLToPath(new URL('../../../', import.meta.url))
+let failedSecondSeason = false
 const server = await createServer({
   configFile: false,
   root,
@@ -15,7 +16,14 @@ const server = await createServer({
       server.middlewares.use('/api/episodes', (request, response) => {
         const season = Number(new URL(request.url, 'http://localhost').searchParams.get('season') || 1)
         response.setHeader('Content-Type', 'application/json')
-        response.end(JSON.stringify(Array.from({ length: season === 1 ? 24 : 12 }, (_, i) => ({ number: i + 1, season, name: `第 ${i + 1} 集`, airDate: '' }))))
+        if (season === 2 && !failedSecondSeason) {
+          failedSecondSeason = true
+          response.statusCode = 503
+          response.end(JSON.stringify({ message: '示例季集读取失败，请重试' }))
+          return
+        }
+        const numbers = season === 1 ? Array.from({ length: 24 }, (_, i) => i) : Array.from({ length: 12 }, (_, i) => i + 1)
+        response.end(JSON.stringify(numbers.map(number => ({ number, season, name: `第 ${number} 集`, airDate: '' }))))
       })
     },
   }],

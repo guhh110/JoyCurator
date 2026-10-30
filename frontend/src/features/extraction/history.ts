@@ -6,6 +6,7 @@ import { confirmAction } from '../../app/confirm'
 import { keys } from '../../app/query'
 import { pageNumber } from '../../app/routing'
 import type { ExtractionResult, Trace } from './model'
+import { notify, useToastFeedback } from '../../app/toast'
 
 export const historyStates: Record<string, string> = {
   completed: '已完成', running: '运行中', cancelled: '已取消',
@@ -48,6 +49,7 @@ export function useTraceRemoval(afterDelete: () => Promise<unknown>) {
   const client = useQueryClient()
   const pendingId = ref('')
   const error = ref('')
+  useToastFeedback(error)
   const mutation = useMutation({
     mutationFn: (id: string) => api(`/extraction/traces/${encodeURIComponent(id)}`, undefined, 'DELETE'),
   })
@@ -67,6 +69,7 @@ export function useTraceRemoval(afterDelete: () => Promise<unknown>) {
       client.removeQueries({ queryKey: keys.trace(trace.id) })
       await client.invalidateQueries({ queryKey: keys.traces, refetchType: 'none' })
       await afterDelete()
+      notify('识别历史已清理', 'success')
     } catch (cause) {
       error.value = (cause as Error).message
     } finally {

@@ -11,6 +11,7 @@ import {
 } from '@lucide/vue'
 import { api, name } from '../api'
 import Modal from './Modal.vue'
+import { useToastFeedback } from '../app/toast'
 const props = defineProps<{ directory?: boolean; confirmLabel?: string }>()
 const emit = defineEmits<{ close: []; select: [paths: string[]] }>()
 const path = ref(''),
@@ -19,6 +20,7 @@ const path = ref(''),
   selected = ref(new Set<string>()),
   loading = ref(false),
   error = ref('')
+useToastFeedback(error)
 const roots = ref<string[]>([])
 const count = computed(() => selected.value.size)
 async function open(next: string) {
@@ -84,7 +86,6 @@ onMounted(() => open(''))
         placeholder="源目录路径"
       /><button class="button small" :disabled="loading">前往</button>
     </form>
-    <p v-if="error" role="alert" class="notice error">{{ error }}</p>
     <div class="browser-list">
       <div v-if="loading" class="empty small-empty">
         <LoaderCircle class="spin" />读取目录…
@@ -125,7 +126,10 @@ onMounted(() => open(''))
           <ChevronRight :size="17" />
         </button>
       </div>
-      <p v-if="!loading && !items.length" class="empty small-empty">
+      <p v-if="!loading && error && !items.length" class="empty small-empty">
+        未能读取目录，请检查路径后重试。
+      </p>
+      <p v-else-if="!loading && !items.length" class="empty small-empty">
         这个目录下没有{{ directory ? '子目录' : '可添加的视频' }}
       </p>
     </div>

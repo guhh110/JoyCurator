@@ -101,7 +101,7 @@ func TestTVPreviewExecuteUndoWithSharedArtifacts(t *testing.T) {
 	a, root := fixture(t)
 	f1 := mediaFile(t, a, root, "山海旅人.S01E01.mkv")
 	f2 := mediaFile(t, a, root, "山海旅人.S01E02.mkv")
-	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{f1, f2}})
+	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{f1, f2}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +137,9 @@ func TestSharedNFORemainsUntilLastBatchUndo(t *testing.T) {
 	a, root := fixture(t)
 	f1 := mediaFile(t, a, root, "Show.S01E01.mkv")
 	f2 := mediaFile(t, a, root, "Show.S01E02.mkv")
-	p, _ := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{f1}})
+	p, _ := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{f1}})
 	r1 := executePlan(t, a, p)
-	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{f2}})
+	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{f2}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestSharedNFORemainsUntilLastBatchUndo(t *testing.T) {
 func TestStalePlanAndSourceChangesRejected(t *testing.T) {
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
-	in := planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}}
+	in := planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}}
 	p, err := a.dependencies.Planning.Preview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +202,7 @@ func TestStalePlanAndSourceChangesRejected(t *testing.T) {
 func TestNoOverwriteAndModifiedTargetStopsUndo(t *testing.T) {
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
-	in := planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}}
+	in := planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}}
 	p, _ := a.dependencies.Planning.Preview(context.Background(), in)
 	r := executePlan(t, a, p)
 	p, err := a.dependencies.Planning.Preview(context.Background(), in)
@@ -238,7 +238,7 @@ func TestMoveAndHardlink(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			a, root := fixture(t)
 			f := mediaFile(t, a, root, "电影.2024.mkv")
-			p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: mode, Files: []model.File{f}})
+			p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: mode, Files: []model.File{f}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -328,7 +328,7 @@ func TestScanExcludesTargetsSymlinksAndPreservesUnknownSeason(t *testing.T) {
 func TestInterruptedRunCanResumeAfterRestart(t *testing.T) {
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
-	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}})
+	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}})
 	if err != nil {
 		t.Fatal(err)
 	}

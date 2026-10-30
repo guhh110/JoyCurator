@@ -98,7 +98,7 @@ func TestConversionsAndMergedEpisodes(t *testing.T) {
 		target r.Target
 		value  string
 		want   string
-	}{{r.Season, "零", `0`}, {r.Season, "二十三", `23`}, {r.Episodes, "1-3,5", `[1,2,3,5]`}, {r.MediaType, "movie", `"movie"`}} {
+	}{{r.Season, "零", `0`}, {r.Season, "二十三", `23`}, {r.Episodes, "0", `[0]`}, {r.Episodes, "0-2,4", `[0,1,2,4]`}, {r.Episodes, "1-3,5", `[1,2,3,5]`}, {r.MediaType, "movie", `"movie"`}} {
 		rule := regexRule("convert", 1, tc.target, `(?P<value>.+)`)
 		got := extract(t, []r.Rule{rule}, "/"+tc.value+".mkv", "/")
 		raw, _ := json.Marshal(got.Steps[0].After)
@@ -106,7 +106,7 @@ func TestConversionsAndMergedEpisodes(t *testing.T) {
 			t.Fatalf("%s: %s", tc.value, raw)
 		}
 	}
-	for _, value := range []string{"0", "1,1", "4-2", "1-1001", "10000"} {
+	for _, value := range []string{"-1", "0,0", "1,1", "4-2", "0-1000", "1-1001", "10000"} {
 		got := extract(t, []r.Rule{regexRule("episodes", 1, r.Episodes, `(?P<value>.+)`)}, "/"+value+".mkv", "/")
 		if got.Steps[0].Status != "error" || len(got.Metadata.Episodes) != 0 {
 			t.Fatal(value, got)

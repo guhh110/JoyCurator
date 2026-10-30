@@ -13,7 +13,7 @@ const route = useRoute(), router = useRouter()
 const detailQuery = useHistoryDetail(toRef(props, 'traceId'))
 const detail = detailQuery.data
 const back = computed(() => ({ name: 'extraction-history', query: historyContext(route.query) }))
-const { remove, pendingId, error } = useTraceRemoval(() => router.replace(back.value))
+const { remove, pendingId } = useTraceRemoval(() => router.replace(back.value))
 const view = ref<'steps' | 'metadata' | 'json'>('steps')
 const tabs = [{ value: 'steps', label: '执行过程' }, { value: 'metadata', label: '提取结果' }, { value: 'json', label: '原始 JSON' }] as const
 </script>
@@ -26,17 +26,16 @@ const tabs = [{ value: 'steps', label: '执行过程' }, { value: 'metadata', la
         <button v-if="detail && !detailQuery.error.value && detail.trace.status !== 'running'" class="button danger" :disabled="!!pendingId" @click="remove(detail.trace)">{{ pendingId ? '处理中…' : '清理本条历史' }}</button>
       </template>
     </PageHeader>
-    <p v-if="error" class="notice error" role="alert">{{ error }}</p>
     <QueryState :loading="detailQuery.isPending.value" :error="detailQuery.error.value" @retry="detailQuery.refetch()">
       <template v-if="detail">
         <section class="pane trace-summary">
           <div class="trace-summary-heading"><h2>{{ name(detail.trace.path) }}</h2><span class="state-pill" :class="detail.trace.status">{{ historyStates[detail.trace.status] || detail.trace.status }}</span></div>
-          <EliText :text="detail.trace.path" class="trace-path" />
+          <EliText :text="detail.trace.path" ellipsis="start" class="trace-path" />
           <dl>
             <div><dt>开始时间</dt><dd>{{ historyTime(detail.trace.startedAt) }}</dd></div>
             <div><dt>结束时间</dt><dd>{{ historyTime(detail.trace.finishedAt) }}</dd></div>
             <div><dt>执行步骤</dt><dd>{{ detail.trace.stepCount }} 步</dd></div>
-            <div class="trace-root"><dt>解析边界</dt><dd><EliText :text="detail.trace.root || '—'" /></dd></div>
+            <div class="trace-root"><dt>解析边界</dt><dd><EliText :text="detail.trace.root || '—'" ellipsis="start" /></dd></div>
           </dl>
           <p v-if="detail.trace.error" class="notice error" role="alert">{{ detail.trace.error }}</p>
         </section>

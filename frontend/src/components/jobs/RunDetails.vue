@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { Undo2 } from '@lucide/vue'
 import Modal from '../Modal.vue'
 import QueryState from '../ui/QueryState.vue'
+import EliText from '../ui/EliText.vue'
 import { useRuntime } from '../../app/runtime'
 import {
   date,
@@ -48,7 +49,8 @@ const detail = computed(() => detailQuery.data.value)
           <article v-for="(op, index) in detail.ops" :key="index">
             <span class="operation-kind">{{ kindNames[op.kind] }}</span>
             <div>
-              <code>{{ op.target }}</code>
+              <code><EliText :text="op.target" ellipsis="start" /></code>
+              <p v-if="op.backup" class="muted tiny">覆盖备份：<EliText :text="op.backup.target" ellipsis="start" /></p>
               <p v-if="op.error" class="danger">{{ op.error }}</p>
             </div>
             <span

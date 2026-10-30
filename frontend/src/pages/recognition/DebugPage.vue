@@ -10,7 +10,7 @@ import {
   targets,
   valueText,
 } from '../../features/extraction/model'
-const { path, root, busy, error, notice, result, run, cancel } = useExtraction()
+const { path, root, busy, result, run, cancel } = useExtraction()
 const router = useRouter()
 // For each field: its value and the last applied step, which is what decided it.
 const fields = computed(() =>
@@ -70,15 +70,13 @@ function edit(ruleId: string, event?: ScriptEvent) {
         TMDB，不保存执行轨迹。
       </p>
       <div class="actions">
-        <button v-if="busy" type="button" class="button" @click="cancel">
+        <button v-if="busy" type="button" class="button" @click="cancel()">
           取消请求</button
         ><button class="button primary" :disabled="busy">
           {{ busy ? '执行中…' : '开始调试' }}
         </button>
       </div>
     </form>
-    <p v-if="error" class="notice error" role="alert">{{ error }}</p>
-    <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <template v-if="result">
       <section class="pane field-summary" aria-label="字段识别结果">
         <header class="pane-head"><h2>字段结果</h2></header>

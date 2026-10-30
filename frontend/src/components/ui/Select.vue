@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import EliText from './EliText.vue'
 import { Check, ChevronDown } from '@lucide/vue'
 import {
   SelectRoot, SelectTrigger, SelectValue, SelectPortal, SelectContent,
@@ -13,9 +14,11 @@ const props = defineProps<{
   disabled?: boolean
   label: string
   id?: string
+  ellipsis?: 'start' | 'end'
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const anchor = ref<HTMLElement>()
+const selectedOption = computed(() => props.options.find(option => option.value === props.modelValue))
 const portalTarget = ref<HTMLElement | string>('body')
 onMounted(() => { portalTarget.value = anchor.value?.closest('dialog') || 'body' })
 // Reka reserves the empty string for placeholders. Encode every option so an
@@ -31,14 +34,15 @@ function update(value: unknown) {
   <span ref="anchor" class="ui-select-anchor">
   <SelectRoot :model-value="modelValue === undefined ? undefined : optionKey(modelValue)" :disabled="disabled" @update:model-value="update">
     <SelectTrigger :id="id" class="ui-select-trigger" :aria-label="label">
-      <SelectValue :placeholder="placeholder" />
+      <SelectValue v-if="ellipsis" :placeholder="placeholder"><EliText v-if="selectedOption" :text="selectedOption.label" :ellipsis="ellipsis" :focusable="false" /><template v-else>{{ placeholder }}</template></SelectValue>
+      <SelectValue v-else :placeholder="placeholder" />
       <ChevronDown :size="14" />
     </SelectTrigger>
     <SelectPortal :to="portalTarget">
       <SelectContent class="ui-select-content" position="popper" :side-offset="5" align="end">
         <SelectViewport class="ui-select-viewport">
-          <SelectItem v-for="option in options" :key="option.value" :value="optionKey(option.value)" class="ui-select-item">
-            <SelectItemText>{{ option.label }}</SelectItemText>
+          <SelectItem v-for="option in options" :key="option.value" :value="optionKey(option.value)" :text-value="option.label" class="ui-select-item">
+            <SelectItemText><EliText v-if="ellipsis" :text="option.label" :ellipsis="ellipsis" :focusable="false" /><template v-else>{{ option.label }}</template></SelectItemText>
             <SelectItemIndicator class="ui-select-check"><Check :size="14" /></SelectItemIndicator>
           </SelectItem>
         </SelectViewport>
@@ -54,6 +58,8 @@ function update(value: unknown) {
 .ui-select-trigger { width:100%; min-width:0; }
 .ui-select-trigger > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .ui-select-trigger > svg { color:var(--muted); flex-shrink:0; }
+.ui-select-trigger .eli-text { display:flex; width:100%; pointer-events:auto; }
+.ui-select-item > span:first-child { min-width:0; max-width:100%; }
 .ui-select-trigger:hover:not(:disabled) { border-color:#cfc5ee; background:#fcfbfe; }
 .ui-select-trigger[data-state='open'] { border-color:#b2a3e8; box-shadow:0 0 0 3px #7863ca12; }
 .ui-select-content { z-index:110; min-width:var(--reka-select-trigger-width); max-height:min(320px, var(--reka-select-content-available-height)); overflow:auto; border:1px solid #e6e3ed; border-radius:9px; background:#fff; color:#333543; box-shadow:0 8px 28px #29204420; }

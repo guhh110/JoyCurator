@@ -18,6 +18,7 @@ import { useUnsavedChanges } from './useUnsavedChanges'
 import { draftScriptDiagnostics, runtimeDiagnostics, type ScriptDiagnostic } from './scriptDiagnostics'
 import { useRuleExamples } from './useRuleExamples'
 import RuleExamples from './RuleExamples.vue'
+import { useToastFeedback } from '../../app/toast'
 import {
   createRuleDraft,
   draftFingerprint,
@@ -44,6 +45,7 @@ const saved = ref('')
 const originalId = ref('')
 const error = ref(''),
   notice = ref('')
+useToastFeedback(error, notice)
 const focus = ref<{ phase: string; line: number; request: number }>()
 let focusRequest = 0
 const creating = computed(() => props.ruleId === 'new')
@@ -131,9 +133,9 @@ const ownStep = computed(() =>
 )
 const runtimeProblems = computed(() => stale.value ? [] : runtimeDiagnostics(ownStep.value))
 const problems = computed(() => [...syntaxProblems.value, ...runtimeProblems.value])
-const { results: exampleResults, checkedKey, error: exampleError, busy: checking, stale: examplesStale, run: checkExamples, reset: resetExamples } = useRuleExamples(() => chain.value)
+const { results: exampleResults, checkedKey, busy: checking, stale: examplesStale, run: checkExamples, reset: resetExamples } = useRuleExamples(() => chain.value)
 watch(() => props.ruleId, () => {
-  cancel()
+  cancel(true)
   result.value = null
   path.value = ''
   root.value = ''
@@ -143,6 +145,7 @@ watch(() => props.ruleId, () => {
 async function trial() {
   if (!chain.value || testing.value) return
   if (!path.value.trim()) {
+    testError.value = ''
     testError.value = '请先填写完整文件路径'
     return
   }
@@ -227,10 +230,7 @@ useUnsavedChanges(dirty, '这条规则')
       :error="libraryQuery.error.value"
       @retry="libraryQuery.refetch()"
     >
-      <p v-if="error" class="notice error" role="alert">{{ error }}</p>
-      <p v-if="notice && !dirty" class="notice good" role="status">
-        {{ notice }}
-      </p>
+      <div v-if="!draft && error" class="empty">规则不可用，请返回规则列表。</div>
       <div v-if="draft" class="edit-layout">
         <section class="pane editor-pane">
           <fieldset class="editor-fields" :disabled="submitting">
@@ -259,7 +259,7 @@ useUnsavedChanges(dirty, '这条规则')
               autocomplete="off"
             />
             <div class="trial-actions">
-              <button v-if="testing" class="button" type="button" @click="cancel">
+              <button v-if="testing" class="button" type="button" @click="cancel()">
                 取消
               </button>
               <button class="button" type="button" :disabled="!chain || checking || submitting" @click="chain && checkExamples(chain)">验证全部样例</button>
@@ -268,15 +268,12 @@ useUnsavedChanges(dirty, '这条规则')
               </button>
             </div>
           </form>
-          <RuleExamples :results="exampleResults" :checked="!!checkedKey" :busy="checking" :stale="examplesStale" :error="exampleError" />
+          <RuleExamples :results="exampleResults" :checked="!!checkedKey" :busy="checking" :stale="examplesStale" />
           <div v-if="problems.length" class="script-problems" role="alert">
             <button v-for="(problem, index) in problems" :key="index" class="text-button" type="button" @click="locateProblem(problem)">
               {{ problem.phase === 'source' ? '来源脚本' : '脚本' }} L{{ problem.line }}:{{ problem.column }} · {{ problem.message }}
             </button>
           </div>
-          <p v-if="testError" class="notice error" role="alert">
-            {{ testError }}
-          </p>
           <template v-if="result">
             <p v-if="stale" class="notice warning" role="status">
               代码或路径改过，下方是上次的结果。

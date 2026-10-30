@@ -7,10 +7,22 @@ export interface OffsetMapping {
 }
 
 export function originalEpisodesValid(file: RecognitionItem) {
-  const episodes = file.metadata.episodes
+  return episodesValid(file.metadata.episodes)
+}
+
+function episodesValid(episodes: number[]) {
   return episodes.length > 0 && episodes.length <= 1000 &&
-    episodes.every(number => Number.isSafeInteger(number) && number > 0) &&
+    episodes.every(number => Number.isSafeInteger(number) && number >= 0) &&
     new Set(episodes).size === episodes.length
+}
+
+export function currentEpisodeOffset(file: RecognitionItem): number | null {
+  if (!originalEpisodesValid(file) || !episodesValid(file.episodes) || file.episodes.length !== file.metadata.episodes.length) return null
+  // Episode order is not meaningful; only a uniform shift has a single offset.
+  const original = [...file.metadata.episodes].sort((a, b) => a - b)
+  const current = [...file.episodes].sort((a, b) => a - b)
+  const offset = current[0]! - original[0]!
+  return current.every((number, index) => number - original[index]! === offset) ? offset : null
 }
 
 export function offsetRows(
@@ -24,14 +36,14 @@ export function offsetRows(
 ) {
   const allowed = new Set(episodes?.map(episode => episode.number))
   const rows = files.map(file => {
-    const originalValid = originalEpisodesValid(file)
+    const eligible = originalEpisodesValid(file)
     const mapped = file.metadata.episodes.map(number => number + offset)
     let error = ''
-    if (!originalValid) error = '缺少有效的原始集号，请单独修正'
+    if (!eligible) error = '缺少有效的原始集号，请单独修正'
     else if (!Number.isSafeInteger(offset)) error = '请输入整数偏移'
-    else if (mapped.some(number => !Number.isSafeInteger(number) || number < 1)) error = '修正后的集号必须是正整数'
+    else if (mapped.some(number => !Number.isSafeInteger(number) || number < 0)) error = '修正后的集号必须是整数，最小为 E0'
     else if (episodes && mapped.some(number => !allowed.has(number))) error = '目标集号在 TMDB 中不存在'
-    return { file, episodes: mapped, selected: selected.has(file.path), error, overlaps: [] as string[] }
+    return { file, episodes: mapped, currentOffset: currentEpisodeOffset(file), eligible, selected: selected.has(file.path), error, overlaps: [] as string[] }
   })
   // Compare the resulting workspace, including files outside the chosen source.
   const replacements = new Map(rows.filter(row => row.selected).map(row => [row.file.path, row]))

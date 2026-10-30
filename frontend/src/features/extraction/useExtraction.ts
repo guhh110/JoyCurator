@@ -1,6 +1,7 @@
 import { onScopeDispose, ref } from 'vue'
 import { api } from '../../api'
 import type { ExtractionResult, Rule } from './model'
+import { useToastFeedback } from '../../app/toast'
 
 // One owner per page. Sequence checks reject stale responses even if a transport
 // ignores abort; disposing the page also terminates its pending request.
@@ -10,6 +11,7 @@ export function useExtraction() {
     busy = ref(false),
     error = ref(''),
     notice = ref('')
+  useToastFeedback(error, notice, 'info')
   const result = ref<ExtractionResult | null>(null)
   let sequence = 0,
     controller: AbortController | null = null
@@ -21,10 +23,11 @@ export function useExtraction() {
     controller = null
     busy.value = false
   }
-  function cancel() {
+  function cancel(silent = false) {
+    const running = busy.value
     stop()
     error.value = ''
-    notice.value = '已取消调试'
+    notice.value = running && !silent ? '已取消调试' : ''
   }
   async function run(rules?: Rule[]) {
     stop()

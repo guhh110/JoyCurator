@@ -6,14 +6,12 @@ defineProps<{
   checked: boolean
   busy: boolean
   stale: boolean
-  error: string
 }>()
 </script>
 
 <template>
-  <section v-if="busy || checked || error" class="example-report" aria-label="保存前样例验证">
+  <section v-if="busy || checked" class="example-report" aria-label="保存前样例验证">
     <p v-if="busy" role="status">正在验证当前规则链及全部样例…</p>
-    <p v-else-if="error" class="red" role="alert">{{ error }} · 尚未保存</p>
     <template v-else>
       <p :class="stale ? 'muted' : results.some(item => !item.passed) ? 'red' : 'green'" role="status">
         {{ stale ? '验证结果已过期，请重新验证' : results.length ? `样例 ${results.filter(item => item.passed).length}/${results.length} 通过` : '规则链校验通过，尚未配置测试样例' }}
@@ -22,7 +20,7 @@ defineProps<{
       <details v-if="results.some(item => !item.passed)">
         <summary>查看失败样例</summary>
         <article v-for="(item, index) in results.filter(item => !item.passed)" :key="index">
-          <EliText :text="item.path" />
+          <EliText :text="item.path" ellipsis="start" />
           <p class="tiny muted">规则 {{ item.ruleId }} · 期望 {{ JSON.stringify(item.expected) }} · 实际 {{ JSON.stringify(item.actual) }}</p>
           <p v-if="item.error" class="tiny red">执行错误：{{ item.error }}</p>
         </article>

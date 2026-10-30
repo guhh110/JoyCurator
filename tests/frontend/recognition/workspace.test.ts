@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RecognitionItem } from '../../../frontend/src/api'
-import { recognitionEdits, recognitionGroups } from '../../../frontend/src/recognition'
+import { recognitionEdits, recognitionGroups, sortByEpisode } from '../../../frontend/src/recognition'
 function file(
   path: string,
   group: string,
@@ -32,6 +32,27 @@ function file(
   }
 }
 describe('recognition workspace', () => {
+  it('sorts season and episode numbers numerically, including E0 and merged files, without mutating inputs', () => {
+    const items = [
+      { path: '100.mkv', season: 1, episodes: [100] },
+      { path: 'unknown.mkv', season: -1, episodes: [] },
+      { path: '10.mkv', season: 1, episodes: [10] },
+      { path: 'merged.mkv', season: 1, episodes: [4, 2] },
+      { path: 'version10.mkv', season: 1, episodes: [2] },
+      { path: 'version2.mkv', season: 1, episodes: [2] },
+      { path: 'zero.mkv', season: 1, episodes: [0] },
+      { path: 'special.mkv', season: 0, episodes: [5] },
+      { path: 'season2.mkv', season: 2, episodes: [1] },
+      { path: 'missing.mkv', season: 1, episodes: [] },
+    ]
+    const before = JSON.stringify(items)
+    expect(sortByEpisode(items, item => item).map(item => item.path)).toEqual([
+      'special.mkv', 'zero.mkv', 'version2.mkv', 'version10.mkv', 'merged.mkv', '10.mkv', '100.mkv', 'missing.mkv', 'season2.mkv', 'unknown.mkv',
+    ])
+    expect(JSON.stringify(items)).toBe(before)
+    const files = items.map(item => ({ ...file(item.path, 'tv:1', 'ready'), season: item.season, episodes: item.episodes }))
+    expect(recognitionGroups(files)[0]!.files.map(item => item.path)).toEqual(sortByEpisode(items, item => item).map(item => item.path))
+  })
   it('groups mixed works and omits removed files without losing individual states', () => {
     const a = file('/a.mkv', 'movie:1', 'ready'),
       b = file('/b.mkv', 'tv:2', 'review'),

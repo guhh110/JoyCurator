@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import { api, invalidateRequests } from '../api'
 import { keys, queryClient } from './query'
+import { clearToasts } from './toast'
 export interface Session {
   initialized: boolean
   username: string
@@ -34,6 +35,7 @@ export async function clearSession() {
   session.username = ''
   await queryClient.cancelQueries()
   queryClient.clear()
+  clearToasts()
   session.username = ''
   localStorage.removeItem('joycurator-active')
 }

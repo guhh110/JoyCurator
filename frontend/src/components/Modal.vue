@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue'
+import { registerToastTarget } from '../app/toast'
 import { X } from '@lucide/vue'
 defineProps<{ title: string; wide?: boolean; locked?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement>()
 let previous: HTMLElement | null = null
+let releaseToasts: (() => void) | undefined
 onMounted(() => {
   previous = document.activeElement as HTMLElement
   dialog.value?.showModal()
+  if (dialog.value) releaseToasts = registerToastTarget(dialog.value)
 })
+onBeforeUnmount(() => releaseToasts?.())
 onUnmounted(() => previous?.focus())
 </script>
 <template>

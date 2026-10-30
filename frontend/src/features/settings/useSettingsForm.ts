@@ -5,6 +5,7 @@ import { api, type Category, type Settings } from '../../api'
 import { keys } from '../../app/query'
 import { useRuntime } from '../../app/runtime'
 import { useAction } from '../../app/useAction'
+import { notify } from '../../app/toast'
 export function useSettingsForm() {
   const runtime = useRuntime(),
     route = useRoute(),
@@ -33,8 +34,7 @@ export function useSettingsForm() {
     },
     { immediate: true },
   )
-  const categoryDragging = ref(false),
-    categoryOrderNotice = ref('拖动左侧手柄调整优先级，保存设置后生效。')
+  const categoryDragging = ref(false)
   const categoryKeys = new WeakMap<Category, number>()
   let nextCategoryKey = 0
   function categoryKey(category: Category) {
@@ -57,13 +57,13 @@ export function useSettingsForm() {
     const handle = event.currentTarget as HTMLElement,
       [category] = list.splice(index, 1)
     list.splice(target, 0, category!)
-    categoryOrderNotice.value = `已移至第 ${target + 1} 条，保存设置后生效。`
+    notify(`已移至第 ${target + 1} 条，保存设置后生效。`)
     void nextTick(() => handle.focus())
   }
   function finishCategorySort(event: DraggableEvent) {
     categoryDragging.value = false
     if (event.oldIndex !== event.newIndex && event.newIndex !== undefined)
-      categoryOrderNotice.value = `已移至第 ${event.newIndex + 1} 条，保存设置后生效。`
+      notify(`已移至第 ${event.newIndex + 1} 条，保存设置后生效。`)
   }
   async function loadSettings() {
     const result = await runtime.settingsQuery.refetch()
@@ -98,7 +98,6 @@ export function useSettingsForm() {
         refetchType: 'none',
       })
       await loadSettings()
-      categoryOrderNotice.value = '分类顺序已保存。'
       success.value = '设置已保存'
     })
   }
@@ -128,7 +127,6 @@ export function useSettingsForm() {
     message,
     success,
     categoryDragging,
-    categoryOrderNotice,
     categoryKey,
     moveCategory,
     finishCategorySort,

@@ -13,12 +13,14 @@ import {
 import { api } from '../api'
 import { session, acceptSession, safeRedirect } from '../app/session'
 import { queryClient } from '../app/query'
+import { useToastFeedback } from '../app/toast'
 const route = useRoute(),
   router = useRouter()
 const initialized = computed(() => session.initialized)
 const loginName = ref('admin'),
   password = ref(''),
   message = ref('')
+useToastFeedback(message)
 const action = useMutation({
   mutationFn: () =>
     api<{ username: string }>(initialized.value ? '/login' : '/setup', {
@@ -87,7 +89,6 @@ async function login() {
             required
             :placeholder="initialized ? '输入密码' : '至少 12 个字符'"
         /></label>
-        <p v-if="message" role="alert" class="notice error">{{ message }}</p>
         <button class="button primary full" :disabled="busy">
           <LoaderCircle v-if="busy" class="spin" :size="17" />{{
             initialized ? '进入工作台' : '创建并进入'

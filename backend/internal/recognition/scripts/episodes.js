@@ -107,7 +107,7 @@ function trailing(text) {
     return null;
   }
   const number = Number(match.groups[2]);
-  if (number <= 0 || isYear(String(number))) {
+  if (number < 0 || isYear(String(number))) {
     trace("尾部数字为年份或无效集号", number);
     return null;
   }

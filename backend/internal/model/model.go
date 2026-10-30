@@ -122,6 +122,7 @@ type Operation struct {
 	Identity       string     `json:"identity"`
 	SourceIdentity string     `json:"sourceIdentity"`
 	Undo           *Operation `json:"undo,omitempty"`
+	Backup         *Operation `json:"backup,omitempty"`
 }
 
 type Work struct {

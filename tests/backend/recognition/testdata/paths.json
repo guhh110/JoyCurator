@@ -1627,23 +1627,21 @@
     "errors": {}
   },
   {
-    "id": "invalid-zero-episode",
-    "category": "invalid",
+    "id": "zero-episode",
+    "category": "tv",
     "path": "/source/Show.S01E00.mkv",
     "root": "/source",
-    "reason": "第 0 集必须拒绝，但有效季号仍保留。",
+    "reason": "集号下限为 0，明确的 S01E00 保留季号和第 0 集。",
     "expected": {
       "tmdbId": null,
       "title": "Show",
       "mediaType": "tv",
       "year": null,
       "season": 1,
-      "episodes": [],
+      "episodes": [0],
       "releaseTag": null
     },
-    "errors": {
-      "episodes": "集数超出范围或重复"
-    }
+    "errors": {}
   },
   {
     "id": "invalid-duplicate-episodes",
@@ -1705,23 +1703,21 @@
     }
   },
   {
-    "id": "invalid-chinese-zero",
-    "category": "invalid",
+    "id": "chinese-zero-episode",
+    "category": "tv",
     "path": "/source/某剧/第零集.mp4",
     "root": "/source",
-    "reason": "中文零不是有效集号。",
+    "reason": "中文零是有效集号，已识别集数可以推断剧集类型。",
     "expected": {
       "tmdbId": null,
       "title": "某剧",
-      "mediaType": null,
+      "mediaType": "tv",
       "year": null,
       "season": null,
-      "episodes": [],
+      "episodes": [0],
       "releaseTag": null
     },
-    "errors": {
-      "episodes": "集数超出范围或重复"
-    }
+    "errors": {}
   },
   {
     "id": "invalid-chinese-units",

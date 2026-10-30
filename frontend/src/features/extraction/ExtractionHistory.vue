@@ -17,7 +17,7 @@ watch(appliedPath, value => { path.value = value })
 const listQuery = useHistoryList(page, appliedPath)
 const items = computed(() => listQuery.data.value?.items || [])
 const total = computed(() => listQuery.data.value?.total || 0)
-const { remove, pendingId, error } = useTraceRemoval(() => listQuery.refetch())
+const { remove, pendingId } = useTraceRemoval(() => listQuery.refetch())
 watch(() => listQuery.data.value, value => {
   if (value && page.value > lastHistoryPage(value.total)) {
     void router.replace({ name: 'extraction-history', query: { ...historyContext(route.query), page: lastHistoryPage(value.total) } })
@@ -36,7 +36,6 @@ function changePage(value: number) {
     <PageHeader title="识别历史" eyebrow="RECOGNITION HISTORY" description="查看文件的识别结果与规则执行轨迹。">
       <template #actions><RouterLink class="button" :to="{ name: 'automatic-recognition' }">返回整理工作区</RouterLink></template>
     </PageHeader>
-    <p v-if="error" class="notice error" role="alert">{{ error }}</p>
     <form class="history-search" @submit.prevent="search">
       <input v-model="path" placeholder="输入完整文件路径精确筛选" aria-label="历史路径筛选" />
       <button class="button" :disabled="listQuery.isFetching.value">查询</button>
@@ -47,7 +46,7 @@ function changePage(value: number) {
         <article v-for="item in items" :key="item.id" class="trace-row">
           <div class="trace-info">
             <RouterLink class="trace-name" :to="{ name: 'extraction-history-detail', params: { traceId: item.id }, query: historyContext(route.query) }">{{ name(item.path) }}</RouterLink>
-            <EliText :text="item.path" class="trace-path" />
+            <EliText :text="item.path" ellipsis="start" class="trace-path" />
             <p class="trace-meta"><span class="state-pill" :class="item.status">{{ historyStates[item.status] || item.status }}</span><span>{{ historyTime(item.startedAt) }}</span><span>{{ item.stepCount }} 步</span></p>
           </div>
           <div class="trace-actions">

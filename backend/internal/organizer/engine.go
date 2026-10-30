@@ -64,6 +64,18 @@ func (e *Engine) Check(ctx context.Context, path, identity, checksum string) err
 	return nil
 }
 func (e *Engine) Run(ctx context.Context, op *model.Operation, save func() error) error {
+	if op.Backup != nil {
+		if err := e.Run(ctx, op.Backup, save); err != nil {
+			return fmt.Errorf("备份已有文件失败：%w", err)
+		}
+		if err := e.Check(ctx, op.Backup.Target, op.Backup.Identity, op.Backup.Hash); err != nil {
+			return fmt.Errorf("覆盖备份校验失败：%w", err)
+		}
+	}
+	return e.run(ctx, op, save)
+}
+
+func (e *Engine) run(ctx context.Context, op *model.Operation, save func() error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -125,6 +137,9 @@ func (e *Engine) Run(ctx context.Context, op *model.Operation, save func() error
 			}
 			if info.Size() != op.Size || info.ModTime().UnixNano() != op.MTime {
 				return errors.New("源文件已变化，请重新扫描和预览")
+			}
+			if op.SourceIdentity != "" && op.SourceIdentity != fsops.Identity(info) {
+				return errors.New("源文件已被替换，请重新预览")
 			}
 			op.SourceIdentity = fsops.Identity(info)
 			reader = source
@@ -290,6 +305,24 @@ func (e *Engine) Run(ctx context.Context, op *model.Operation, save func() error
 }
 
 func (e *Engine) Undo(ctx context.Context, op *model.Operation, save func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if backup := op.Backup; backup != nil && (backup.Status == "completed" || backup.Status == "published") {
+		if err := e.Check(ctx, backup.Target, backup.Identity, backup.Hash); err != nil {
+			return fmt.Errorf("覆盖备份校验失败，停止撤销：%w", err)
+		}
+	}
+	if err := e.undo(ctx, op, save); err != nil {
+		return err
+	}
+	if op.Backup != nil {
+		return e.Undo(ctx, op.Backup, save)
+	}
+	return nil
+}
+
+func (e *Engine) undo(ctx context.Context, op *model.Operation, save func() error) error {
 	if op.Status == "undone" || op.Status == "retained" {
 		return nil
 	}
@@ -345,7 +378,13 @@ func (e *Engine) Undo(ctx context.Context, op *model.Operation, save func() erro
 				if err != nil {
 					return err
 				}
-				op.Undo = &model.Operation{ID: op.ID, Source: op.Target, Target: op.Source, Mode: "copy", Kind: "video", Size: info.Size(), MTime: info.ModTime().UnixNano(), Status: "pending"}
+				mode := "copy"
+				// Backups live beside the original. Preserve its identity so older
+				// organizer records remain verifiable after restoring the replacement.
+				if op.Kind == "backup" {
+					mode = "hardlink"
+				}
+				op.Undo = &model.Operation{ID: op.ID, Source: op.Target, Target: op.Source, Mode: mode, Kind: "video", Size: info.Size(), MTime: info.ModTime().UnixNano(), Status: "pending"}
 				if err = save(); err != nil {
 					return err
 				}

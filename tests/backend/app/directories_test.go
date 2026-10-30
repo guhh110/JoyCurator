@@ -43,7 +43,7 @@ func TestSourceBoundaryAndNestedTargetExclusion(t *testing.T) {
 			t.Fatal("source boundary bypassed", path)
 		}
 	}
-	if _, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{{Path: outside}}}); err == nil {
+	if _, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{{Path: outside}}}); err == nil {
 		t.Fatal("preview accepted file outside source")
 	}
 	s, _ := a.dependencies.Config.Load()

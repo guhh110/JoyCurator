@@ -122,8 +122,8 @@ func SeasonExists(number int, seasons []model.Season) bool {
 }
 
 type EpisodeCheck struct {
-	Number                      int
-	Exists, Duplicate, Positive bool
+	Number                         int
+	Exists, Duplicate, NonNegative bool
 }
 
 func CheckEpisodes(numbers []int, episodes []model.Episode) []EpisodeCheck {
@@ -137,7 +137,7 @@ func CheckEpisodes(numbers []int, episodes []model.Episode) []EpisodeCheck {
 				break
 			}
 		}
-		checks = append(checks, EpisodeCheck{Number: number, Exists: exists, Duplicate: seen[number], Positive: number > 0})
+		checks = append(checks, EpisodeCheck{Number: number, Exists: exists, Duplicate: seen[number], NonNegative: number >= 0})
 		seen[number] = true
 	}
 	return checks

@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from 'vue'
 import ScriptCode from './ScriptCode.vue'
 import Select from '../../components/ui/Select.vue'
+import EliText from '../../components/ui/EliText.vue'
 import type { ExtractionResult, ScriptEvent } from './model'
 import { targets, sources, statuses, valueText } from './model'
 const props = withDefaults(
@@ -58,7 +59,7 @@ async function copy() {
   <div class="extraction-output">
     <section v-if="view === 'all' || view === 'metadata'" class="pane metadata">
       <h2>文件元数据</h2>
-      <p v-if="result.root" class="tiny muted">解析边界：{{ result.root }}</p>
+      <p v-if="result.root" class="tiny muted extraction-root"><span>解析边界：</span><EliText :text="result.root" ellipsis="start" /></p>
       <dl>
         <template v-for="(label, key) in targets" :key="key"
           ><dt>{{ label }}</dt>
@@ -129,7 +130,8 @@ async function copy() {
               >尝试 {{ i + 1 }} ·
               {{ attempt.matched ? '命中' : '未命中' }}</span
             >
-            <pre>{{ attempt.input }}</pre>
+            <EliText v-if="['absolutePath', 'relativePath'].includes(s.ruleConfig.source)" :text="attempt.input" ellipsis="start" class="attempt-path" />
+            <pre v-else>{{ attempt.input }}</pre>
             <pre v-if="attempt.captures">{{
               JSON.stringify(attempt.captures, null, 2)
             }}</pre>
@@ -254,6 +256,9 @@ async function copy() {
   gap: 20px;
   min-width: 0;
 }
+.extraction-root { display:flex; align-items:center; min-width:0; }
+.extraction-root > span:first-child { flex-shrink:0; }
+.attempt-path { display:flex; margin:12px 0; font-family:monospace; font-size:12px; }
 .metadata,
 .padding {
   padding: 20px;

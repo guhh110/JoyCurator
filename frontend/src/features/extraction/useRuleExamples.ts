@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref } from 'vue'
 import { api } from '../../api'
 import type { Rule } from './model'
+import { useToastFeedback } from '../../app/toast'
 
 export interface ExampleResult {
   ruleId: string
@@ -14,6 +15,7 @@ export interface ExampleResult {
 export function useRuleExamples(currentRules: () => Rule[] | undefined) {
   const results = ref<ExampleResult[]>([])
   const checkedKey = ref(''), error = ref(''), busy = ref(false)
+  useToastFeedback(error)
   let controller: AbortController | undefined
   let sequence = 0
   const currentKey = computed(() => JSON.stringify(currentRules()))

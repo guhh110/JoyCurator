@@ -44,7 +44,7 @@ function fileTitle(filename, hasParent) {
   const tail = reSearch(TRAILING, clean(text));
   if (tail) {
     const number = Number(tail.groups[2]);
-    if (number > 0 && !isYear(String(number))) {
+    if (number >= 0 && !isYear(String(number))) {
       text = tail.groups[1];
     }
   }

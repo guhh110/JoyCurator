@@ -12,7 +12,7 @@ import (
 func TestPlanEditInvalidatesOldConfirmationAndDeleteOnlyDiscardsPreview(t *testing.T) {
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "planned.mkv")
-	input := planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{file}}
+	input := planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{file}}
 	old, err := a.dependencies.Planning.Preview(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)

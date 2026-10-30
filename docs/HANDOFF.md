@@ -282,7 +282,9 @@ AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognition
   → 自动识别并分组 → 服务端保存工作区
 组内搜索作品 → GET /search → 选择 Entry → PUT /recognitions/{id}
   → 剧集 GET /seasons、GET /episodes → 单集对照、关联文件、修正季集
-  → 选择季度同步修改当前组文件季号，保留原集数；保存并由服务端校验
+  → 单集对照内“查看季度”只切换视图，不修改工作区
+  → 批量修正：目标季度与集数偏移输入框（原始识别基准，不累加）；当前映射与修正后编号旁显示相对原始识别的偏移量徽章
+  → 独立勾选、预览并确认后保存，由服务端校验；不自动执行整理
 预览 → POST /batches/preview → buildPreview（按作品）
   → 校验源路径和文件身份、读取设置与 TMDB 元数据
   → rules.Target / ShowRoot 渲染分类与命名
@@ -299,7 +301,7 @@ AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognition
 ## 10. 多作品批次与执行互斥
 
 ```text
-POST /batches/preview {recognitionId,revision,mode}
+POST /batches/preview {recognitionId,revision,mode,duplicatePolicy}
   → Planning.BatchPreview：仅收集已选 ready 文件，按作品分组
   → 每组 buildPreview
   → 合并全部 ops，检查跨作品重复目标与合计空间

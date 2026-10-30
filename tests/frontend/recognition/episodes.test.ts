@@ -7,6 +7,11 @@ function file(path: string, season: number, numbers: number[], removed = false) 
   return { path, season, episodes: numbers, removed } as RecognitionItem
 }
 describe('workspace episode comparison', () => {
+  it('orders unsorted episode responses numerically without modifying the response', () => {
+    const input = [10, 2, 0, 1].map(number => ({ number, season: 1, name: '', airDate: '' }))
+    expect(episodeComparison(input, [], 1).map(row => row.episode.number)).toEqual([0, 1, 2, 10])
+    expect(input.map(episode => episode.number)).toEqual([10, 2, 0, 1])
+  })
   it('maps merged episodes and multiple versions without hiding missing episodes', () => {
     const merged = file('merged.mkv', 1, [1, 2])
     const version = file('version.mkv', 1, [1])

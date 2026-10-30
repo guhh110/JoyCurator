@@ -35,14 +35,14 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 		if !ok {
 			index = len(requests)
 			indexes[key] = index
-			requests = append(requests, PreviewRequest{Type: item.Entry.Type, TMDBID: item.Entry.TMDBID, Mode: in.Mode})
+			requests = append(requests, PreviewRequest{Type: item.Entry.Type, TMDBID: item.Entry.TMDBID, Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy})
 		}
 		requests[index].Files = append(requests[index].Files, item.File)
 	}
 	if count < 1 || count > 1000 {
 		return nil, errors.New("每次整理 1–1000 个视频")
 	}
-	plan := &Plan{ID: model.Key(), Title: fmt.Sprintf("自动整理 · %d 部作品", len(requests)), Mode: in.Mode, Rows: []Row{}, Issues: []string{}, Groups: []*Plan{}, Expires: time.Now().Add(15 * time.Minute), RecognitionID: task.ID, Revision: task.Revision}
+	plan := &Plan{ID: model.Key(), Title: fmt.Sprintf("自动整理 · %d 部作品", len(requests)), Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy, Rows: []Row{}, Issues: []string{}, Groups: []*Plan{}, Expires: time.Now().Add(15 * time.Minute), RecognitionID: task.ID, Revision: task.Revision}
 	targets := map[string]bool{}
 	for _, request := range requests {
 		group, err := a.buildPreview(ctx, request)
@@ -58,6 +58,16 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 			target := strings.ToLower(op.Target)
 			if targets[target] {
 				plan.Issues = append(plan.Issues, "作品之间目标重复："+op.Target)
+			}
+			targets[target] = true
+		}
+		for _, row := range group.Rows {
+			if row.Action != "skip" {
+				continue
+			}
+			target := strings.ToLower(row.Target)
+			if targets[target] {
+				plan.Issues = append(plan.Issues, "作品之间目标重复："+row.Target)
 			}
 			targets[target] = true
 		}

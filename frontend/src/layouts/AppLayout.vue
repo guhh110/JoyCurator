@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import { LogOut, Menu, ChevronRight, X } from '@lucide/vue'
+import { LogOut, Menu, ChevronRight } from '@lucide/vue'
 import { api } from '../api'
 import { provideRuntime } from '../app/runtime'
 import { session, clearSession } from '../app/session'
@@ -29,6 +29,7 @@ watch(
 async function logout() {
   if (leaving.value) return
   leaving.value = true
+  runtime.error.value = ''
   try {
     await api('/logout', {})
     await clearSession()
@@ -72,20 +73,6 @@ async function logout() {
         <main
           class="routed-content"
         >
-          <div
-            v-if="runtime.error.value"
-            class="notice error global-notice"
-            role="alert"
-          >
-            <span>{{ runtime.error.value }}</span
-            ><button
-              class="icon-button"
-              aria-label="关闭错误提示"
-              @click="runtime.error.value = ''"
-            >
-              <X :size="16" />
-            </button>
-          </div>
           <RouterView v-slot="{ Component }"
             ><KeepAlive
               include="AutomaticRecognitionPage,SettingsPage"

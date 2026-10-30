@@ -21,7 +21,7 @@ func (a *Service) ExecuteBatch(id string) (Batch, error) {
 	if p == nil || time.Now().After(p.Expires) {
 		return Batch{}, errors.New("预览已过期，请重新预览")
 	}
-	if len(p.Groups) == 0 || len(p.Issues) > 0 {
+	if len(p.Groups) == 0 || len(p.Ops) == 0 || len(p.Issues) > 0 {
 		return Batch{}, errors.New("请先处理预览中的冲突")
 	}
 	revision, err := a.revision(p.RecognitionID)
@@ -43,6 +43,9 @@ func (a *Service) ExecuteBatch(id string) (Batch, error) {
 	}
 	batch := Batch{ID: model.Key(), Runs: []Run{}, Active: true}
 	for _, group := range p.Groups {
+		if len(group.Ops) == 0 {
+			continue
+		}
 		run := Run{ID: model.Key(), Title: group.Title, Mode: p.Mode, State: "queued", Created: time.Now().Format(time.RFC3339), Ops: append([]model.Work(nil), group.Ops...), Total: len(group.Ops), BatchID: batch.ID, Version: p.Version, RecognitionID: p.RecognitionID}
 
 		batch.Runs = append(batch.Runs, run)

@@ -1,13 +1,15 @@
 import { computed, onScopeDispose, ref, watch, type Ref } from 'vue'
 import { api, type Episode, type Recognition, type RecognitionItem, type Season } from '../../api'
-import { sourceOf } from '../../recognition'
+import { sortByEpisode, sourceOf } from '../../recognition'
 import { applyOffsetMappings, offsetRows, originalEpisodesValid } from './episodeOffset'
+import { useToastFeedback } from '../../app/toast'
 
 interface OffsetContext {
   id: string
   revision: number
   tmdbId: number
   title: string
+  posterPath: string
   files: RecognitionItem[]
   seasons: Season[]
   paths: string[]
@@ -22,21 +24,26 @@ export function useEpisodeOffset(options: {
   const context = ref<OffsetContext | null>(null)
   const source = ref('')
   const season = ref(-1)
-  const original = ref<number | string>(1)
-  const target = ref<number | string>(10)
+  const offsetInput = ref('0')
   const selected = ref(new Set<string>())
   const episodes = ref<Episode[] | null>(null)
   const loading = ref(false)
   const error = ref('')
+  useToastFeedback(error)
   const saving = ref(false)
   const allowOverlap = ref(false)
   const retryKey = ref(0)
   let generation = 0
   const sources = computed(() => [...new Set(context.value?.files.map(file => sourceOf(file.path, context.value!.paths)) ?? [])])
-  const files = computed(() => context.value?.files.filter(file => sourceOf(file.path, context.value!.paths) === source.value) ?? [])
+  const files = computed(() => sortByEpisode(
+    context.value?.files.filter(file => sourceOf(file.path, context.value!.paths) === source.value) ?? [],
+    file => ({ season: file.metadata.season, episodes: file.metadata.episodes, path: file.path }),
+  ))
   const offset = computed(() => {
-    const from = Number(original.value), to = Number(target.value)
-    return Number.isSafeInteger(from) && from > 0 && Number.isSafeInteger(to) && to > 0 ? to - from : NaN
+    const text = offsetInput.value.trim()
+    if (!/^[+-]?\d+$/.test(text)) return NaN
+    const value = Number(text)
+    return Number.isSafeInteger(value) ? value : NaN
   })
   const stale = computed(() => !!context.value &&
     (options.task.value?.id !== context.value.id || options.task.value.revision !== context.value.revision))
@@ -55,12 +62,11 @@ export function useEpisodeOffset(options: {
     if (!task || !entry || options.locked.value || !seasons.length) return
     generation++
     context.value = JSON.parse(JSON.stringify({ id: task.id, revision: task.revision, tmdbId: entry.tmdbId,
-      title: entry.title, files: files.filter(file => !file.removed && file.entry?.type === 'tv' && file.entry.tmdbId === entry.tmdbId), seasons, paths: task.paths }))
+      title: entry.title, posterPath: entry.posterPath, files: files.filter(file => !file.removed && file.entry?.type === 'tv' && file.entry.tmdbId === entry.tmdbId), seasons, paths: task.paths }))
     source.value = sources.value.includes(currentSource) ? currentSource : sources.value[0] ?? ''
     season.value = seasons.some(item => item.number === currentSeason) ? currentSeason : seasons[0]!.number
-    original.value = 1
-    target.value = 1
-    selected.value = new Set()
+    offsetInput.value = '0'
+    resetSelection()
     allowOverlap.value = false
     episodes.value = null
     error.value = ''
@@ -72,8 +78,11 @@ export function useEpisodeOffset(options: {
     episodes.value = null
     error.value = ''
   }
-  watch(source, () => { selected.value = new Set() }, { flush: 'sync' })
-  watch([original, target, season, selected, source], () => { allowOverlap.value = false }, { flush: 'sync' })
+  function resetSelection() {
+    selected.value = new Set(files.value.filter(originalEpisodesValid).map(file => file.path))
+  }
+  watch(source, resetSelection, { flush: 'sync' })
+  watch([offsetInput, season, selected, source], () => { allowOverlap.value = false }, { flush: 'sync' })
   watch([() => context.value?.tmdbId, season, retryKey], async ([id, number], _old, onCleanup) => {
     episodes.value = null
     error.value = ''
@@ -124,7 +133,7 @@ export function useEpisodeOffset(options: {
     }
   }
   onScopeDispose(close)
-  return { context, source, sources, season, original, target, offset, selected, rows, chosen, episodes,
+  return { context, source, sources, season, offsetInput, offset, selected, rows, chosen, episodes,
     loading, saving, error, stale, allowOverlap, overlaps, canApply, open, close, select, selectAll,
     retry: () => { retryKey.value++ }, apply }
 }
