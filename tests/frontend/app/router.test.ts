@@ -10,7 +10,8 @@ import { routes } from '../../../frontend/src/app/routes'
 import { installGuards } from '../../../frontend/src/app/routerGuards'
 import { safeRedirect } from '../../../frontend/src/app/session'
 import { pageNumber } from '../../../frontend/src/app/routing'
-import { groupForRoute, navigation } from '../../../frontend/src/app/navigation'
+import { groupForRoute, menuRoute, navigation } from '../../../frontend/src/app/navigation'
+import { historyContext } from '../../../frontend/src/features/extraction/history'
 import AppSidebar from '../../../frontend/src/components/navigation/AppSidebar.vue'
 const dummy = { render: () => h('div') }
 function stubRoutes(records: RouteRecordRaw[]): RouteRecordRaw[] {
@@ -46,11 +47,23 @@ describe('independent pages and grouped navigation', () => {
     expect(edit.params.ruleId).toBe('season')
     expect(groupForRoute('recognition-rule-edit')).toBe('config')
     const detail = router.resolve('/recognition/history/trace-123?page=2')
+    expect(detail.name).toBe('extraction-history-detail')
+    expect(menuRoute(detail.name)).toBe('extraction-history')
+    expect(groupForRoute(detail.name)).toBe('records')
     expect(detail.params.traceId).toBe('trace-123')
     expect(detail.query.page).toBe('2')
     for (const path of paths)
       expect(router.resolve(path).matched).toHaveLength(2)
     expect(router.resolve('/missing-page').name).toBe('not-found')
+  })
+  it('preserves list context through details and defaults direct visits to the list', () => {
+    const router = makeRouter()
+    const list = router.resolve('/recognition/history?page=3&path=%2Fmedia%2Fa.mkv')
+    const detail = router.resolve({ name: 'extraction-history-detail', params: { traceId: 'trace-1' }, query: historyContext(list.query) })
+    const back = router.resolve({ name: 'extraction-history', query: historyContext(detail.query) })
+    expect(back.name).toBe('extraction-history')
+    expect(back.query).toEqual(list.query)
+    expect(historyContext({})).toEqual({})
   })
   it('protects bookmarked pages and returns a safe login destination', async () => {
     const router = makeRouter()

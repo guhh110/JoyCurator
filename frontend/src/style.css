@@ -2843,6 +2843,12 @@ small {
 .auto-footer-select { display:flex; gap:14px; white-space:nowrap; }
 .auto-footer-select .text-button { font-size:12px; }
 .auto-footer select { width:auto; min-width:100px; min-height:38px; }
+.auto-footer > .ui-select-anchor { min-width:100px; }
+.auto-footer > .ui-select-anchor .ui-select-trigger { min-height:38px; }
+.settings-content label > .ui-select-anchor, .modal-body label > .ui-select-anchor { display:flex; width:100%; margin-top:9px; }
+.settings-content .ui-select-trigger { min-height:40px; font-size:13px; }
+.tmdb-search > .ui-select-anchor { min-width:0; }
+.tmdb-search .ui-select-trigger { min-height:35px; padding:6px 8px; font-size:11px; gap:4px; }
 .auto-footer .button.primary { min-width:130px; }
 
 .auto-batch-runs { max-height:320px; overflow:auto; }
@@ -2902,7 +2908,7 @@ small {
   .auto-footer-summary { flex:1 1 60%; }
   .auto-footer-summary p { display:none; }
   .auto-footer-select { gap:12px; }
-  .auto-footer select { flex:0 0 108px; }
+  .auto-footer > .ui-select-anchor { flex:0 0 108px; }
   .auto-footer .button.primary { flex:1; min-width:0; }
   .auto-batch-run { padding:13px 14px; flex-wrap:wrap; }
 }

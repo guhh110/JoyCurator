@@ -533,7 +533,7 @@ function conflictTargets(issues: string[]) {
                       v-if="file.traceId"
                       class="icon-button"
                       :to="{
-                        name: 'extraction-history',
+                        name: 'extraction-history-detail',
                         params: { traceId: file.traceId },
                       }"
                       aria-label="查看识别过程"
@@ -621,11 +621,8 @@ function conflictTargets(issues: string[]) {
               清空
             </button>
           </div>
-          <select v-model="mode" aria-label="自动整理方式" :disabled="locked">
-            <option v-for="(label, value) in modes" :key="value" :value="value">
-              {{ label }}
-            </option></select
-          ><button
+          <Select v-model="mode" label="自动整理方式" :disabled="locked" :options="Object.entries(modes).map(([value, label]) => ({ value, label }))" />
+          <button
             class="button primary"
             :disabled="locked || !selected.length || selected.length > 1000"
             @click="prepare"
@@ -649,10 +646,8 @@ function conflictTargets(issues: string[]) {
   <Modal v-if="searchGroup" title="选择对应作品" @close="closeSearch">
     <p class="muted">选择后应用到当前组的所有文件，同一作品会合并显示。</p>
     <form class="tmdb-search" @submit.prevent="search">
-      <select v-model="searchKind" aria-label="搜索类型">
-        <option value="movie">电影</option>
-        <option value="tv">剧集</option></select
-      ><input
+      <Select :model-value="searchKind" label="搜索类型" :options="[{ value: 'movie', label: '电影' }, { value: 'tv', label: '剧集' }]" @update:model-value="value => searchKind = value as 'movie' | 'tv'" />
+      <input
         v-model="searchQuery"
         placeholder="片名"
         aria-label="搜索片名"
@@ -733,18 +728,7 @@ function conflictTargets(issues: string[]) {
   <Modal v-if="transfer" title="调整文件分组" @close="transfer = null"
     ><p class="muted">{{ name(transfer.path) }}</p>
     <label
-      >移至分组<select v-model="transferGroup">
-        <option value="new">新建待确认分组</option>
-        <option
-          v-for="group in groups.filter(
-            (group) => group.id !== transfer?.group,
-          )"
-          :key="group.id"
-          :value="group.id"
-        >
-          {{ group.title }}
-        </option>
-      </select></label
+      >移至分组<Select v-model="transferGroup" label="移至分组" :options="[{ value: 'new', label: '新建待确认分组' }, ...groups.filter(group => group.id !== transfer?.group).map(group => ({ value: group.id, label: group.title }))]" /></label
     >
     <p class="muted">
       新分组需要重新选择作品；移入已有分组时会校验作品和季集。

@@ -47,11 +47,17 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '编辑规则', group: 'config' },
       },
       {
-        path: 'recognition/history/:traceId?',
+        path: 'recognition/history',
         name: 'extraction-history',
         component: () => import('../pages/recognition/HistoryPage.vue'),
-        props: true,
         meta: { title: '识别历史', group: 'records' },
+      },
+      {
+        path: 'recognition/history/:traceId',
+        name: 'extraction-history-detail',
+        component: () => import('../pages/recognition/HistoryDetailPage.vue'),
+        props: true,
+        meta: { title: '识别历史详情', group: 'records' },
       },
       {
         path: 'recognition/debug',

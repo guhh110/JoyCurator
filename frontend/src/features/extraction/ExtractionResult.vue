@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import ScriptCode from './ScriptCode.vue'
+import Select from '../../components/ui/Select.vue'
 import type { ExtractionResult, ScriptEvent } from './model'
 import { targets, sources, statuses, valueText } from './model'
 const props = withDefaults(
@@ -77,18 +78,8 @@ async function copy() {
           >
         </h2>
         <div class="filters">
-          <select v-model="rule" aria-label="筛选规则">
-            <option value="">所有规则</option>
-            <option v-for="s in result.steps" :key="s.ruleId" :value="s.ruleId">
-              {{ s.ruleName }}
-            </option>
-          </select>
-          <select v-model="status" aria-label="筛选执行结果">
-            <option value="">所有结果</option>
-            <option v-for="(label, key) in statuses" :key="key" :value="key">
-              {{ label }}
-            </option>
-          </select>
+          <Select v-model="rule" label="筛选规则" :options="[{ value: '', label: '所有规则' }, ...result.steps.map(step => ({ value: step.ruleId, label: step.ruleName }))]" />
+          <Select v-model="status" label="筛选执行结果" :options="[{ value: '', label: '所有结果' }, ...Object.entries(statuses).map(([value, label]) => ({ value, label }))]" />
         </div>
       </header>
       <p v-if="!visible.length" class="muted padding">没有符合条件的步骤。</p>
@@ -294,7 +285,7 @@ dd {
   display: flex;
   gap: 8px;
 }
-.filters select {
+.filters :deep(.ui-select-anchor) {
   max-width: 220px;
   font-size: 12px;
 }
@@ -373,7 +364,7 @@ textarea {
     width: 100%;
     flex-wrap: wrap;
   }
-  .filters select {
+  .filters :deep(.ui-select-anchor) {
     flex: 1;
     min-width: 0;
   }

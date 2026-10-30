@@ -39,6 +39,7 @@ export const navigation = [
 // Detail pages that are not in the menu still belong to their parent's group.
 const detailParents: Record<string, string> = {
   'recognition-rule-edit': 'recognition-rules',
+  'extraction-history-detail': 'extraction-history',
 }
 export function groupForRoute(name: unknown) {
   const target = menuRoute(name)

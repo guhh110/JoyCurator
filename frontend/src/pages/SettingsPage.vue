@@ -18,6 +18,7 @@ import FileBrowser from '../components/FileBrowser.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import Notices from '../components/ui/Notices.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
+import Select from '../components/ui/Select.vue'
 import { useSettingsForm } from '../features/settings/useSettingsForm'
 const {
   settings,
@@ -159,12 +160,7 @@ const {
                   v-model="settings.proxyURL"
                   placeholder="http://127.0.0.1:7890" /></label
               ><label
-                >元数据语言<select v-model="settings.language">
-                  <option value="zh-CN">简体中文</option>
-                  <option value="zh-TW">繁體中文</option>
-                  <option value="en-US">English</option>
-                  <option value="ja-JP">日本語</option>
-                </select></label
+                >元数据语言<Select v-model="settings.language" label="元数据语言" :options="[{ value: 'zh-CN', label: '简体中文' }, { value: 'zh-TW', label: '繁體中文' }, { value: 'en-US', label: 'English' }, { value: 'ja-JP', label: '日本語' }]" /></label
               ></template
             >
             <template v-else-if="settingsSection === 'rules'"
@@ -286,11 +282,7 @@ const {
                             v-model="category.name"
                             placeholder="电影/华语电影" /></label
                         ><label
-                          >媒体类型<select v-model="category.type">
-                            <option value="">全部</option>
-                            <option value="movie">电影</option>
-                            <option value="tv">剧集</option>
-                          </select></label
+                          >媒体类型<Select :model-value="category.type || ''" label="媒体类型" :options="[{ value: '', label: '全部' }, { value: 'movie', label: '电影' }, { value: 'tv', label: '剧集' }]" @update:model-value="value => category.type = value" /></label
                         ><label
                           >国家/地区代码<input
                             :value="category.countries.join(',')"

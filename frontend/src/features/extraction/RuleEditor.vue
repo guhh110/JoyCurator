@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import ScriptCode from './ScriptCode.vue'
+import Select from '../../components/ui/Select.vue'
+import type { Target, Source } from './model'
 import { sources, targets, emptyScript } from './model'
 import { draftRule, type RuleDraft } from './useRuleDraft'
 const draft = defineModel<RuleDraft>({ required: true })
@@ -83,15 +85,7 @@ function kindChanged() {
         </div>
         <div>
           <label for="rule-target">提取字段</label
-          ><select
-            id="rule-target"
-            v-model="draft.rule.target"
-            @change="emit('retarget')"
-          >
-            <option v-for="(label, key) in targets" :key="key" :value="key">
-              {{ label }}
-            </option>
-          </select>
+          ><Select id="rule-target" :model-value="draft.rule.target" label="提取字段" :options="Object.entries(targets).map(([value, label]) => ({ value, label }))" @update:model-value="value => { draft.rule.target = value as Target; emit('retarget') }" />
         </div>
       </div>
       <label for="rule-description">规则说明</label
@@ -109,22 +103,11 @@ function kindChanged() {
       <div class="grid">
         <div>
           <label for="rule-source">输入来源</label
-          ><select id="rule-source" v-model="draft.rule.source">
-            <option v-for="(label, key) in sources" :key="key" :value="key">
-              {{ label }}
-            </option>
-          </select>
+          ><Select id="rule-source" :model-value="draft.rule.source" label="输入来源" :options="Object.entries(sources).map(([value, label]) => ({ value, label }))" @update:model-value="value => draft.rule.source = value as Source" />
         </div>
         <div>
           <label for="rule-kind">提取方式</label
-          ><select
-            id="rule-kind"
-            v-model="draft.rule.kind"
-            @change="kindChanged"
-          >
-            <option value="script">JavaScript 脚本</option>
-            <option value="regex">自定义正则</option>
-          </select>
+          ><Select id="rule-kind" :model-value="draft.rule.kind" label="提取方式" :options="[{ value: 'script', label: 'JavaScript 脚本' }, { value: 'regex', label: '自定义正则' }]" @update:model-value="value => { draft.rule.kind = value as 'script' | 'regex'; kindChanged() }" />
         </div>
         <div>
           <label for="rule-id">规则 ID</label
@@ -177,6 +160,8 @@ function kindChanged() {
 .editor {
   min-width: 0;
 }
+.editor :deep(.ui-select-anchor) { display:flex; width:100%; margin-top:8px; }
+.editor :deep(.ui-select-trigger) { min-height:40px; font-size:13px; }
 .editor-section {
   padding: 20px;
 }

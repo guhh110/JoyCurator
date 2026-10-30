@@ -355,7 +355,8 @@ main.ts
 | --- | --- | --- |
 | 工作区 | 整理工作区 | `/recognition` → AutomaticRecognitionPage + useAutomaticRecognition |
 | 记录 | 整理记录 | `/records` → RecordsPage |
-| 记录 | 识别历史 | `/recognition/history/:traceId?` → HistoryPage + ExtractionHistory |
+| 记录 | 识别历史列表 | `/recognition/history` → HistoryPage + ExtractionHistory |
+| 记录 | 识别历史详情 | `/recognition/history/:traceId` → HistoryDetailPage + ExtractionHistoryDetail |
 | 配置 | 识别规则 | `/recognition/rules` → RulesPage + RecognitionRules |
 | 配置 | 识别调试 | `/recognition/debug` → DebugPage + useExtraction |
 | 配置 | 设置 | `/settings` → SettingsPage + useSettingsForm |
