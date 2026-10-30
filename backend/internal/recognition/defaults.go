@@ -9,7 +9,7 @@ func DefaultRules() []Rule {
 	examples := map[string][]Example{
 		"tmdb-id":     {{Path: "/source/Show [tmdb-7]/Season 2/03.mkv", Root: "/source", Expected: json.RawMessage(`7`)}},
 		"season":      {{Path: "/Show.S00E01.mkv", Expected: json.RawMessage(`0`)}, {Path: "/source/Show/第二季/07.mkv", Root: "/source", Expected: json.RawMessage(`2`)}},
-		"episodes":    {{Path: "/Show.S02E03-E05.mkv", Expected: json.RawMessage(`[3,4,5]`)}, {Path: "/source/The.Matrix.1999.tmdb-603.mkv", Root: "/source", Expected: json.RawMessage(`null`)}},
+		"episodes":    {{Path: "/Show.S02E03-E05.mkv", Expected: json.RawMessage(`[3,4,5]`)}, {Path: "/fan人修仙/第一季/第一集.mp4", Root: "/", Expected: json.RawMessage(`[1]`)}, {Path: "/source/The.Matrix.1999.tmdb-603.mkv", Root: "/source", Expected: json.RawMessage(`null`)}},
 		"media-type":  {{Path: "/Show.1x03.mkv", Expected: json.RawMessage(`"tv"`)}, {Path: "/The.Matrix.1999.mkv", Expected: json.RawMessage(`null`)}},
 		"title":       {{Path: "/[Group] 1917.2019.1080p.mkv", Expected: json.RawMessage(`"1917"`)}},
 		"year":        {{Path: "/2001.A.Space.Odyssey.1968.mkv", Expected: json.RawMessage(`1968`)}},

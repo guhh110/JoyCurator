@@ -48,6 +48,37 @@ func TestDefaultRulesAreEditableScriptsWithAutomaticRegexTrace(t *testing.T) {
 		t.Fatal("missing automatic regex call and source position")
 	}
 }
+
+func TestChineseEpisodeValidationAndTrace(t *testing.T) {
+	for _, numeral := range []string{"零", "十百", "一百百", "一百零零一", "一十二三"} {
+		got := extract(t, r.DefaultRules(), "/source/某剧/第"+numeral+"集.mp4", "/source")
+		if len(got.Metadata.Episodes) != 0 {
+			t.Fatal(numeral, got.Metadata)
+		}
+		found := false
+		for _, step := range got.Steps {
+			if step.Target == r.Episodes {
+				found = step.Status == "error"
+			}
+		}
+		if !found {
+			t.Fatal("missing invalid numeral error", numeral)
+		}
+	}
+	got := extract(t, r.DefaultRules(), "/fan人修仙/第一季/第一集.mp4", "/")
+	for _, step := range got.Steps {
+		if step.Target == r.Episodes {
+			for _, attempt := range step.Attempts {
+				for _, event := range attempt.Trace {
+					if event.Message == "中文集号转换" {
+						return
+					}
+				}
+			}
+		}
+	}
+	t.Fatal("missing Chinese episode conversion trace")
+}
 func TestScriptEditingChangesOutputAndSnapshot(t *testing.T) {
 	rule := scriptRule("editable", r.Title, "function extract(ctx) {\n  trace(\"original\", ctx.text);\n  return \"first\";\n}")
 	original := extract(t, []r.Rule{rule}, "/Any.mkv", "/")

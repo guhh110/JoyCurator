@@ -6,7 +6,7 @@
 
 // SxxExx、1x03、独立 Sxx 三种季集标记，取最靠前的一个截断。
 const EPISODE_MARK = "(?i)s\\d{1,3}e\\d{1,4}|\\b\\d{1,3}x\\d{1,4}|(?:^|[ ._-])s\\d{1,3}(?:$|[ ._-])";
-const BARE = "(?i)^(?:\\d{1,4}|ep?\\.?\\s*\\d{1,4}|第\\s*\\d{1,4}\\s*[集话話]|\\d{1,4}\\s*[集话話]|\\d{1,4}v\\d)$";
+const BARE = "(?i)^(?:\\d{1,4}|ep?\\.?\\s*\\d{1,4}|第\\s*(?:\\d{1,4}|[零〇一二两三四五六七八九十百千]{1,16})\\s*[集话話]|\\d{1,4}\\s*[集话話]|\\d{1,4}v\\d)$";
 const TRAILING = "(?i)^(.*?)[\\s._-]+(?:ep?|e)?\\.?\\s*(\\d{1,4})$";
 const SEASON_FOLDER = "(?i)^(?:specials?|特别篇|特別篇|season\\s*\\d{1,3}|s\\d{1,3}|第\\s*[0-9零一二两三四五六七八九十]{1,3}\\s*季)$";
 const QUALITY_WORDS = "2160p|1080p|1080i|720p|480p|4k|bluray|blu-ray|bdrip|webrip|web-dl|webdl|hdtv|remux|x264|x265|h[ .]?264|h[ .]?265|hevc|avc|aac|dts|ddp|hdr10?|dv|10bit|8bit";

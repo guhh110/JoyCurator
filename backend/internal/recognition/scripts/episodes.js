@@ -1,12 +1,12 @@
 // 集数：按优先级依次尝试，先命中优先。
 //   1. 文件名 SxxExx       S02E03、S01E01E03、S02E03-E05
 //   2. 文件名 1x03         Show.1x03.mkv
-//   3. 纯集号文件名        07.mkv、EP04、第03集（需要边界内有父目录）
+//   3. 纯集号文件名        07.mkv、EP04、第03集、第一集（需要边界内有父目录）
 //   4. 文件名尾部集号      [Group] Show - 01 [1080p]
 // 年份（1900–2099）与 TMDB ID 不会被当成集号。
 const SXE = "(?i)s(\\d{1,3})e(\\d{1,4})((?:\\s*(?:-\\s*e?|e)\\d{1,4})*)";
 const CROSS = "(?i)\\b(\\d{1,3})x(\\d{1,4})";
-const BARE = "(?i)^(?:\\d{1,4}|ep?\\.?\\s*\\d{1,4}|第\\s*\\d{1,4}\\s*[集话話]|\\d{1,4}\\s*[集话話]|\\d{1,4}v\\d)$";
+const BARE = "(?i)^(?:\\d{1,4}|ep?\\.?\\s*\\d{1,4}|第\\s*(?:\\d{1,4}|[零〇一二两三四五六七八九十百千]{1,16})\\s*[集话話]|\\d{1,4}\\s*[集话話]|\\d{1,4}v\\d)$";
 const TRAILING = "(?i)^(.*?)[\\s._-]+(?:ep?|e)?\\.?\\s*(\\d{1,4})$";
 const QUALITY = "(?i)\\b(?:2160p|1080p|1080i|720p|480p|4k|bluray|blu-ray|bdrip|webrip|web-dl|webdl|hdtv|remux|x264|x265|h[ .]?264|h[ .]?265|hevc|avc|aac|dts|ddp|hdr10?|dv|10bit|8bit)\\b";
 
@@ -59,7 +59,46 @@ function bare(text, hasParent) {
     trace("保留数字片名，不作为集号", text);
     return null;
   }
-  return {value: [Number(reSearch("\\d+", text).text)], matchedText: text};
+  const chinese = reSearch("^第\\s*([零〇一二两三四五六七八九十百千]+)\\s*[集话話]$", text);
+  const number = chinese ? chineseNumber(chinese.groups[1]) : Number(reSearch("\\d+", text).text);
+  if (chinese) {
+    trace("中文集号转换", {before: chinese.groups[1], after: number});
+  }
+  return {value: [number], matchedText: text};
+}
+
+function chineseNumber(text) {
+  const digits = {"零": 0, "〇": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9};
+  const units = {"十": 10, "百": 100, "千": 1000};
+  if (!/[十百千]/.test(text)) {
+    return Number(text.split("").map(char => digits[char]).join(""));
+  }
+  let total = 0;
+  let digit = null;
+  let previousUnit = 10000;
+  let zero = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const unit = units[char];
+    if (unit) {
+      if (unit >= previousUnit || zero || (digit === null && !(unit === 10 && i === 0))) {
+        throw new Error("中文集号无效");
+      }
+      total += (digit ?? 1) * unit;
+      previousUnit = unit;
+      digit = null;
+    } else if (digits[char] === 0) {
+      if (!total || digit !== null || zero || previousUnit === 10 || i === text.length - 1) {
+        throw new Error("中文集号无效");
+      }
+      zero = true;
+    } else {
+      if (digit !== null) throw new Error("中文集号无效");
+      digit = digits[char];
+      zero = false;
+    }
+  }
+  return total + (digit ?? 0);
 }
 
 function trailing(text) {
