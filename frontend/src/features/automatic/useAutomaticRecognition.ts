@@ -28,6 +28,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { useRuntime } from '../../app/runtime'
 import { useAction } from '../../app/useAction'
 import { keys } from '../../app/query'
+import { confirmAction } from '../../app/confirm'
 
 export function useAutomaticRecognition() {
   const runtime = useRuntime()
@@ -59,6 +60,11 @@ export function useAutomaticRecognition() {
     transferGroup = ref('new')
   const groupSeason = ref<number>(1),
     freshImport = ref(false)
+  const groupSeasons = ref<Season[]>([])
+  const groupSeasonsLoading = ref(false)
+  const groupSeasonsError = ref('')
+  const savingSeasonGroup = ref('')
+  let seasonRequest = 0
   let alive = true,
     searchRequest = 0,
     editRequest = 0
@@ -99,6 +105,14 @@ export function useAutomaticRecognition() {
   const visibleGroups = computed(() =>
     filtered.value.slice((groupPage.value - 1) * 30, groupPage.value * 30),
   )
+  // Works per status within the chosen source, matching how the filter works.
+  const stateCounts = computed(() => {
+    const counts: Record<string, number> = { all: scoped.value.length }
+    for (const group of scoped.value)
+      for (const state of new Set(group.files.map((file) => file.state)))
+        counts[state] = (counts[state] || 0) + 1
+    return counts
+  })
   const current = computed(
     () =>
       scoped.value.find((group) => group.id === focus.value) ||
@@ -111,6 +125,29 @@ export function useAutomaticRecognition() {
         filePage.value * 40,
       ) || [],
   )
+  watch(() => current.value?.entry?.type === 'tv' ? current.value.entry.tmdbId : null, async (id) => {
+    const request = ++seasonRequest
+    groupSeasons.value = []
+    groupSeasonsError.value = ''
+    groupSeason.value = -1
+    groupSeasonsLoading.value = !!id
+    if (!id) return
+    try {
+      const value = await runtime.client.fetchQuery({
+        queryKey: ['tmdb', 'seasons', id],
+        queryFn: ({ signal }) => api<Season[]>(`/seasons?id=${id}`, undefined, 'GET', { signal }),
+        staleTime: 60_000,
+      })
+      if (!alive || request !== seasonRequest) return
+      groupSeasons.value = value
+      const existing = current.value?.files[0]?.season
+      groupSeason.value = value.find((season) => season.number === existing)?.number ?? value[0]?.number ?? -1
+    } catch (e) {
+      if (alive && request === seasonRequest) groupSeasonsError.value = (e as Error).message
+    } finally {
+      if (request === seasonRequest) groupSeasonsLoading.value = false
+    }
+  }, { immediate: true })
   const selected = computed(
     () =>
       task.value?.items.filter(
@@ -201,7 +238,6 @@ export function useAutomaticRecognition() {
           keys.recognition(task.value.id),
           JSON.parse(JSON.stringify(task.value)),
         )
-      await runtime.batchQuery.refetch()
     })
   }
   async function save() {
@@ -302,6 +338,12 @@ export function useAutomaticRecognition() {
     })
   }
   async function removeFile(file: RecognitionItem) {
+    if (!await confirmAction({
+      title: '移出文件？',
+      description: `将「${file.path.split('/').pop()}」移出识别工作区？磁盘上的文件不会被删除。`,
+      confirmLabel: '移出文件',
+      destructive: true,
+    })) return
     await act(async () => {
       file.removed = true
       file.selected = false
@@ -419,19 +461,26 @@ export function useAutomaticRecognition() {
     }
   }
   async function setSeason() {
-    await act(async () => {
+    if (locked.value || !current.value) return
+    const group = current.value
+    if (group.files.every((file) => file.season === groupSeason.value)) return
+    savingSeasonGroup.value = group.id
+    try {
+      await act(async () => {
       if (
-        !Number.isInteger(groupSeason.value) ||
-        groupSeason.value < 0 ||
-        groupSeason.value > 999
+        groupSeasonsLoading.value ||
+        !groupSeasons.value.some((season) => season.number === groupSeason.value)
       )
-        throw new Error('季号为 0–999')
-      for (const file of current.value?.files || []) {
+        throw new Error('请选择 TMDB 中存在的季度')
+      for (const file of group.files) {
         file.season = groupSeason.value
         file.selected = true
       }
       await save()
-    })
+      })
+    } finally {
+      savingSeasonGroup.value = ''
+    }
   }
   async function moveGroup() {
     await act(async () => {
@@ -498,13 +547,12 @@ export function useAutomaticRecognition() {
   async function removeSource(path: string) {
     if (!task.value) return
     const count = sources.value.find((item) => item.path === path)?.files ?? 0
-    if (
-      typeof window !== 'undefined' &&
-      !window.confirm(
-        `从工作区移除「${path}」及其 ${count} 个文件？磁盘上的文件不会被删除。`,
-      )
-    )
-      return
+    if (!await confirmAction({
+      title: '移出来源？',
+      description: `将「${path}」及其 ${count} 个文件移出识别工作区？磁盘上的文件不会被删除。`,
+      confirmLabel: '移出来源',
+      destructive: true,
+    })) return
     await act(async () => {
       task.value = await api<Recognition>(
         `/recognitions/${task.value!.id}/sources/remove`,
@@ -573,6 +621,10 @@ export function useAutomaticRecognition() {
     transfer,
     transferGroup,
     groupSeason,
+    savingSeasonGroup,
+    groupSeasons,
+    groupSeasonsLoading,
+    groupSeasonsError,
     freshImport,
     recognizing,
     locked,
@@ -581,6 +633,7 @@ export function useAutomaticRecognition() {
     sources,
     filtered,
     visibleGroups,
+    stateCounts,
     current,
     visibleFiles,
     selected,

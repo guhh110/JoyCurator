@@ -1,69 +1,39 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
-import {
-  AccordionRoot,
-  AccordionItem,
-  AccordionHeader,
-  AccordionTrigger,
-  AccordionContent,
-} from 'reka-ui'
-import { ChevronDown, Layers3 } from '@lucide/vue'
-import { navigation, groupForRoute } from '../../app/navigation'
+import { Layers3 } from '@lucide/vue'
+import { navigation, menuRoute } from '../../app/navigation'
 defineEmits<{ navigate: [] }>()
 const route = useRoute()
-const expanded = ref(groupForRoute(route.name))
-watch(
-  () => route.name,
-  (name) => {
-    expanded.value = groupForRoute(name)
-  },
-)
 </script>
 <template>
   <div class="sidebar-inner">
     <RouterLink
       class="brand sidebar-brand"
-      :to="{ name: 'workbench' }"
+      :to="{ name: 'automatic-recognition' }"
       @click="$emit('navigate')"
       ><div class="brand-symbol"><Layers3 :size="23" /></div>
       <span>JoyCurator<small>你的媒体整理空间</small></span></RouterLink
     >
     <nav aria-label="分组导航">
-      <AccordionRoot
-        v-model="expanded"
-        type="single"
-        collapsible
-        class="navigation-accordion"
-        ><AccordionItem
+      <section
           v-for="group in navigation"
           :key="group.id"
-          :value="group.id"
           class="navigation-group"
-          ><AccordionHeader
-            ><AccordionTrigger class="navigation-trigger"
-              ><component :is="group.icon" :size="17" /><span>{{
-                group.title
-              }}</span
-              ><ChevronDown
-                class="navigation-chevron"
-                :size="15" /></AccordionTrigger></AccordionHeader
-          ><AccordionContent class="navigation-content"
+          ><h3 class="navigation-title">{{ group.title }}</h3>
+          <div class="navigation-content"
             ><RouterLink
               v-for="item in group.items"
               :key="item.name"
               :to="{ name: item.name }"
               class="navigation-link"
-              :class="{ active: route.name === item.name }"
-              :aria-current="route.name === item.name ? 'page' : undefined"
+              :class="{ active: menuRoute(route.name) === item.name }"
+              :aria-current="menuRoute(route.name) === item.name ? 'page' : undefined"
               @click="$emit('navigate')"
               ><component :is="item.icon" :size="16" />{{
                 item.title
               }}</RouterLink
-            ></AccordionContent
-          ></AccordionItem
-        ></AccordionRoot
-      >
+            ></div>
+          </section>
     </nav>
     <footer class="sidebar-foot">
       <span class="status-dot" />本地文件 · 先预览再整理
@@ -80,6 +50,7 @@ watch(
   min-width: 0;
 }
 .sidebar-brand {
+  flex-shrink: 0;
   font-size: 19px;
   gap: 10px;
   padding: 0 8px 27px;
@@ -98,44 +69,16 @@ watch(
 .navigation-group {
   margin-bottom: 10px;
 }
+.sidebar-inner > nav { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+.navigation-title { padding:12px 12px 6px; color:var(--muted); font-size:11px; font-weight:600; letter-spacing:1px; }
 .navigation-group h3 {
   margin: 0;
-}
-.navigation-trigger {
-  width: 100%;
-  border: 0;
-  background: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 12px;
-  font-size: 13px;
-  color: #747180;
-  text-align: left;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.navigation-trigger:hover {
-  background: #f7f6fb;
-}
-.navigation-trigger span {
-  flex: 1;
-  font-weight: 600;
-}
-.navigation-chevron {
-  transition: transform 0.2s;
-}
-.navigation-trigger[data-state='open'] .navigation-chevron {
-  transform: rotate(180deg);
 }
 .navigation-content {
   overflow: hidden;
   display: grid;
   gap: 3px;
   padding: 3px 0;
-}
-.navigation-content[data-state='closed'] {
-  padding: 0;
 }
 .navigation-link {
   display: flex;
@@ -159,6 +102,7 @@ watch(
   box-shadow: inset 3px 0 var(--purple);
 }
 .sidebar-foot {
+  flex-shrink: 0;
   margin-top: auto;
   display: flex;
   align-items: center;

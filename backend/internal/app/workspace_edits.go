@@ -67,6 +67,7 @@ func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Up
 		}
 		if edit.TMDBID > 0 {
 			changed := item.Entry == nil || item.Entry.TMDBID != edit.TMDBID || item.Entry.Type != edit.Type
+			validate := changed || edit.Season != item.Season || !slices.Equal(edit.Episodes, item.Episodes)
 			if changed {
 				entry, e := memo.Detail(ctx, edit.Type, edit.TMDBID)
 				if e != nil {
@@ -76,7 +77,9 @@ func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Up
 				item.Reason = "已手动选择作品"
 			}
 			item.Season, item.Episodes = edit.Season, edit.Episodes
-			memo.Validate(ctx, item)
+			if validate {
+				memo.Validate(ctx, item)
+			}
 		} else if item.Entry != nil || edit.Group != item.Group {
 			item.Entry = nil
 			item.State, item.Reason = "review", "请手动选择作品"

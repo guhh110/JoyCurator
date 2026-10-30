@@ -10,30 +10,30 @@ export const routes: RouteRecordRaw[] = [
     path: '/',
     component: () => import('../layouts/AppLayout.vue'),
     children: [
-      { path: '', redirect: { name: 'workbench' } },
+      { path: '', redirect: { name: 'automatic-recognition' } },
       {
         path: 'organize',
         name: 'workbench',
         component: () => import('../pages/WorkbenchPage.vue'),
-        meta: { title: '整理工作台', group: 'organize', keepAlive: true },
+        meta: { title: '手动整理', group: 'workspace', keepAlive: true },
       },
       {
         path: 'records',
         name: 'records',
         component: () => import('../pages/RecordsPage.vue'),
-        meta: { title: '整理记录', group: 'organize' },
+        meta: { title: '整理记录', group: 'records' },
       },
       {
         path: 'recognition',
         name: 'automatic-recognition',
         component: () => import('../pages/AutomaticRecognitionPage.vue'),
-        meta: { title: '识别工作区', group: 'recognition', keepAlive: true },
+        meta: { title: '自动识别', group: 'workspace', keepAlive: true },
       },
       {
         path: 'recognition/rules',
         name: 'recognition-rules',
         component: () => import('../pages/recognition/RulesPage.vue'),
-        meta: { title: '识别规则', group: 'recognition' },
+        meta: { title: '识别规则', group: 'config' },
       },
       {
         // `new` creates a rule; ?target=&kind=&template= describe it.
@@ -50,26 +50,26 @@ export const routes: RouteRecordRaw[] = [
             ),
           ),
         }),
-        meta: { title: '编辑规则', group: 'recognition' },
+        meta: { title: '编辑规则', group: 'config' },
       },
       {
         path: 'recognition/history/:traceId?',
         name: 'extraction-history',
         component: () => import('../pages/recognition/HistoryPage.vue'),
         props: true,
-        meta: { title: '执行历史', group: 'recognition' },
+        meta: { title: '识别历史', group: 'records' },
       },
       {
         path: 'recognition/debug',
         name: 'recognition-debug',
         component: () => import('../pages/recognition/DebugPage.vue'),
-        meta: { title: '识别调试', group: 'recognition' },
+        meta: { title: '识别调试', group: 'config' },
       },
       {
         path: 'settings',
         name: 'settings',
         component: () => import('../pages/SettingsPage.vue'),
-        meta: { title: '设置', group: 'system', keepAlive: true },
+        meta: { title: '设置', group: 'config', keepAlive: true },
       },
       {
         path: ':pathMatch(.*)*',

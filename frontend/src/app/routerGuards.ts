@@ -1,5 +1,5 @@
 import type { Router } from 'vue-router'
-import { loadSession, type Session } from './session'
+import { loadSession, safeRedirect, type Session } from './session'
 export function installGuards(
   router: Router,
   readSession: () => Promise<Session> = loadSession,
@@ -15,7 +15,7 @@ export function installGuards(
     }
     if (!value.username && !to.meta.public)
       return { name: 'login', query: { redirect: to.fullPath } }
-    if (value.username && to.name === 'login') return { name: 'workbench' }
+    if (value.username && to.name === 'login') return safeRedirect(to.query.redirect)
   })
   router.afterEach((to) => {
     if (typeof document !== 'undefined')

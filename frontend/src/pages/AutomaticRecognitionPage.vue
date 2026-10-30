@@ -1,31 +1,38 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import {
+  ArrowLeftRight,
   ArrowRight,
   Check,
-  CircleCheck,
+  CircleAlert,
   Film,
   FolderOpen,
   Layers3,
   LoaderCircle,
   Pencil,
   Plus,
+  RotateCcw,
+  ScrollText,
   Search,
   Trash2,
+  Tv,
+  X,
 } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { bytes, episodeCode, name } from '../api'
-import { recognitionStates } from '../recognition'
+import { recognitionStates, sourceFolder } from '../recognition'
 import FileBrowser from '../components/FileBrowser.vue'
 import Modal from '../components/Modal.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
+import Select from '../components/ui/Select.vue'
+import Tooltip from '../components/ui/Tooltip.vue'
 import { useAutomaticRecognition } from '../features/automatic/useAutomaticRecognition'
 const {
   runtime,
   busy,
   error,
   notice,
-  batch,
   task,
   preview,
   browser,
@@ -50,6 +57,10 @@ const {
   transfer,
   transferGroup,
   groupSeason,
+  savingSeasonGroup,
+  groupSeasons,
+  groupSeasonsLoading,
+  groupSeasonsError,
   freshImport,
   recognizing,
   locked,
@@ -61,7 +72,6 @@ const {
   selected,
   pendingCount,
   readyCount,
-  runStates,
   modes,
   previewPage,
   previewRows,
@@ -87,7 +97,6 @@ const {
   moveGroup,
   prepare,
   execute,
-  cancelBatch,
   chooseGroup,
   openTransfer,
   closeSearch,
@@ -97,44 +106,49 @@ const {
   sources,
   chooseSource,
   removeSource,
+  stateCounts,
 } = useAutomaticRecognition()
+const fileStates = ['ready', 'review', 'unmatched', 'failed', 'pending']
+const stateFilters = ['all', 'review', 'unmatched', 'failed', 'pending', 'ready']
+type Group = (typeof groups.value)[number]
+const poster = (path: string) => `https://image.tmdb.org/t/p/w154${path}`
+const workYear = (group: Group) =>
+  group.entry?.year || group.files[0]?.metadata.year || '年份未知'
+const workType = (group: Group) =>
+  group.entry?.type === 'movie'
+    ? '电影'
+    : group.entry?.type === 'tv'
+      ? '剧集'
+      : '类型待确认'
+// The same issue is often reported once per file; show it once with a count.
+const previewIssues = computed(() => {
+  const counts = new Map<string, number>()
+  for (const issue of preview.value?.issues || [])
+    if (!conflictPath(issue)) counts.set(issue, (counts.get(issue) || 0) + 1)
+  return [...counts]
+})
+function conflictPath(issue: string) {
+  return /^(?:目标已存在|目标重复|作品之间目标重复)：(.+)$/.exec(issue)?.[1] || ''
+}
+function conflictTargets(issues: string[]) {
+  return [...new Set(issues.map(conflictPath).filter(Boolean))]
+}
+const folderOf = (path: string) =>
+  sourceFolder(path, task.value?.paths || []) || '直接添加的文件'
 </script>
 
 <template>
-  <section class="auto-workspace" aria-label="自动识别">
+  <section
+    class="auto-workspace"
+    :class="{ 'has-task': task }"
+    aria-label="自动识别"
+  >
     <PageHeader
       class="workflow-heading"
       title="自动识别"
       eyebrow="DISCOVER EVERY STORY"
       description="电影与剧集一起添加，按作品检查，再统一整理。"
-      ><template #actions>
-        <div class="auto-heading-actions">
-          <RouterLink class="text-button" :to="{ name: 'recognition-rules' }"
-            >识别规则</RouterLink
-          >
-          <RouterLink class="text-button" :to="{ name: 'extraction-history' }"
-            >执行历史</RouterLink
-          >
-          <RouterLink class="text-button" :to="{ name: 'recognition-debug' }"
-            >识别调试</RouterLink
-          >
-          <button
-            v-if="task"
-            class="text-button"
-            :disabled="locked || loading"
-            @click="openBrowser(true)"
-          >
-            新建识别</button
-          ><button
-            class="button primary"
-            :disabled="locked || loading"
-            @click="openBrowser()"
-          >
-            <Plus :size="17" />添加文件或目录
-          </button>
-        </div>
-      </template></PageHeader
-    >
+    />
     <QueryState
       v-if="taskQuery.error.value || runtime.batchQuery.error.value"
       :error="taskQuery.error.value || runtime.batchQuery.error.value"
@@ -147,21 +161,28 @@ const {
       </button>
     </p>
     <p v-if="notice" class="notice good" role="status">{{ notice }}</p>
-    <div v-if="loading" class="pane empty">
+    <div v-if="loading && !task" class="pane empty auto-initial-loading">
       <LoaderCircle class="spin" />读取识别工作区…
     </div>
-    <template v-else>
-      <div v-if="recognizing" class="auto-progress pane" role="status">
-        <LoaderCircle class="spin purple" :size="22" />
+    <template v-if="task || !loading">
+      <div v-if="recognizing" class="auto-progress" role="status">
+        <LoaderCircle class="spin purple" :size="18" />
         <div>
           <strong
             >正在识别 {{ task?.completed }}/{{
               task?.total || '扫描中'
             }}</strong
+          ><span class="muted"
+            >已解析的结果会自动出现，可以切换页面，稍后继续查看。</span
           >
-          <p class="muted">
-            已解析的结果会自动出现，可以切换页面，稍后继续查看。
-          </p>
+          <i
+            class="auto-progress-bar"
+            :style="{
+              '--done': task?.total
+                ? `${(task.completed / task.total) * 100}%`
+                : '0%',
+            }"
+          />
         </div>
         <button
           class="button small"
@@ -171,18 +192,19 @@ const {
           取消识别
         </button>
       </div>
-      <p v-if="task?.error" class="notice error">{{ task.error }}</p>
       <div
         v-if="
           task &&
           !recognizing &&
-          (task.state !== 'completed' ||
+          (task.error ||
+            task.state !== 'completed' ||
             task.items.some((file) => file.state === 'failed'))
         "
-        class="auto-retry"
+        class="notice error auto-retry"
       >
-        <button class="button small" :disabled="locked" @click="retry">
-          重试失败或未完成项
+        <span>{{ task.error || '部分文件没有完成识别。' }}</span
+        ><button class="text-button" :disabled="locked" @click="retry">
+          <RotateCcw :size="13" />重试失败或未完成项
         </button>
       </div>
       <div v-if="!task" class="pane empty auto-empty">
@@ -200,61 +222,46 @@ const {
         </button>
       </div>
       <template v-else>
-        <div class="auto-stats">
-          <span
-            ><strong>{{ groups.length }}</strong> 部作品</span
-          ><span
-            ><strong>{{ readyCount }}</strong> 个可整理文件</span
-          ><span
-            ><strong>{{ pendingCount }}</strong> 个待处理文件</span
-          ><span
-            ><strong>{{ selected.length }}</strong> 个已选</span
-          >
-        </div>
         <div class="auto-toolbar">
           <div class="search-input">
-            <Search :size="16" /><input
+            <Search :size="15" /><input
               v-model="query"
               aria-label="筛选作品或文件"
               placeholder="筛选作品或文件"
               @input="changeFilter"
             />
           </div>
-          <select v-model="filter" aria-label="识别状态" @change="changeFilter">
-            <option value="all">全部状态</option>
-            <option
-              v-for="state in [
-                'ready',
-                'review',
-                'unmatched',
-                'failed',
-                'pending',
-              ]"
+          <div class="auto-filters" role="group" aria-label="识别状态">
+            <button
+              v-for="state in stateFilters"
+              v-show="state === 'all' || stateCounts[state]"
               :key="state"
-              :value="state"
+              class="auto-filter"
+              :class="[state, { active: filter === state }]"
+              :aria-pressed="filter === state"
+              @click="
+                filter = state;
+                changeFilter()
+              "
             >
-              {{ recognitionStates[state] }}
-            </option>
-          </select>
-          <button
-            class="text-button"
-            :disabled="locked"
-            @click="selectReady(true)"
-          >
-            选中可整理项</button
-          ><button
-            class="text-button"
-            :disabled="locked"
-            @click="selectReady(false)"
-          >
-            取消选择
-          </button>
+              <i v-if="state !== 'all'" />{{
+                state === 'all' ? '全部' : recognitionStates[state]
+              }}<span>{{ stateCounts[state] || 0 }}</span>
+            </button>
+          </div>
         </div>
         <div class="auto-grid">
           <section class="pane auto-sources" aria-label="添加的来源">
             <header class="pane-head">
               <h2>来源</h2>
-              <span class="count">{{ sources.length }}</span>
+              <button
+                class="text-button"
+                title="丢弃当前工作区，重新选择文件或目录"
+                :disabled="locked || loading"
+                @click="openBrowser(true)"
+              >
+                新建识别
+              </button>
             </header>
             <div class="auto-source-list">
               <button
@@ -263,89 +270,79 @@ const {
                 :aria-pressed="!source"
                 @click="chooseSource('')"
               >
-                <strong>全部来源</strong
+                <span class="auto-source-name"
+                  ><Layers3 :size="15" /><strong>全部来源</strong
+                  ><em>{{ readyCount + pendingCount }}</em></span
                 ><span class="muted tiny"
-                  >{{ readyCount + pendingCount }} 个文件 ·
-                  {{ groups.length }} 部作品</span
+                  >{{ groups.length }} 部作品 · {{ sources.length }} 个来源</span
                 >
               </button>
               <div
                 v-for="item in sources"
                 :key="item.path"
                 class="auto-source-item"
-              ><button
-                class="auto-source"
-                :class="{ active: source === item.path }"
-                :aria-pressed="source === item.path"
-                :title="item.path"
-                @click="chooseSource(item.path)"
               >
-                <span class="auto-source-name"
-                  ><FolderOpen :size="15" /><strong>{{
-                    name(item.path) || item.path
-                  }}</strong></span
-                ><span class="auto-source-path muted tiny">{{
-                  item.path
-                }}</span
-                ><span class="muted tiny"
-                  >{{ item.files }} 个文件 · {{ item.works }} 部作品</span
-                ><span
-                  v-if="item.files"
-                  class="auto-source-bar"
-                  aria-hidden="true"
-                  ><i
-                    v-for="state in [
-                      'ready',
-                      'review',
-                      'unmatched',
-                      'failed',
-                      'pending',
-                    ]"
-                    v-show="item.states[state]"
-                    :key="state"
-                    :class="state"
-                    :style="{ flexGrow: item.states[state] }"
-                /></span
-                ><span v-if="item.files" class="auto-source-states tiny"
-                  ><template
-                    v-for="state in [
-                      'ready',
-                      'review',
-                      'unmatched',
-                      'failed',
-                      'pending',
-                    ]"
-                    :key="state"
-                    ><span v-if="item.states[state]" :class="state"
-                      >{{ recognitionStates[state] }}
-                      {{ item.states[state] }}</span
-                    ></template
-                  ></span
-                ><span v-else class="muted tiny">{{
-                  recognizing ? '扫描中…' : '没有找到媒体文件'
-                }}</span>
-              </button><button
-                class="auto-source-remove"
-                :disabled="locked"
-                :aria-label="`移除来源 ${item.path}`"
-                title="移除这个来源"
-                @click="removeSource(item.path)"
-              >
-                <Trash2 :size="14" />
-              </button></div>
+                <button
+                  class="auto-source"
+                  :class="{ active: source === item.path }"
+                  :aria-pressed="source === item.path"
+                  :title="item.path"
+                  @click="chooseSource(item.path)"
+                >
+                  <span class="auto-source-name"
+                    ><FolderOpen :size="15" /><strong>{{
+                      name(item.path) || item.path
+                    }}</strong
+                    ><em>{{ item.files }}</em></span
+                  ><span
+                    v-if="item.files"
+                    class="auto-source-bar"
+                    aria-hidden="true"
+                    ><i
+                      v-for="state in fileStates"
+                      v-show="item.states[state]"
+                      :key="state"
+                      :class="state"
+                      :style="{ flexGrow: item.states[state] }"
+                  /></span>
+                  <span v-if="item.files" class="auto-source-states tiny"
+                    ><template v-for="state in fileStates" :key="state"
+                      ><span v-if="item.states[state]" :class="state"
+                        >{{ recognitionStates[state] }}
+                        {{ item.states[state] }}</span
+                      ></template
+                    ></span
+                  ><span v-else class="muted tiny">{{
+                    recognizing ? '扫描中…' : '没有找到媒体文件'
+                  }}</span>
+                </button>
+                <button
+                  class="auto-source-remove"
+                  :disabled="locked"
+                  :aria-label="`移除来源 ${item.path}`"
+                  title="移除这个来源"
+                  @click="removeSource(item.path)"
+                >
+                  <Trash2 :size="14" />
+                </button>
+              </div>
             </div>
             <button
               class="auto-source-add"
+              aria-label="添加文件或目录"
+              title="添加文件或目录"
               :disabled="locked || loading"
               @click="openBrowser()"
             >
-              <Plus :size="15" />添加文件或目录
+              <Plus :size="15" /><span>添加文件或目录</span>
             </button>
           </section>
           <section class="pane auto-groups" aria-label="作品分组">
             <header class="pane-head">
-              <h2>{{ source ? '本来源的作品' : '作品分组' }}</h2>
-              <span class="count">{{ filtered.length }}</span>
+              <h2>
+                {{ source ? name(source) : '作品' }}
+                <span class="count">{{ filtered.length }}</span>
+              </h2>
             </header>
             <div class="auto-group-list">
               <div
@@ -354,6 +351,34 @@ const {
                 class="auto-group"
                 :class="{ active: current?.id === group.id }"
               >
+                <button
+                  class="auto-group-main"
+                  :aria-current="current?.id === group.id"
+                  @click="chooseGroup(group.id)"
+                >
+                  <span class="auto-poster">
+                    <img
+                      v-if="group.entry?.posterPath"
+                      :src="poster(group.entry.posterPath)"
+                      alt=""
+                      loading="lazy"
+                    /><component
+                      :is="group.entry?.type === 'tv' ? Tv : Film"
+                      v-else
+                      :size="16"
+                    />
+                  </span>
+                  <span class="auto-group-text">
+                    <strong>{{ group.title }}</strong>
+                    <span class="muted"
+                      >{{ workYear(group) }} · {{ workType(group) }} ·
+                      {{ group.files.length }} 个文件</span
+                    >
+                    <span class="auto-state" :class="group.state"
+                      ><i />{{ recognitionStates[group.state] }}</span
+                    >
+                  </span>
+                </button>
                 <input
                   type="checkbox"
                   :aria-label="`选择 ${group.title}`"
@@ -364,27 +389,6 @@ const {
                   "
                   @change="selectGroup(group.id)"
                 />
-                <button class="auto-group-main" @click="chooseGroup(group.id)">
-                  <strong>{{ group.title }}</strong
-                  ><span class="muted"
-                    >{{
-                      group.entry?.year ||
-                      group.files[0]?.metadata.year ||
-                      '年份未知'
-                    }}
-                    ·
-                    {{
-                      group.entry?.type === 'movie'
-                        ? '电影'
-                        : group.entry?.type === 'tv'
-                          ? '剧集'
-                          : '类型待确认'
-                    }}
-                    · {{ group.files.length }} 个文件</span
-                  ><span class="state-pill" :class="group.state">{{
-                    recognitionStates[group.state]
-                  }}</span>
-                </button>
               </div>
               <p v-if="!filtered.length" class="empty small-empty">
                 没有符合条件的作品。
@@ -409,50 +413,68 @@ const {
           </section>
           <section class="pane auto-detail" aria-label="分组文件">
             <template v-if="current">
-              <header class="pane-head">
-                <div>
+              <header class="auto-work">
+                <span class="auto-poster large">
+                  <img
+                    v-if="current.entry?.posterPath"
+                    :src="poster(current.entry.posterPath)"
+                    alt=""
+                  /><component
+                    :is="current.entry?.type === 'tv' ? Tv : Film"
+                    v-else
+                    :size="22"
+                  />
+                </span>
+                <div class="auto-work-text">
+                  <span class="auto-state" :class="current.state"
+                    ><i />{{ recognitionStates[current.state] }}</span
+                  >
                   <h2>{{ current.title }}</h2>
-                  <p class="muted tiny">
-                    {{
-                      current.entry
-                        ? `TMDB ${current.entry.tmdbId}`
-                        : '选择候选作品，或手动搜索'
-                    }}
+                  <p class="muted">
+                    <template v-if="current.entry"
+                      >{{
+                        current.entry.originalTitle &&
+                        current.entry.originalTitle !== current.entry.title
+                          ? `${current.entry.originalTitle} · `
+                          : ''
+                      }}{{ workYear(current) }} · {{ workType(current) }} ·
+                      TMDB {{ current.entry.tmdbId }}</template
+                    ><template v-else
+                      >尚未确定作品，选择候选或手动搜索</template
+                    >
                   </p>
+                  <p v-if="groupSeasonsError" class="danger tiny" role="alert">{{ groupSeasonsError }}</p>
                 </div>
+                <div class="auto-work-actions">
+                  <div v-if="current.entry?.type === 'tv'" class="auto-season-controls">
+                    <span v-if="savingSeasonGroup === current.id" class="muted tiny" role="status"><LoaderCircle class="spin" :size="13" />校验季集…</span>
+                    <Select
+                      :model-value="groupSeason === -1 ? undefined : String(groupSeason)"
+                      label="选择作品季度"
+                      :placeholder="groupSeasonsLoading ? '正在读取季度…' : '暂无可选季度'"
+                      :options="groupSeasons.map(season => ({ value: String(season.number), label: `${season.name} · ${season.count} 集` }))"
+                      :disabled="locked || groupSeasonsLoading || !groupSeasons.length"
+                      @update:model-value="(value) => { groupSeason = Number(value); setSeason() }"
+                    />
+                  </div>
                 <button
                   class="button small"
+                  :class="{ primary: !current.entry }"
                   :disabled="locked"
                   @click="openSearch"
                 >
-                  <Search :size="15" />{{
+                  <Search :size="14" />{{
                     current.entry ? '修改作品' : '选择作品'
                   }}
                 </button>
+                </div>
               </header>
-              <div v-if="current.entry?.type === 'tv'" class="auto-season">
-                <label
-                  >整组季号
-                  <input
-                    v-model.number="groupSeason"
-                    type="number"
-                    min="0"
-                    max="999"
-                    aria-label="整组季号"
-                    :disabled="locked" /></label
-                ><button
-                  class="button small"
-                  :disabled="locked"
-                  @click="setSeason"
-                >
-                  应用到本组</button
-                ><span class="muted tiny">0 为特别篇，集数保持原值</span>
-              </div>
               <div class="auto-files">
                 <article
                   v-for="file in visibleFiles"
                   :key="file.path"
                   class="auto-file"
+                  :class="{ off: file.state !== 'ready' }"
                 >
                   <input
                     type="checkbox"
@@ -462,53 +484,68 @@ const {
                     @change="selectFile(file)"
                   />
                   <div class="auto-file-main">
-                    <strong :title="file.path">{{ name(file.path) }}</strong>
-                    <p class="muted tiny auto-path" :title="file.path">
-                      {{ file.path }}
-                    </p>
-                    <div class="auto-file-meta">
-                      <span class="state-pill" :class="file.state">{{
-                        recognitionStates[file.state]
-                      }}</span
-                      ><span v-if="file.entry?.type === 'tv'" class="tiny">{{
-                        file.season < 0
-                          ? '季号未知'
-                          : episodeCode(file.season, file.episodes)
-                      }}</span
-                      ><span class="muted tiny">{{ bytes(file.size) }}</span>
-                    </div>
-                    <p class="tiny muted">{{ file.reason || '等待识别' }}</p>
-                    <div class="auto-file-actions">
-                      <RouterLink
-                        v-if="file.traceId"
-                        class="text-button"
-                        :to="{
-                          name: 'extraction-history',
-                          params: { traceId: file.traceId },
-                        }"
-                        >查看识别过程</RouterLink
-                      ><span v-else class="tiny muted">无规则执行轨迹</span>
-                      <button
+                    <div class="auto-file-title">
+                      <span
                         v-if="file.entry?.type === 'tv'"
-                        class="text-button"
-                        :disabled="locked"
-                        @click="openEdit(file)"
-                      >
-                        <Pencil :size="13" />修正季集</button
-                      ><button
-                        class="text-button"
-                        :disabled="locked"
-                        @click="openTransfer(file)"
-                      >
-                        调整分组</button
-                      ><button
-                        class="text-button"
-                        :disabled="locked"
-                        @click="removeFile(file)"
-                      >
-                        移出
-                      </button>
+                        class="auto-episode"
+                        :class="{ unknown: file.season < 0 }"
+                        >{{
+                          file.season < 0
+                            ? '季号未知'
+                            : episodeCode(file.season, file.episodes)
+                        }}</span
+                      ><strong :title="file.path">{{ name(file.path) }}</strong>
                     </div>
+                    <p class="auto-file-meta tiny">
+                      <span class="auto-state" :class="file.state"
+                        ><i />{{ recognitionStates[file.state] }}</span
+                      ><span class="auto-path" :title="file.path">{{
+                        folderOf(file.path)
+                      }}</span
+                      ><span>{{ bytes(file.size) }}</span>
+                    </p>
+                    <p class="auto-reason tiny">
+                      {{ file.reason || '等待识别' }}
+                    </p>
+                  </div>
+                  <div class="auto-file-actions">
+                    <RouterLink
+                      v-if="file.traceId"
+                      class="icon-button"
+                      :to="{
+                        name: 'extraction-history',
+                        params: { traceId: file.traceId },
+                      }"
+                      aria-label="查看识别过程"
+                      title="查看识别过程"
+                      ><ScrollText :size="15"
+                    /></RouterLink>
+                    <button
+                      v-if="file.entry?.type === 'tv'"
+                      class="icon-button"
+                      :disabled="locked"
+                      aria-label="修正季集"
+                      title="修正季集"
+                      @click="openEdit(file)"
+                    >
+                      <Pencil :size="15" /></button
+                    ><button
+                      class="icon-button"
+                      :disabled="locked"
+                      aria-label="调整分组"
+                      title="调整分组"
+                      @click="openTransfer(file)"
+                    >
+                      <ArrowLeftRight :size="15" /></button
+                    ><button
+                      class="icon-button danger-hover"
+                      :disabled="locked"
+                      aria-label="移出工作区"
+                      title="移出工作区"
+                      @click="removeFile(file)"
+                    >
+                      <X :size="15" />
+                    </button>
                   </div>
                 </article>
               </div>
@@ -538,12 +575,31 @@ const {
             </div>
           </section>
         </div>
-        <div class="auto-footer pane">
-          <div>
-            <strong>已选 {{ selected.length }} 个文件</strong>
+        <footer class="auto-footer">
+          <div class="auto-footer-summary">
+            <strong
+              >已选 <b>{{ selected.length }}</b> / {{ readyCount }} 个可整理文件</strong
+            >
             <p class="muted tiny">
-              待确认的文件可以稍后处理；每部作品分别记录。
+              <template v-if="pendingCount"
+                >{{ pendingCount }} 个文件待处理，可以稍后再整理 · </template
+              >每部作品分别记录
             </p>
+          </div>
+          <div class="auto-footer-select">
+            <button
+              class="text-button"
+              :disabled="locked"
+              @click="selectReady(true)"
+            >
+              全选可整理</button
+            ><button
+              class="text-button"
+              :disabled="locked || !selected.length"
+              @click="selectReady(false)"
+            >
+              清空
+            </button>
           </div>
           <select v-model="mode" aria-label="自动整理方式" :disabled="locked">
             <option v-for="(label, value) in modes" :key="value" :value="value">
@@ -555,55 +611,13 @@ const {
             @click="prepare"
           >
             <LoaderCircle
-              v-if="busy"
+              v-if="busy && !savingSeasonGroup"
               class="spin"
               :size="16"
             />统一预览<ArrowRight :size="16" />
           </button>
-        </div>
+        </footer>
       </template>
-      <section v-if="batch" class="pane auto-batch" aria-label="自动整理队列">
-        <header class="pane-head">
-          <div>
-            <h2>{{ batch.active ? '正在按作品整理' : '最近整理批次' }}</h2>
-            <p class="muted tiny">
-              {{
-                batch.runs.filter((run) => run.state === 'completed').length
-              }}/{{ batch.runs.length }} 部作品已完成
-            </p>
-          </div>
-          <button
-            v-if="batch.active"
-            class="button small"
-            :disabled="busy"
-            @click="cancelBatch"
-          >
-            取消整批
-          </button>
-        </header>
-        <div class="auto-batch-runs">
-          <button
-            v-for="run in batch.runs"
-            :key="run.id"
-            class="auto-batch-run"
-            @click="runtime.inspect(run)"
-          >
-            <LoaderCircle
-              v-if="run.state === 'running'"
-              class="spin purple"
-              :size="16"
-            /><CircleCheck
-              v-else-if="run.state === 'completed'"
-              class="green"
-              :size="16"
-            /><Film v-else :size="16" /><strong>{{ run.title }}</strong
-            ><span class="state-pill" :class="run.state">{{
-              runStates[run.state]
-            }}</span
-            ><span class="tiny muted">{{ run.completed }}/{{ run.total }}</span>
-          </button>
-        </div>
-      </section>
     </template>
   </section>
   <FileBrowser
@@ -644,21 +658,28 @@ const {
         :disabled="busy || searchBusy"
         @click="pick(entry)"
       >
-        <img
-          v-if="entry.posterPath"
-          :src="`https://image.tmdb.org/t/p/w185${entry.posterPath}`"
-          alt=""
-        />
-        <div v-else class="result-poster"><Film :size="24" /></div>
-        <span
-          ><strong>{{ entry.title }}</strong
-          ><small
-            >{{ entry.originalTitle }} · {{ entry.year || '年份未知' }} ·
-            {{ entry.type === 'tv' ? '剧集' : '电影' }} · TMDB
-            {{ entry.tmdbId }}</small
-          >
-          <p>{{ entry.overview }}</p></span
-        ><Check :size="17" />
+        <div class="result-poster">
+          <img
+            v-if="entry.posterPath"
+            :src="`https://image.tmdb.org/t/p/w185${entry.posterPath}`"
+            alt=""
+          /><component :is="entry.type === 'tv' ? Tv : Film" v-else :size="22" />
+        </div>
+        <div>
+          <h3>
+            {{ entry.title }}<span>{{ entry.year || '年份未知' }}</span>
+          </h3>
+          <p class="tiny muted">
+            {{
+              entry.originalTitle && entry.originalTitle !== entry.title
+                ? `${entry.originalTitle} · `
+                : ''
+            }}{{ entry.type === 'tv' ? '剧集' : '电影' }} · TMDB
+            {{ entry.tmdbId }}
+          </p>
+          <p class="result-overview">{{ entry.overview || '暂无简介' }}</p>
+        </div>
+        <Check :size="17" />
       </button>
       <p v-if="!searchResults.length" class="empty small-empty">
         {{
@@ -737,19 +758,36 @@ const {
       >
     </div>
     <p class="muted">每部作品单独记录并依次执行，可独立重试或撤销。</p>
-    <div v-if="preview.issues.length" class="notice error">
-      <p v-for="issue in preview.issues" :key="issue">{{ issue }}</p>
+    <div v-if="previewIssues.length" class="notice error">
+      <p v-for="[issue, count] in previewIssues" :key="issue">
+        {{ issue }}<b v-if="count > 1" class="auto-issue-count"> × {{ count }}</b>
+      </p>
       <p>关闭预览，调整选中文件或分组后重新预览。</p>
     </div>
     <div class="auto-preview-rows">
       <article v-for="row in previewRows" :key="row.source">
         <strong>{{ name(row.source) }}</strong>
         <p class="muted tiny auto-path">{{ row.source }}</p>
-        <p class="auto-path">→ {{ row.target }}</p>
+        <p class="auto-path auto-preview-target" :class="{ 'auto-row-issue': conflictTargets([...row.issues, ...preview.issues]).includes(row.target) }">
+          <span>→ {{ row.target }}</span>
+          <Tooltip v-if="conflictTargets([...row.issues, ...preview.issues]).includes(row.target)" content="已存在">
+            <CircleAlert :size="16" tabindex="0" role="img" aria-label="已存在" />
+          </Tooltip>
+        </p>
+        <p v-for="target in conflictTargets(row.issues).filter(target => target !== row.target)" :key="target" class="auto-path auto-preview-target auto-row-issue">
+          <span>→ {{ target }}</span>
+          <Tooltip content="已存在">
+            <CircleAlert :size="16" tabindex="0" role="img" aria-label="已存在" />
+          </Tooltip>
+        </p>
         <p v-if="row.artifacts.length" class="muted tiny">
           {{ row.artifacts.join(' · ') }}
         </p>
-        <p v-for="issue in row.issues" :key="issue" class="red tiny">
+        <p
+          v-for="issue in new Set(row.issues.filter(issue => !conflictPath(issue)))"
+          :key="issue"
+          class="auto-row-issue tiny"
+        >
           {{ issue }}
         </p>
       </article>

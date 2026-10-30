@@ -50,5 +50,5 @@ export function safeRedirect(value: unknown): string {
     !/[\u0000-\u001f\u007f]/.test(value) &&
     !value.startsWith('/login')
     ? value
-    : '/organize'
+    : '/recognition'
 }

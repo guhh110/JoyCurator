@@ -2,7 +2,6 @@
 import {
   ArrowRight,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleCheck,
@@ -10,7 +9,6 @@ import {
   FileCheck2,
   Film,
   FolderOpen,
-  Layers3,
   Link2,
   LoaderCircle,
   Pencil,
@@ -24,6 +22,7 @@ import Modal from '../components/Modal.vue'
 import FileBrowser from '../components/FileBrowser.vue'
 import Notices from '../components/ui/Notices.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
+import Select from '../components/ui/Select.vue'
 import { modeNames } from '../features/records/presentation'
 import { useWorkbench } from '../features/workbench/useWorkbench'
 const {
@@ -270,6 +269,16 @@ const {
                 : 'TMDB'
             }}</span>
           </div>
+          <div class="manual-work-actions">
+            <Select
+              v-if="entry?.type === 'tv'"
+              :model-value="String(season)"
+              label="选择作品季度"
+              placeholder="暂无可选季度"
+              :options="seasons.map(item => ({ value: String(item.number), label: `${item.name} · ${item.count} 集` }))"
+              :disabled="busy || loadingEpisodes || running || !seasons.length"
+              @update:model-value="(value) => changeSeason(Number(value))"
+            />
           <button
             v-if="entry"
             class="text-button"
@@ -278,26 +287,11 @@ const {
           >
             更换作品<ChevronRight :size="14" />
           </button>
+          </div>
         </header>
         <template v-if="entry">
           <div v-if="entry.type === 'tv'" class="season-bar">
-            <label class="season-select"
-              ><Layers3 :size="15" /><select
-                :value="season"
-                aria-label="选择季"
-                :disabled="loadingEpisodes || running"
-                @change="
-                  changeSeason(
-                    Number(($event.target as HTMLSelectElement).value),
-                  )
-                "
-              >
-                <option v-for="s in seasons" :key="s.number" :value="s.number">
-                  {{ s.number === 0 ? '特别篇' : `第 ${s.number} 季` }} ·
-                  {{ s.count }} 集
-                </option></select
-              ><ChevronDown :size="13" /></label
-            ><span class="tiny muted"
+            <span class="tiny muted"
               >已配对 <b class="purple">{{ matchedCount }}</b> /
               {{ episodes.length }} 集</span
             >
@@ -635,6 +629,11 @@ const {
   ></Modal>
 </template>
 <style scoped>
+.manual-work-actions { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+@media (max-width:760px) {
+  .match-pane > .pane-head { height:auto; min-height:48px; flex-wrap:wrap; padding-top:8px; padding-bottom:8px; gap:8px; }
+  .manual-work-actions { margin-left:auto; max-width:100%; flex-wrap:wrap; }
+}
 .workbench-page {
   display: flex;
   flex-direction: column;

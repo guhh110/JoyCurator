@@ -5,6 +5,7 @@ import { LogOut, Menu, ChevronRight, X } from '@lucide/vue'
 import { api } from '../api'
 import { provideRuntime } from '../app/runtime'
 import { session, clearSession } from '../app/session'
+import { groupTitleForRoute } from '../app/navigation'
 import AppSidebar from '../components/navigation/AppSidebar.vue'
 import MobileMenu from '../components/navigation/MobileMenu.vue'
 import TaskToast from '../components/jobs/TaskToast.vue'
@@ -15,13 +16,7 @@ const runtime = provideRuntime(),
 const mobileMenu = ref(false),
   scroll = ref<HTMLElement>(),
   leaving = ref(false)
-const groupName = computed(() =>
-  route.meta.group === 'recognition'
-    ? '自动识别'
-    : route.meta.group === 'system'
-      ? '系统设置'
-      : '文件整理',
-)
+const groupName = computed(() => groupTitleForRoute(route.name))
 watch(
   () => route.fullPath,
   () => {

@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"net/http/httptest"
-	"os"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,6 +79,30 @@ func TestRecognitionPersistedWorkspace(t *testing.T) {
 	}
 	if _, err = a.dependencies.Workspace.Start([]string{filepath.Join(root, "target")}, ""); err == nil {
 		t.Fatal("unauthorized path accepted")
+	}
+}
+
+func TestWorkspaceSelectionKeepsValidationUntilSeasonChanges(t *testing.T) {
+	a, root := fixture(t)
+	file := mediaFile(t, a, root, "series.mkv")
+	file.Season, file.Episodes = 2, []int{1}
+	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{file.Path}, Items: []matching.Item{{File: file, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2}, State: "ready", Reason: "previous validation"}}}
+	if err := a.store.SaveWorkspace(&task); err != nil {
+		t.Fatal(err)
+	}
+	// Cached provider data differs from the previous validation. Selection alone
+	// must preserve that result; an actual season change must validate again.
+	seedRecognitionCache(t, a, "/tv/2?language=zh-CN", `{"seasons":[{"season_number":1}]}`)
+	in := matching.Update{Revision: task.Revision, Items: []matching.Edit{{Path: file.Path, Group: "tv", Type: "tv", TMDBID: 2, Season: 2, Episodes: []int{1}, Selected: true}}}
+	updated, err := a.dependencies.Workspace.Update(context.Background(), task.ID, in)
+	if err != nil || updated.Items[0].State != "ready" || !updated.Items[0].Selected {
+		t.Fatal(updated, err)
+	}
+	in.Revision = updated.Revision
+	in.Items[0].Season = 3
+	updated, err = a.dependencies.Workspace.Update(context.Background(), task.ID, in)
+	if err != nil || updated.Items[0].State != "review" || updated.Items[0].Selected {
+		t.Fatal(updated, err)
 	}
 }
 func TestRecognitionRetryKeepsManualEdits(t *testing.T) {

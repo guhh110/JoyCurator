@@ -42,6 +42,15 @@ export function sourceOf(path: string, roots: string[]) {
   }
   return found
 }
+// Folder of a file as shown in the workspace: relative to the parent of the
+// added source, so it starts with the source's own name. '' when the added
+// path is the file itself.
+export function sourceFolder(path: string, roots: string[]) {
+  const root = sourceOf(path, roots)
+  if (!root || root === path) return ''
+  const parent = root.slice(0, root.lastIndexOf('/'))
+  return path.slice(parent.length + 1, path.lastIndexOf('/'))
+}
 export interface SourceSummary {
   path: string
   files: number

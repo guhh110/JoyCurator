@@ -44,7 +44,7 @@ describe('independent pages and grouped navigation', () => {
     const edit = router.resolve('/recognition/rules/season?line=4')
     expect(edit.name).toBe('recognition-rule-edit')
     expect(edit.params.ruleId).toBe('season')
-    expect(groupForRoute('recognition-rule-edit')).toBe('recognition')
+    expect(groupForRoute('recognition-rule-edit')).toBe('config')
     const detail = router.resolve('/recognition/history/trace-123?page=2')
     expect(detail.params.traceId).toBe('trace-123')
     expect(detail.query.page).toBe('2')
@@ -65,9 +65,13 @@ describe('independent pages and grouped navigation', () => {
     await router.replace(safeRedirect(router.currentRoute.value.query.redirect))
     expect(router.currentRoute.value.params.traceId).toBe('trace-123')
     await router.push('/login')
-    expect(router.currentRoute.value.name).toBe('workbench')
+    expect(router.currentRoute.value.name).toBe('automatic-recognition')
+    await router.push('/login?redirect=/records')
+    expect(router.currentRoute.value.name).toBe('records')
+    await router.push('/')
+    expect(router.currentRoute.value.name).toBe('automatic-recognition')
   })
-  it('opens the matching accordion group and exposes direct router links', async () => {
+  it('shows all groups and highlights parent links on detail pages', async () => {
     const router = makeRouter()
     await router.push('/recognition/debug')
     const app = createSSRApp(AppSidebar)
@@ -78,12 +82,23 @@ describe('independent pages and grouped navigation', () => {
     expect(html).toContain('href="/recognition/history"')
     expect(html).toContain('href="/recognition/debug"')
     expect(html).toContain('aria-current="page"')
-    expect(groupForRoute('recognition-debug')).toBe('recognition')
+    expect(groupForRoute('recognition-debug')).toBe('config')
     expect(navigation.map((group) => group.title)).toEqual([
-      '文件整理',
-      '自动识别',
-      '系统设置',
+      '工作区',
+      '记录',
+      '配置',
     ])
+    expect(navigation.flatMap(group => group.items.map(item => item.name))).toEqual([
+      'automatic-recognition', 'workbench', 'records', 'extraction-history',
+      'recognition-rules', 'recognition-debug', 'settings',
+    ])
+    expect(html).toContain('href="/settings"')
+    expect(html).toContain('href="/organize"')
+    await router.push('/recognition/rules/season')
+    const detailApp = createSSRApp(AppSidebar)
+    detailApp.use(router)
+    const detailHtml = await renderToString(detailApp)
+    expect(detailHtml.match(/<a\b[^>]*href="\/recognition\/rules"[^>]*>/)?.[0]).toContain('aria-current="page"')
   })
   it.each([
     'https://example.invalid',
@@ -93,7 +108,7 @@ describe('independent pages and grouped navigation', () => {
     '/login',
     '/login?redirect=/login',
   ])('rejects unsafe or looping redirects %s', (value) => {
-    expect(safeRedirect(value)).toBe('/organize')
+    expect(safeRedirect(value)).toBe('/recognition')
   })
   it('preserves a local target and validates pagination parameters', () => {
     expect(safeRedirect('/recognition/rules')).toBe('/recognition/rules')
