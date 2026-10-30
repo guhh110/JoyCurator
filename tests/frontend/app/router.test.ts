@@ -89,11 +89,13 @@ describe('independent pages and grouped navigation', () => {
       '配置',
     ])
     expect(navigation.flatMap(group => group.items.map(item => item.name))).toEqual([
-      'automatic-recognition', 'workbench', 'records', 'extraction-history',
+      'automatic-recognition', 'records', 'extraction-history',
       'recognition-rules', 'recognition-debug', 'settings',
     ])
     expect(html).toContain('href="/settings"')
-    expect(html).toContain('href="/organize"')
+    expect(html).not.toContain('href="/organize"')
+    expect(html).toContain('整理工作区')
+    expect(router.resolve('/organize').name).toBe('not-found')
     await router.push('/recognition/rules/season')
     const detailApp = createSSRApp(AppSidebar)
     detailApp.use(router)

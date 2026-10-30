@@ -2811,12 +2811,17 @@ small {
 .auto-season-controls label { margin:0; white-space:nowrap; font-size:11px; }
 .auto-season-controls input { width:64px; min-height:31px; padding:5px 9px; }
 .auto-files { flex:1; min-height:0; overflow:auto; }
+.workspace-detail-tabs { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); }
+.workspace-detail-tabs button { border:0; border-radius:6px; background:none; color:var(--muted); padding:6px 10px; font-size:12px; }
+.workspace-detail-tabs button[aria-pressed='true'] { background:#f1edfb; color:var(--purple-dark); }
+.workspace-detail-tabs span { font-size:11px; color:var(--muted); }
 .auto-file { display:flex; align-items:flex-start; gap:12px; padding:12px 18px; border-bottom:1px solid var(--line); }
 .auto-file:hover { background:#fcfbfe; }
 .auto-file > input[type=checkbox] { margin-top:3px; }
 .auto-file-main { flex:1; min-width:0; display:grid; gap:4px; }
-.auto-file-title { display:flex; align-items:flex-start; gap:8px; min-width:0; }
+.auto-file-title { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; min-width:0; }
 .auto-file-title strong { font-size:13px; font-weight:550; line-height:1.5; overflow-wrap:anywhere; }
+.auto-file-title .auto-file-path-hint { flex:1 1 120px; min-width:0; color:var(--muted); font-size:11px; line-height:1.5; }
 .auto-episode { flex-shrink:0; margin-top:1px; padding:1px 6px; border-radius:4px; background:#efebfa; color:var(--purple-dark); font:600 11px/1.6 'SFMono-Regular', Consolas, monospace; }
 .auto-episode.unknown { background:#fff2d9; color:#9a6517; font-family:inherit; }
 .auto-file-meta { display:flex; align-items:center; gap:4px 12px; flex-wrap:wrap; margin:0; color:var(--muted); min-width:0; }
@@ -2885,6 +2890,8 @@ small {
   .auto-work { padding:13px 14px; gap:12px; }
   .auto-work { flex-wrap:wrap; }
   .auto-work-actions { margin-left:auto; max-width:100%; flex-wrap:wrap; }
+  .auto-work-text { flex-basis:calc(100% - 64px); }
+  .auto-work-actions { flex-basis:100%; justify-content:flex-end; }
   .auto-work-text h2 { font-size:16px; }
   .auto-season { padding:11px 14px; }
   .auto-poster.large { width:44px; height:64px; }

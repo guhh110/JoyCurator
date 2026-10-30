@@ -133,7 +133,7 @@ function closeMenu(event: Event) {
       description="按字段管理规则。点规则进入编辑页，排查路径请用「识别调试」。"
       ><template #actions
         ><button class="button" @click="$emit('back')">
-          返回识别工作区
+          返回整理工作区
         </button></template
       ></PageHeader
     >

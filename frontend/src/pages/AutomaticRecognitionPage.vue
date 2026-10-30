@@ -20,13 +20,15 @@ import {
 } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { bytes, episodeCode, name } from '../api'
-import { recognitionStates, sourceFolder } from '../recognition'
+import { recognitionStates } from '../recognition'
 import FileBrowser from '../components/FileBrowser.vue'
 import Modal from '../components/Modal.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import Select from '../components/ui/Select.vue'
 import Tooltip from '../components/ui/Tooltip.vue'
+import EliText from '../components/ui/EliText.vue'
+import EpisodeComparison from '../features/automatic/EpisodeComparison.vue'
 import { useAutomaticRecognition } from '../features/automatic/useAutomaticRecognition'
 const {
   runtime,
@@ -57,7 +59,12 @@ const {
   transfer,
   transferGroup,
   groupSeason,
-  savingSeasonGroup,
+  detailView,
+  savingSeason,
+  changeGroupSeason,
+  episodeQuery,
+  retryComparison,
+  assignEpisode,
   groupSeasons,
   groupSeasonsLoading,
   groupSeasonsError,
@@ -93,7 +100,6 @@ const {
   pick,
   openEdit,
   saveEdit,
-  setSeason,
   moveGroup,
   prepare,
   execute,
@@ -133,21 +139,19 @@ function conflictPath(issue: string) {
 function conflictTargets(issues: string[]) {
   return [...new Set(issues.map(conflictPath).filter(Boolean))]
 }
-const folderOf = (path: string) =>
-  sourceFolder(path, task.value?.paths || []) || '直接添加的文件'
 </script>
 
 <template>
   <section
     class="auto-workspace"
     :class="{ 'has-task': task }"
-    aria-label="自动识别"
+    aria-label="整理工作区"
   >
     <PageHeader
       class="workflow-heading"
-      title="自动识别"
+      title="整理工作区"
       eyebrow="DISCOVER EVERY STORY"
-      description="电影与剧集一起添加，按作品检查，再统一整理。"
+      description="自动识别并按作品分组，手动确认作品与季集，统一预览整理。"
     />
     <QueryState
       v-if="taskQuery.error.value || runtime.batchQuery.error.value"
@@ -162,7 +166,7 @@ const folderOf = (path: string) =>
     </p>
     <p v-if="notice" class="notice good" role="status">{{ notice }}</p>
     <div v-if="loading && !task" class="pane empty auto-initial-loading">
-      <LoaderCircle class="spin" />读取识别工作区…
+      <LoaderCircle class="spin" />读取整理工作区…
     </div>
     <template v-if="task || !loading">
       <div v-if="recognizing" class="auto-progress" role="status">
@@ -260,7 +264,7 @@ const folderOf = (path: string) =>
                 :disabled="locked || loading"
                 @click="openBrowser(true)"
               >
-                新建识别
+                新建工作区
               </button>
             </header>
             <div class="auto-source-list">
@@ -447,14 +451,14 @@ const folderOf = (path: string) =>
                 </div>
                 <div class="auto-work-actions">
                   <div v-if="current.entry?.type === 'tv'" class="auto-season-controls">
-                    <span v-if="savingSeasonGroup === current.id" class="muted tiny" role="status"><LoaderCircle class="spin" :size="13" />校验季集…</span>
+                    <span v-if="savingSeason" class="muted tiny" role="status"><LoaderCircle class="spin" :size="13" />保存并校验…</span>
                     <Select
                       :model-value="groupSeason === -1 ? undefined : String(groupSeason)"
                       label="选择作品季度"
                       :placeholder="groupSeasonsLoading ? '正在读取季度…' : '暂无可选季度'"
                       :options="groupSeasons.map(season => ({ value: String(season.number), label: `${season.name} · ${season.count} 集` }))"
                       :disabled="locked || groupSeasonsLoading || !groupSeasons.length"
-                      @update:model-value="(value) => { groupSeason = Number(value); setSeason() }"
+                      @update:model-value="value => changeGroupSeason(Number(value))"
                     />
                   </div>
                 <button
@@ -469,7 +473,25 @@ const folderOf = (path: string) =>
                 </button>
                 </div>
               </header>
-              <div class="auto-files">
+              <div v-if="current.entry?.type === 'tv'" class="workspace-detail-tabs" role="group" aria-label="作品详情视图">
+                <button :aria-pressed="detailView === 'files'" @click="detailView = 'files'">文件 {{ current.files.length }}</button>
+                <button :aria-pressed="detailView === 'episodes'" @click="detailView = 'episodes'">单集对照</button>
+                <span>选择季度会修改本组文件季号，原集数保持不变</span>
+              </div>
+              <EpisodeComparison
+                v-if="current.entry?.type === 'tv' && detailView === 'episodes'"
+                :key="`${current.id}:${groupSeason}`"
+                :episodes="episodeQuery.data.value || []"
+                :files="current.files"
+                :season="groupSeason"
+                :loading="groupSeasonsLoading || episodeQuery.isFetching.value"
+                :error="groupSeasonsError || episodeQuery.error.value?.message || ''"
+                :locked="locked"
+                @retry="retryComparison"
+                @edit="openEdit"
+                @assign="assignEpisode"
+              />
+              <div v-else class="auto-files">
                 <article
                   v-for="file in visibleFiles"
                   :key="file.path"
@@ -495,13 +517,11 @@ const folderOf = (path: string) =>
                             : episodeCode(file.season, file.episodes)
                         }}</span
                       ><strong :title="file.path">{{ name(file.path) }}</strong>
+                      <EliText :text="file.path" class="auto-file-path-hint" />
                     </div>
                     <p class="auto-file-meta tiny">
                       <span class="auto-state" :class="file.state"
                         ><i />{{ recognitionStates[file.state] }}</span
-                      ><span class="auto-path" :title="file.path">{{
-                        folderOf(file.path)
-                      }}</span
                       ><span>{{ bytes(file.size) }}</span>
                     </p>
                     <p class="auto-reason tiny">
@@ -549,7 +569,7 @@ const folderOf = (path: string) =>
                   </div>
                 </article>
               </div>
-              <div v-if="current.files.length > 40" class="auto-pagination">
+              <div v-if="current.files.length > 40 && (detailView === 'files' || current.entry?.type !== 'tv')" class="auto-pagination">
                 <button
                   class="text-button"
                   :disabled="filePage === 1"
@@ -611,7 +631,7 @@ const folderOf = (path: string) =>
             @click="prepare"
           >
             <LoaderCircle
-              v-if="busy && !savingSeasonGroup"
+              v-if="busy"
               class="spin"
               :size="16"
             />统一预览<ArrowRight :size="16" />
@@ -692,29 +712,20 @@ const folderOf = (path: string) =>
   </Modal>
   <Modal v-if="editing" title="修正季集" @close="closeEdit"
     ><p class="muted">{{ name(editing.path) }}</p>
-    <label
-      >季号<input
-        v-model.number="editSeason"
-        type="number"
-        min="0"
-        max="999"
-        list="auto-season-list"
-      /><datalist id="auto-season-list">
-        <option
-          v-for="season in seasons"
-          :key="season.number"
-          :value="season.number"
-        >
-          {{ season.name }}
-        </option>
-      </datalist></label
-    ><label
+    <Select
+      :model-value="seasons.some(season => season.number === editSeason) ? String(editSeason) : undefined"
+      label="修正文件季度"
+      placeholder="选择 TMDB 季度"
+      :options="seasons.map(season => ({ value: String(season.number), label: `${season.name} · ${season.count} 集` }))"
+      :disabled="busy || !seasons.length"
+      @update:model-value="value => editSeason = Number(value)"
+    /><label
       >集数<input v-model="editEpisodes" placeholder="例如 1,3-5"
     /></label>
     <p v-if="editError" class="notice error">{{ editError }}</p>
     <template #footer
       ><span class="muted">0 为特别篇</span
-      ><button class="button primary" :disabled="busy" @click="saveEdit">
+      ><button class="button primary" :disabled="busy || !seasons.some(season => season.number === editSeason)" @click="saveEdit">
         保存并校验
       </button></template
     ></Modal

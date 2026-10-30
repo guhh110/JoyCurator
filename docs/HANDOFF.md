@@ -275,20 +275,20 @@ AutomaticRecognitionPage → useAutomaticRecognition.add
 
 人工修正通过 `PUT /recognitions/{id}` 提交完整 edits 和 revision。服务端保留扫描得到的文件身份、校验作品和季集、拒绝旧 revision；前端不应自行把未校验项目标为 ready。重试保留已处理及人工修正项，对待重试文件调用当前链；旧轨迹继续保留。
 
-## 9. 手动整理与预览调用链
+## 9. 整理工作区与预览调用链
 
 ```text
-WorkbenchPage → useWorkbench.add → POST /scan
-  → scanner.Walk → ExtractFile → scanner.Probe
-  → 浏览器保存文件列表
-搜索作品 → GET /search → 选择 Entry
-  → 剧集再 GET /seasons、GET /episodes → 修正映射
-预览 → POST /preview → Planning.Preview → buildPreview
+AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognitions
+  → 自动识别并分组 → 服务端保存工作区
+组内搜索作品 → GET /search → 选择 Entry → PUT /recognitions/{id}
+  → 剧集 GET /seasons、GET /episodes → 单集对照、关联文件、修正季集
+  → 选择季度同步修改当前组文件季号，保留原集数；保存并由服务端校验
+预览 → POST /batches/preview → buildPreview（按作品）
   → 校验源路径和文件身份、读取设置与 TMDB 元数据
   → rules.Target / ShowRoot 渲染分类与命名
   → 生成视频／字幕／NFO／图片操作
   → 校验冲突、磁盘需求等 → storePlan
-确认 → POST /execute {id} → Planning.Submit → Organizer.Execute → launch → work
+确认 → POST /batches/execute {id} → 按作品执行 → launch → work
   → organizer.Engine.Run，逐步持久化操作状态
 ```
 
@@ -353,13 +353,12 @@ main.ts
 
 | 导航组 | 页面 | 路径与业务封装 |
 | --- | --- | --- |
-| 文件整理 | 手动工作台 | `/organize` → WorkbenchPage + useWorkbench |
-| 文件整理 | 整理记录 | `/records` → RecordsPage |
-| 自动识别 | 工作区 | `/recognition` → AutomaticRecognitionPage + useAutomaticRecognition |
-| 自动识别 | 识别规则 | `/recognition/rules` → RulesPage + RecognitionRules |
-| 自动识别 | 执行历史 | `/recognition/history/:traceId?` → HistoryPage + ExtractionHistory |
-| 自动识别 | 识别调试 | `/recognition/debug` → DebugPage + useExtraction |
-| 系统设置 | 设置 | `/settings` → SettingsPage + useSettingsForm |
+| 工作区 | 整理工作区 | `/recognition` → AutomaticRecognitionPage + useAutomaticRecognition |
+| 记录 | 整理记录 | `/records` → RecordsPage |
+| 记录 | 识别历史 | `/recognition/history/:traceId?` → HistoryPage + ExtractionHistory |
+| 配置 | 识别规则 | `/recognition/rules` → RulesPage + RecognitionRules |
+| 配置 | 识别调试 | `/recognition/debug` → DebugPage + useExtraction |
+| 配置 | 设置 | `/settings` → SettingsPage + useSettingsForm |
 
 三个识别工具页是独立路由，不嵌在自动识别工作区的视图分支中。历史详情 ID、筛选路径和分页保留在 URL；设置分区使用 query 参数。支持刷新、前进后退和直接访问。
 

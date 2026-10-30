@@ -5,9 +5,11 @@ import { TooltipProvider, TooltipRoot, TooltipTrigger, TooltipPortal, TooltipCon
 withDefaults(defineProps<{
   content: string
   side?: 'top' | 'right' | 'bottom' | 'left'
+  disabled?: boolean
 }>(), { side: 'top' })
 const anchor = ref<HTMLElement>()
 const portalTarget = ref<HTMLElement | string>('body')
+const open = ref(false)
 onMounted(() => {
   // Native dialogs live in the top layer; their tooltips must stay inside it.
   portalTarget.value = anchor.value?.closest('dialog') || 'body'
@@ -17,10 +19,10 @@ onMounted(() => {
 <template>
   <span ref="anchor" class="ui-tooltip-anchor">
     <TooltipProvider :delay-duration="250">
-      <TooltipRoot>
+      <TooltipRoot :open="!disabled && open" @update:open="open = !disabled && $event">
         <TooltipTrigger as-child><slot /></TooltipTrigger>
         <TooltipPortal :to="portalTarget">
-          <TooltipContent class="ui-tooltip-content" :side="side" :side-offset="6" :collision-padding="8" position-strategy="fixed">
+          <TooltipContent v-if="!disabled" class="ui-tooltip-content" :side="side" :side-offset="6" :collision-padding="8" position-strategy="fixed">
             {{ content }}
             <TooltipArrow class="ui-tooltip-arrow" :width="8" :height="4" />
           </TooltipContent>

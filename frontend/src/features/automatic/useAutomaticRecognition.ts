@@ -12,6 +12,7 @@ import type {
   Batch,
   BatchPreview,
   Entry,
+  Episode,
   Recognition,
   RecognitionItem,
   Run,
@@ -63,7 +64,8 @@ export function useAutomaticRecognition() {
   const groupSeasons = ref<Season[]>([])
   const groupSeasonsLoading = ref(false)
   const groupSeasonsError = ref('')
-  const savingSeasonGroup = ref('')
+  const detailView = ref<'files' | 'episodes'>('files')
+  const savingSeason = ref(false)
   let seasonRequest = 0
   let alive = true,
     searchRequest = 0,
@@ -125,7 +127,8 @@ export function useAutomaticRecognition() {
         filePage.value * 40,
       ) || [],
   )
-  watch(() => current.value?.entry?.type === 'tv' ? current.value.entry.tmdbId : null, async (id) => {
+  watch(() => current.value?.entry?.type === 'tv' ? current.value.entry.tmdbId : null, loadGroupSeasons, { immediate: true })
+  async function loadGroupSeasons(id: number | null) {
     const request = ++seasonRequest
     groupSeasons.value = []
     groupSeasonsError.value = ''
@@ -147,7 +150,20 @@ export function useAutomaticRecognition() {
     } finally {
       if (request === seasonRequest) groupSeasonsLoading.value = false
     }
-  }, { immediate: true })
+  }
+  const episodeQuery = useQuery({
+    queryKey: computed(() => ['tmdb', 'episodes', current.value?.entry?.tmdbId, groupSeason.value]),
+    enabled: computed(() => active.value && current.value?.entry?.type === 'tv' && groupSeason.value >= 0 && detailView.value === 'episodes'),
+    queryFn: ({ signal }) => api<Episode[]>(`/episodes?id=${current.value!.entry!.tmdbId}&season=${groupSeason.value}`, undefined, 'GET', { signal }),
+    staleTime: 60_000,
+  })
+  async function retryComparison() {
+    if (groupSeasonsError.value) {
+      await loadGroupSeasons(current.value?.entry?.type === 'tv' ? current.value.entry.tmdbId : null)
+    } else if (groupSeason.value >= 0) {
+      await episodeQuery.refetch()
+    }
+  }
   const selected = computed(
     () =>
       task.value?.items.filter(
@@ -340,7 +356,7 @@ export function useAutomaticRecognition() {
   async function removeFile(file: RecognitionItem) {
     if (!await confirmAction({
       title: '移出文件？',
-      description: `将「${file.path.split('/').pop()}」移出识别工作区？磁盘上的文件不会被删除。`,
+      description: `将「${file.path.split('/').pop()}」移出整理工作区？磁盘上的文件不会被删除。`,
       confirmLabel: '移出文件',
       destructive: true,
     })) return
@@ -442,11 +458,9 @@ export function useAutomaticRecognition() {
   async function saveEdit() {
     try {
       if (
-        !Number.isInteger(editSeason.value) ||
-        editSeason.value < 0 ||
-        editSeason.value > 999
+        !seasons.value.some(season => season.number === editSeason.value)
       )
-        throw new Error('请选择 0–999 的季号，0 为特别篇')
+        throw new Error('请选择 TMDB 中存在的季度')
       const eps = parseEpisodes(editEpisodes.value)
       await act(async () => {
         if (!editing.value) return
@@ -460,27 +474,35 @@ export function useAutomaticRecognition() {
       editError.value = (e as Error).message
     }
   }
-  async function setSeason() {
-    if (locked.value || !current.value) return
+  async function changeGroupSeason(season: number) {
     const group = current.value
-    if (group.files.every((file) => file.season === groupSeason.value)) return
-    savingSeasonGroup.value = group.id
+    if (locked.value || !group || groupSeasonsLoading.value || !groupSeasons.value.some(item => item.number === season)) return
+    const previous = groupSeason.value
+    groupSeason.value = season
+    if (group.files.every(file => file.season === season)) return
+    savingSeason.value = true
+    let saved = false
     try {
       await act(async () => {
-      if (
-        groupSeasonsLoading.value ||
-        !groupSeasons.value.some((season) => season.number === groupSeason.value)
-      )
-        throw new Error('请选择 TMDB 中存在的季度')
-      for (const file of group.files) {
-        file.season = groupSeason.value
-        file.selected = true
-      }
-      await save()
+        for (const file of group.files) file.season = season
+        await save()
+        saved = true
       })
     } finally {
-      savingSeasonGroup.value = ''
+      savingSeason.value = false
+      if (!saved && current.value?.id === group.id) groupSeason.value = previous
     }
+  }
+  async function assignEpisode(file: RecognitionItem, number: number) {
+    if (locked.value || !current.value?.files.includes(file)) return
+    if (!episodeQuery.data.value?.some(episode => episode.number === number)) return
+    const season = groupSeason.value
+    await act(async () => {
+      file.season = season
+      file.episodes = [number]
+      file.selected = true
+      await save()
+    })
   }
   async function moveGroup() {
     await act(async () => {
@@ -549,7 +571,7 @@ export function useAutomaticRecognition() {
     const count = sources.value.find((item) => item.path === path)?.files ?? 0
     if (!await confirmAction({
       title: '移出来源？',
-      description: `将「${path}」及其 ${count} 个文件移出识别工作区？磁盘上的文件不会被删除。`,
+      description: `将「${path}」及其 ${count} 个文件移出整理工作区？磁盘上的文件不会被删除。`,
       confirmLabel: '移出来源',
       destructive: true,
     })) return
@@ -621,7 +643,12 @@ export function useAutomaticRecognition() {
     transfer,
     transferGroup,
     groupSeason,
-    savingSeasonGroup,
+    detailView,
+    savingSeason,
+    changeGroupSeason,
+    episodeQuery,
+    retryComparison,
+    assignEpisode,
     groupSeasons,
     groupSeasonsLoading,
     groupSeasonsError,
@@ -661,7 +688,6 @@ export function useAutomaticRecognition() {
     pick,
     openEdit,
     saveEdit,
-    setSeason,
     moveGroup,
     prepare,
     execute,

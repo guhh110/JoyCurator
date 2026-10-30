@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { Check, ChevronDown } from '@lucide/vue'
 import {
   SelectRoot, SelectTrigger, SelectValue, SelectPortal, SelectContent,
@@ -13,15 +14,19 @@ defineProps<{
   label: string
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
+const anchor = ref<HTMLElement>()
+const portalTarget = ref<HTMLElement | string>('body')
+onMounted(() => { portalTarget.value = anchor.value?.closest('dialog') || 'body' })
 </script>
 
 <template>
+  <span ref="anchor" class="ui-select-anchor">
   <SelectRoot :model-value="modelValue" :disabled="disabled" @update:model-value="(value) => { if (typeof value === 'string') emit('update:modelValue', value) }">
     <SelectTrigger class="ui-select-trigger" :aria-label="label">
       <SelectValue :placeholder="placeholder" />
       <ChevronDown :size="14" />
     </SelectTrigger>
-    <SelectPortal>
+    <SelectPortal :to="portalTarget">
       <SelectContent class="ui-select-content" position="popper" :side-offset="5" align="end">
         <SelectViewport class="ui-select-viewport">
           <SelectItem v-for="option in options" :key="option.value" :value="option.value" class="ui-select-item">
@@ -32,9 +37,11 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
       </SelectContent>
     </SelectPortal>
   </SelectRoot>
+  </span>
 </template>
 
 <style>
+.ui-select-anchor { display:inline-flex; max-width:100%; }
 .ui-select-trigger { display:inline-flex; align-items:center; justify-content:space-between; gap:12px; min-height:32px; padding:6px 10px; border:1px solid #e4e3ed; border-radius:8px; background:#fff; color:#333543; font-size:12px; white-space:nowrap; }
 .ui-select-trigger > svg { color:var(--muted); flex-shrink:0; }
 .ui-select-trigger:hover:not(:disabled) { border-color:#cfc5ee; background:#fcfbfe; }

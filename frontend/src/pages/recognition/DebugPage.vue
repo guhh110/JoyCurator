@@ -43,7 +43,7 @@ function edit(ruleId: string, event?: ScriptEvent) {
       description="绝对路径 → 当前规则链 → 文件元数据"
       ><template #actions
         ><RouterLink class="button" :to="{ name: 'automatic-recognition' }"
-          >返回识别工作区</RouterLink
+          >返回整理工作区</RouterLink
         ></template
       ></PageHeader
     >

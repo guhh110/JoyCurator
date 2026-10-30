@@ -3,8 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   api,
   type Batch,
-  type Entry,
-  type MediaFile,
   type Run,
   type Settings,
 } from '../api'
@@ -17,42 +15,6 @@ export function createRuntime() {
     detailId = ref(''),
     detailTitle = ref(''),
     undoing = ref<Run | null>(null)
-  const files = ref<MediaFile[]>([]),
-    entry = ref<Entry | null>(null)
-  try {
-    const stored = JSON.parse(localStorage.getItem('joycurator-files') || '[]')
-    if (
-      !Array.isArray(stored) ||
-      !stored.every(
-        (file) =>
-          file &&
-          typeof file.path === 'string' &&
-          Array.isArray(file.episodes) &&
-          file.metadata &&
-          Array.isArray(file.metadata.episodes),
-      )
-    )
-      throw new Error('本地工作区数据格式无效，请重新导入文件')
-    files.value = stored.slice(0, 2000)
-    const storedEntry = JSON.parse(
-      localStorage.getItem('joycurator-entry') || 'null',
-    )
-    if (
-      storedEntry &&
-      ['movie', 'tv'].includes(storedEntry.type) &&
-      Number.isInteger(storedEntry.tmdbId)
-    )
-      entry.value = storedEntry
-  } catch {
-    error.value = '本地工作区数据格式无效，请重新导入文件'
-  }
-  const persist = (key: string, value: unknown) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value))
-    } catch {}
-  }
-  watch(files, (value) => persist('joycurator-files', value), { deep: true })
-  watch(entry, (value) => persist('joycurator-entry', value))
   const settingsQuery = useQuery({
     queryKey: keys.settings,
     queryFn: ({ signal }) =>
@@ -114,14 +76,6 @@ export function createRuntime() {
       return
     completedId = value.id
     localStorage.removeItem('joycurator-active')
-    if (!value.undo) {
-      const done = new Set(
-        value.ops
-          ?.filter((op) => op.kind === 'video' && op.status === 'completed')
-          .map((op) => op.source),
-      )
-      files.value = files.value.filter((file) => !done.has(file.path))
-    }
     void client.invalidateQueries({ queryKey: ['runs', 'list'] })
   })
   function startRun(value: Run) {
@@ -162,8 +116,6 @@ export function createRuntime() {
     }
   }
   return {
-    files,
-    entry,
     error,
     active,
     activeId,

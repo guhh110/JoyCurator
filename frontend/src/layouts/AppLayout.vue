@@ -71,7 +71,6 @@ async function logout() {
       <div ref="scroll" class="routed-scroll">
         <main
           class="routed-content"
-          :class="{ 'routed-workbench': route.name === 'workbench' }"
         >
           <div
             v-if="runtime.error.value"
@@ -89,7 +88,7 @@ async function logout() {
           </div>
           <RouterView v-slot="{ Component }"
             ><KeepAlive
-              include="WorkbenchPage,AutomaticRecognitionPage,SettingsPage"
+              include="AutomaticRecognitionPage,SettingsPage"
               ><component :is="Component" /></KeepAlive
           ></RouterView>
         </main>
@@ -151,12 +150,6 @@ async function logout() {
   padding: 27px 28px 40px;
   min-width: 0;
 }
-.routed-workbench {
-  height: calc(100dvh - 61px);
-  min-height: 480px;
-  padding-top: 12px;
-  padding-bottom: 12px;
-}
 .menu-toggle {
   display: none;
 }
@@ -194,11 +187,6 @@ async function logout() {
   }
   .routed-content {
     padding: 20px 15px 28px;
-  }
-  .routed-workbench {
-    height: calc(100dvh - 59px);
-    padding: 13px;
-    min-height: 440px;
   }
   .account > span:not(.status-dot) {
     max-width: 90px;

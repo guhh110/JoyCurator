@@ -62,7 +62,7 @@ function changePage(value: number) {
         <History :size="38" />
         <h3>还没有整理记录</h3>
         <p>完成第一批整理后，结果会保存在这里。</p>
-        <RouterLink class="button" :to="{ name: 'workbench' }"
+        <RouterLink class="button" :to="{ name: 'automatic-recognition' }"
           >前往工作台</RouterLink
         >
       </div>

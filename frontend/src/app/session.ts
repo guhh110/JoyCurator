@@ -35,12 +35,7 @@ export async function clearSession() {
   await queryClient.cancelQueries()
   queryClient.clear()
   session.username = ''
-  for (const key of [
-    'joycurator-files',
-    'joycurator-entry',
-    'joycurator-active',
-  ])
-    localStorage.removeItem(key)
+  localStorage.removeItem('joycurator-active')
 }
 export function safeRedirect(value: unknown): string {
   return typeof value === 'string' &&

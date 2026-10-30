@@ -13,8 +13,7 @@ export const navigation = [
     title: '工作区',
     icon: FolderOpen,
     items: [
-      { name: 'automatic-recognition', title: '自动识别', icon: Layers3 },
-      { name: 'workbench', title: '手动整理', icon: FolderOpen },
+      { name: 'automatic-recognition', title: '整理工作区', icon: Layers3 },
     ],
   },
   {

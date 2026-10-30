@@ -12,12 +12,6 @@ export const routes: RouteRecordRaw[] = [
     children: [
       { path: '', redirect: { name: 'automatic-recognition' } },
       {
-        path: 'organize',
-        name: 'workbench',
-        component: () => import('../pages/WorkbenchPage.vue'),
-        meta: { title: '手动整理', group: 'workspace', keepAlive: true },
-      },
-      {
         path: 'records',
         name: 'records',
         component: () => import('../pages/RecordsPage.vue'),
@@ -27,7 +21,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'recognition',
         name: 'automatic-recognition',
         component: () => import('../pages/AutomaticRecognitionPage.vue'),
-        meta: { title: '自动识别', group: 'workspace', keepAlive: true },
+        meta: { title: '整理工作区', group: 'workspace', keepAlive: true },
       },
       {
         path: 'recognition/rules',

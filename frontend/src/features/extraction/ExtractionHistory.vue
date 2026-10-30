@@ -116,7 +116,7 @@ async function remove(id: string) {
       description="长期保存正式提取过程；历史规则配置随步骤留存。"
       ><template #actions
         ><RouterLink class="button" :to="{ name: 'automatic-recognition' }"
-          >返回识别工作区</RouterLink
+          >返回整理工作区</RouterLink
         ></template
       ></PageHeader
     >
