@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"net/http/httptest"
+	"os"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -162,5 +163,37 @@ func TestRecognitionAddPathsPreservesExistingWorkspace(t *testing.T) {
 	updated, err := a.dependencies.Workspace.Update(context.Background(), task.ID, in)
 	if err != nil || updated.Items[1].State != "unmatched" {
 		t.Fatal(updated, err)
+	}
+}
+
+func TestRecognitionRemoveSourceKeepsOtherSources(t *testing.T) {
+	a, root := fixture(t)
+	if err := os.MkdirAll(filepath.Join(root, "source", "4k"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	outer := mediaFile(t, a, root, "outer.mkv")
+	inner := mediaFile(t, a, root, "4k/inner.mkv")
+	outerDir := filepath.Dir(outer.Path)
+	innerDir := filepath.Dir(inner.Path)
+	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{outerDir, innerDir}, Items: []matching.Item{
+		{File: outer, Group: "a", State: "review"},
+		{File: inner, Group: "b", State: "review"},
+	}}
+	if err := a.store.SaveWorkspace(&task); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.dependencies.Workspace.RemoveSource(task.ID, outerDir, task.Revision-1); err == nil {
+		t.Fatal("stale revision accepted")
+	}
+	got, err := a.dependencies.Workspace.RemoveSource(task.ID, outerDir+"/", task.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The inner file belongs to the nested source, so it survives.
+	if len(got.Paths) != 1 || got.Paths[0] != innerDir || len(got.Items) != 1 || got.Items[0].Path != inner.Path || got.Total != 1 {
+		t.Fatal(got)
+	}
+	if _, err := a.dependencies.Workspace.RemoveSource(task.ID, "/not/added", got.Revision); err == nil {
+		t.Fatal("unknown source accepted")
 	}
 }

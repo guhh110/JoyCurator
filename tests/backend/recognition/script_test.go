@@ -33,9 +33,9 @@ func TestDefaultRulesAreEditableScriptsWithAutomaticRegexTrace(t *testing.T) {
 	}
 	found := false
 	for _, step := range got.Steps {
-		if step.RuleID == "episodes-sxe" {
+		if step.RuleID == "episodes" {
 			for _, event := range step.Attempts[0].Trace {
-				if event.Operation == "reSearch" && event.Line > 0 && event.Function == "extract" {
+				if event.Operation == "reSearch" && event.Line > 0 && event.Function != "" {
 					found = true
 				}
 				if event.Line < 0 {
@@ -206,5 +206,61 @@ func TestJavaScriptCancellationPreservesTrace(t *testing.T) {
 	events := got.Steps[0].Attempts[0].Trace
 	if len(events) < 3 || events[1].Message != "started" {
 		t.Fatal(events)
+	}
+}
+
+// The default chain is one rule per field, ordered so the media type can reuse
+// the season and episodes already found, and every bundled example must pass.
+func TestDefaultChainHasOneRulePerField(t *testing.T) {
+	rules := r.DefaultRules()
+	seen := map[r.Target]int{}
+	for _, rule := range rules {
+		if rule.Source != r.RelativePath {
+			t.Fatalf("%s source %s", rule.ID, rule.Source)
+		}
+		if rule.Target == r.MediaType && (seen[r.Season] == 0 || seen[r.Episodes] == 0) {
+			t.Fatal("media type runs before season or episodes")
+		}
+		seen[rule.Target]++
+	}
+	if len(rules) != len(r.Targets()) {
+		t.Fatalf("%d default rules for %d fields", len(rules), len(r.Targets()))
+	}
+	for _, target := range r.Targets() {
+		if seen[target] != 1 {
+			t.Fatalf("%s has %d default rules", target, seen[target])
+		}
+	}
+	results, err := r.Examples(context.Background(), rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) < len(rules) {
+		t.Fatalf("only %d examples", len(results))
+	}
+	for _, result := range results {
+		if result["passed"] != true {
+			t.Fatalf("example failed: %+v", result)
+		}
+	}
+}
+
+// The title script used to repeat the same cleanup; keep its trace readable.
+func TestTitleRuleTraceStaysShort(t *testing.T) {
+	for _, path := range []string{"/source/[Group] Show.Name.S02E03.1080p.WEB-DL.mkv", "/source/某剧/第二季/07.mkv", "/source/The.Matrix.1999.tmdb-603.mkv"} {
+		got := extract(t, r.DefaultRules(), path, "/source")
+		for _, step := range got.Steps {
+			if step.Target != r.Title {
+				continue
+			}
+			events := 0
+			for _, attempt := range step.Attempts {
+				events += len(attempt.Trace)
+			}
+			t.Logf("%s => %d events", path, events)
+			if events > 12 {
+				t.Fatalf("%s: title trace has %d events", path, events)
+			}
+		}
 	}
 }

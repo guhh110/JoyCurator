@@ -83,7 +83,7 @@ func TestDirectoryBoundaryAndAttempts(t *testing.T) {
 				t.Fatal("boundary ignored")
 			}
 		}
-		if step.RuleID == "id-directory" && len(step.Attempts) != 2 {
+		if step.RuleID == "tmdb-id" && (len(step.Attempts) != 1 || step.Attempts[0].Input != "Show [tmdb-7]/Season 2/03.mkv" || step.MatchedText != "tmdb-7") {
 			t.Fatal(step)
 		}
 	}

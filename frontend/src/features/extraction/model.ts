@@ -142,13 +142,27 @@ export function valueText(value: unknown): string {
       ? value
       : JSON.stringify(value)
 }
-export function moveRule(rules: Rule[], from: number, to: number) {
-  if (from < 0 || to < 0 || from >= rules.length || to >= rules.length) return
-  const [item] = rules.splice(from, 1)
-  if (item) rules.splice(to, 0, item)
-  rules.forEach((rule, index) => {
-    rule.order = (index + 1) * 10
-  })
+// Execution order is field-major: every field runs in this sequence, so a later
+// field (mediaType) can read earlier ones (season, episodes) from ctx.metadata.
+export const fieldOrder: Target[] = [
+  'tmdbId',
+  'season',
+  'episodes',
+  'mediaType',
+  'title',
+  'year',
+  'releaseTag',
+]
+// Stable sort by field, keeping the existing relative order inside each field.
+export function fieldMajor<T>(items: T[], target: (item: T) => Target): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort(
+      (a, b) =>
+        fieldOrder.indexOf(target(a.item)) -
+          fieldOrder.indexOf(target(b.item)) || a.index - b.index,
+    )
+    .map(({ item }) => item)
 }
 
 export const emptyScript = `function extract(ctx) {

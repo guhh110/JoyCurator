@@ -17,6 +17,7 @@ import {
 import FileBrowser from '../components/FileBrowser.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import Notices from '../components/ui/Notices.vue'
+import PageHeader from '../components/ui/PageHeader.vue'
 import { useSettingsForm } from '../features/settings/useSettingsForm'
 const {
   settings,
@@ -47,20 +48,20 @@ const {
       :error="settingsQuery.error.value"
       @retry="settingsQuery.refetch()"
       ><template v-if="settings">
-        <div class="page-heading">
-          <div>
-            <span class="eyebrow">MAKE IT YOURS</span>
-            <h1>按照你的习惯整理。</h1>
-            <p class="muted">一次配置，之后专注于你的收藏。</p>
-          </div>
-          <button
-            class="button primary"
-            :disabled="busy || running"
-            @click="saveSettings"
-          >
-            <Check :size="16" />保存设置
-          </button>
-        </div>
+        <PageHeader
+          title="偏好设置"
+          eyebrow="MAKE IT YOURS"
+          description="配置目录、TMDB、命名与整理产物。"
+          ><template #actions>
+            <button
+              class="button primary"
+              :disabled="busy || running"
+              @click="saveSettings"
+            >
+              <Check :size="16" />保存设置
+            </button>
+          </template></PageHeader
+        >
         <div
           class="settings-layout"
           :class="{ 'rules-layout': settingsSection === 'rules' }"

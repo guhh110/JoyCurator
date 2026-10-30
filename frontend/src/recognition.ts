@@ -30,6 +30,48 @@ export function recognitionGroups(items: RecognitionItem[]) {
     }
   })
 }
+// The folder or file the user added that a path came from: the longest added
+// path that is the path itself or one of its parent directories.
+export function sourceOf(path: string, roots: string[]) {
+  let found = ''
+  for (const root of roots) {
+    const base = root.replace(/\/+$/, '') || '/'
+    const inside =
+      path === base || path.startsWith(base === '/' ? '/' : `${base}/`)
+    if (inside && base.length > found.length) found = base
+  }
+  return found
+}
+export interface SourceSummary {
+  path: string
+  files: number
+  works: number
+  states: Record<string, number>
+}
+// One summary per added path, in the order the user added them.
+export function sourceSummaries(
+  items: RecognitionItem[],
+  roots: string[],
+): SourceSummary[] {
+  const summaries = new Map<string, SourceSummary & { groups: Set<string> }>()
+  for (const root of roots) {
+    const path = root.replace(/\/+$/, '') || '/'
+    if (!summaries.has(path))
+      summaries.set(path, { path, files: 0, works: 0, states: {}, groups: new Set() })
+  }
+  for (const item of items) {
+    if (item.removed) continue
+    const summary = summaries.get(sourceOf(item.path, roots))
+    if (!summary) continue
+    summary.files++
+    summary.groups.add(item.group)
+    summary.states[item.state] = (summary.states[item.state] || 0) + 1
+  }
+  return [...summaries.values()].map(({ groups, ...rest }) => ({
+    ...rest,
+    works: groups.size,
+  }))
+}
 export function recognitionEdits(items: RecognitionItem[]) {
   return items.map((item) => ({
     path: item.path,

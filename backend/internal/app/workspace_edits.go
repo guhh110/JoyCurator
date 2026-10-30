@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"joycurator/internal/matching"
 	"joycurator/internal/organizer"
@@ -128,4 +129,77 @@ func (a *WorkspaceService) FinishRun(run organizer.Run) {
 	if changed {
 		_ = a.store.SaveWorkspace(&task)
 	}
+}
+
+// sourceOwner returns the added path that owns file: the longest added path
+// equal to it or containing it. Matches the frontend's source attribution.
+func sourceOwner(file string, roots []string) string {
+	owner := ""
+	for _, root := range roots {
+		base := strings.TrimRight(root, "/")
+		if base == "" {
+			base = "/"
+		}
+		prefix := base + "/"
+		if base == "/" {
+			prefix = "/"
+		}
+		if (file == base || strings.HasPrefix(file, prefix)) && len(base) > len(owner) {
+			owner = base
+		}
+	}
+	return owner
+}
+
+// RemoveSource drops one added path and the files it owns from the workspace.
+// Files on disk are untouched; files owned by another added path stay.
+func (a *WorkspaceService) RemoveSource(id, path string, revision int) (matching.Workspace, error) {
+	a.coordinator.Lock()
+	defer a.coordinator.Unlock()
+	if a.coordinator.BusyLocked() {
+		task, _ := a.Read(id)
+		return task, organizer.ErrBusy
+	}
+	task, err := a.Read(id)
+	if err != nil {
+		return task, err
+	}
+	if task.State == "running" {
+		return task, errors.New("请等待识别完成后再删除来源")
+	}
+	if task.Revision != revision {
+		return task, errors.New("识别结果已更新，请重新加载")
+	}
+	target := strings.TrimRight(path, "/")
+	if target == "" {
+		target = "/"
+	}
+	index := slices.IndexFunc(task.Paths, func(p string) bool {
+		base := strings.TrimRight(p, "/")
+		if base == "" {
+			base = "/"
+		}
+		return base == target
+	})
+	if index < 0 {
+		return task, errors.New("来源不在当前识别任务中")
+	}
+	roots := slices.Clone(task.Paths)
+	items := task.Items[:0:0]
+	for _, item := range task.Items {
+		if sourceOwner(item.Path, roots) != target {
+			items = append(items, item)
+		}
+	}
+	task.Paths = slices.Delete(task.Paths, index, index+1)
+	task.Items = items
+	task.Completed, task.Total = 0, 0
+	for _, item := range task.Items {
+		task.Total++
+		if item.State != "pending" {
+			task.Completed++
+		}
+	}
+	err = a.store.SaveWorkspace(&task)
+	return task, err
 }

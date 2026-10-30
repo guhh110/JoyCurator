@@ -168,7 +168,7 @@ prepare(Input)：验证 /… 绝对路径、文本规范化、确认边界
 
 JavaScript 引擎使用 goja，每次调用创建独立 Runtime，不提供 Node.js、网络和文件 API。仅支持同步入口，拒绝 Promise 输出。原生 RegExp 需要主动 trace；默认脚本使用可追踪的 RE2 辅助函数。250 ms 是执行中断时限，不是进程级内存或所有原生操作的硬隔离。旧语言源码不自动转换，也不自动重置用户数据。
 
-默认规则的提取算法全部位于 `recognition/scripts/*.js`；`catalog.go` 和 `defaults.go` 负责登记模板、来源和默认顺序。没有运行时 builtin 处理器分支。
+默认规则每个字段一条，提取算法全部位于 `recognition/scripts/*.js`（一个字段一个脚本，内部按优先级尝试多种写法）；`catalog.go` 和 `defaults.go` 负责登记模板、来源和默认顺序。没有运行时 builtin 处理器分支。
 
 脚本定义同步 `function extract(ctx)`，返回单个值／集数列表、`null`，或 `{value,matchedText?,captures?}`。上下文经 JSON 复制并递归冻结，包含当前文本、文件名、目录、source、metadata、params 等。规则不能直接修改公共 Metadata。
 
@@ -201,6 +201,15 @@ RecognitionRules 编辑草稿 → PUT /api/extraction/rules
 
 保存失败不替换原链。不维护版本、草稿发布或任务绑定。每个文件开始提取时通过 `recognition.Service.Current()` 获取一次实例；本次调用内不切换。批量任务的后续文件可以使用刚保存的新链。
 
+### 规则工作台前端
+
+- `useRuleDraft.ts`：唯一页面草稿、稳定界面 key、原始 JSON、全链校验、选中状态与保存指纹。试跑和保存均从同一草稿生成 Rule[]，不再有“应用到编辑链”步骤。
+- 各业务页统一使用 `components/ui/PageHeader.vue`：标题和操作为第一行，说明或流程为第二行；英文副标题桌面内联、手机隐藏，不再单独占一行。手机工作流页将操作／步骤放第二行，说明让位给操作。
+- `RuleFieldTable.vue`：规则列表，按字段顺序分组；每个字段可新增脚本、正则或模板规则，规则行可启停、同字段内上移下移、删除，点击进入编辑页。界面 key 不使用可编辑的规则 ID。
+- `RuleEditor.vue`：脚本／基本配置／样例标签，直接编辑共享草稿；无效 JSON 也保留。`ScriptCode.vue` 根据执行事件行号选中代码。
+- `RecognitionRules.vue`：规则列表页（`/recognition/rules`），管理整条链：排序、启停、新增、删除、恢复默认、运行全部样例与保存；有未保存修改时离开需确认。`RuleEdit.vue`：单条规则编辑页（`/recognition/rules/:ruleId`，`new` 表示新建），代码与试跑在同一页，试跑和保存都使用「已生效的链 + 这条草稿」。`DebugPage.vue` 显示每个字段的结果和决定它的规则，可跳到编辑页。`ExtractionResult.vue` 提供 Metadata／执行过程／JSON 视图、按 `ruleId` 过滤单条规则及定位事件。
+- 切换规则、排序和手机标签保留草稿；离开整个页面仍按现有约定丢弃未保存草稿，不增加本地持久化。
+
 ### 试跑
 
 ```text
@@ -211,7 +220,7 @@ DebugPage / 规则编辑器试跑 → useExtraction
   → 返回 metadata + steps
 ```
 
-支持不存在的模拟路径。省略 root 时，源目录内路径使用源目录，否则 `/`；显式 root 必须为输入文件的父级目录。`rules` 省略表示当前链，`[]` 表示空链。试跑不写规则配置、工作区、轨迹、整理记录或预览，不访问 TMDB。前端 90 秒上限，取消／离开页面终止请求并忽略过期响应。
+支持不存在的模拟路径。省略 root 时，源目录内路径使用源目录，否则 `/`；显式 root 必须为输入文件的父级目录。`rules` 省略表示当前链，`[]` 表示空链。试跑不写规则配置、工作区、轨迹、整理记录或预览，不访问 TMDB。前端 90 秒上限，取消／离开页面终止请求并忽略过期响应。规则工作台额外按整条草稿、路径和边界的指纹标记过期结果，不将旧轨迹标记到修改后的规则。
 
 样例接口会运行整条链，再比较对应规则 Step 的 `extractedValue`，因此样例验证的是该规则提出的值，不一定是最终 Metadata（后续覆盖可能改变最终结果）。
 
@@ -423,7 +432,7 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 - `tests/frontend/recognition/`：规则模型、调试取消、工作区行为与脚本展示。
 - `tests/frontend/app/`：路由、登录跳转、侧边导航、Query 去重／取消／失效、会话隔离。
 
-交付检查包含 `make check`（前端 7 个测试文件、40 个用例）、`make build` 及 production 构建标签测试；浏览器验证了三工具页、历史详情刷新、手机抽屉与宽度、手动导入／查询／作品映射及切页保留状态。浏览器验证使用隔离测试目录，没有用真实收藏执行整理。
+交付检查包含 `make check`（前端 9 个测试文件、47 个用例）、`make build` 及 production 构建标签测试；浏览器验证了三工具页、历史详情刷新、手机抽屉与宽度、手动导入／查询／作品映射及切页保留状态。浏览器验证使用隔离测试目录，没有用真实收藏执行整理。
 
 ## 16. 后续修改建议与当前取舍
 

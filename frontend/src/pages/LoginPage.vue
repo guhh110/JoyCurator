@@ -11,11 +11,7 @@ import {
   ShieldCheck,
 } from '@lucide/vue'
 import { api } from '../api'
-import {
-  session,
-  acceptSession,
-  safeRedirect,
-} from '../app/session'
+import { session, acceptSession, safeRedirect } from '../app/session'
 import { queryClient } from '../app/query'
 const route = useRoute(),
   router = useRouter()
@@ -66,7 +62,6 @@ async function login() {
     </div>
     <main class="login-form">
       <div class="mobile-brand brand"><Layers3 />JoyCurator</div>
-      <span class="eyebrow">WELCOME TO YOUR COLLECTION</span>
       <h2>{{ initialized ? '欢迎回来' : '创建你的工作台' }}</h2>
       <p class="muted">
         {{

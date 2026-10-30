@@ -1,150 +1,128 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
+import { MoreHorizontal, Plus, Save } from '@lucide/vue'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import QueryState from '../../components/ui/QueryState.vue'
 import { keys } from '../../app/query'
 import { useRuleLibrary } from './queries'
 import { api } from '../../api'
-import type { Rule } from './model'
-import { targets, sources, moveRule, emptyScript } from './model'
-import RuleEditor from './RuleEditor.vue'
-import ExtractionResult from './ExtractionResult.vue'
-import { useExtraction } from './useExtraction'
+import type { Rule, Target } from './model'
+import { fieldOrder, targets } from './model'
+import RuleFieldTable from './RuleFieldTable.vue'
+import { useRuleDraft } from './useRuleDraft'
+
+// Rule list page: manages the chain (enable, order inside a field, add, delete,
+// defaults, examples). Editing a rule happens on its own page.
 defineEmits<{ back: [] }>()
+const router = useRouter()
 const libraryQuery = useRuleLibrary(),
   client = useQueryClient()
 const library = libraryQuery.data
-const rules = ref<Rule[]>([]),
-  selected = ref(-1),
-  error = ref(''),
+const { drafts, dirty, validation, load, move, remove, markSaved } =
+  useRuleDraft()
+const error = ref(''),
   notice = ref('')
-const dragIndex = ref(-1)
-const editor = ref<HTMLDivElement>()
-async function selectRule(index: number) {
-  selected.value = index
-  await nextTick()
-  editor.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-const {
-  path,
-  root,
-  busy: testing,
-  result,
-  error: testError,
-  notice: testNotice,
-  run,
-  cancel,
-} = useExtraction()
-const exampleResults = ref<
-  {
-    ruleId: string
-    path: string
-    expected: unknown
-    actual: unknown
-    passed: boolean
-  }[]
->([])
-function drop(index: number) {
-  move(dragIndex.value, index)
-  dragIndex.value = -1
-}
-function removeRule(index: number) {
-  rules.value.splice(index, 1)
-  selected.value = -1
-}
-const editing = computed(() => rules.value[selected.value])
 let initialized = false
 watch(
   library,
   (value) => {
     if (value && !initialized) {
-      rules.value = JSON.parse(JSON.stringify(value.rules))
+      if (load(value.rules, value.sourceScripts))
+        notice.value = '已按字段顺序整理执行顺序，保存后生效'
       initialized = true
     }
   },
   { immediate: true },
 )
+const validationErrors = computed(() =>
+  validation.value.errors.map((item) => item.key),
+)
 const saveMutation = useMutation({
-  mutationFn: () => api('/extraction/rules', { rules: rules.value }, 'PUT'),
+  mutationFn: (rules: Rule[]) => api('/extraction/rules', { rules }, 'PUT'),
 })
 const examplesMutation = useMutation({
-  mutationFn: () =>
-    api<typeof exampleResults.value>(
-      '/extraction/examples',
-      { rules: rules.value },
-      'POST',
-    ),
+  mutationFn: (rules: Rule[]) =>
+    api<
+      {
+        ruleId: string
+        path: string
+        expected: unknown
+        actual: unknown
+        passed: boolean
+      }[]
+    >('/extraction/examples', { rules }, 'POST'),
 })
-const busy = computed(
-  () => saveMutation.isPending.value || examplesMutation.isPending.value,
+const saving = saveMutation.isPending
+const canSubmit = computed(
+  () => !!library.value && !validation.value.errors.length && !saving.value,
 )
-function edit(value: Rule) {
-  rules.value[selected.value] = value
-  rules.value.sort((a, b) => a.order - b.order)
-  selected.value = rules.value.findIndex((rule) => rule.id === value.id)
-  notice.value = '已应用到编辑链，尚未保存'
-  result.value = null
+const exampleResults = ref<
+  NonNullable<typeof examplesMutation.data.value>
+>([])
+const failedExamples = computed(() =>
+  exampleResults.value.filter((item) => !item.passed),
+)
+function ruleName(id: string) {
+  return drafts.value.find((item) => item.rule.id === id)?.rule.name ?? id
 }
-const templateId = ref('')
-function add(kind: 'script' | 'regex', template = false) {
-  const descriptor = template
-    ? library.value?.catalog.find((item) => item.id === templateId.value)
-    : undefined
-  const rule: Rule = {
-    id: `rule-${Date.now().toString(36)}`,
-    name: descriptor?.name ?? (kind === 'script' ? '新脚本规则' : '新正则规则'),
-    description: descriptor?.description,
-    target: descriptor?.target ?? 'title',
-    source: descriptor?.sources[0] ?? 'filename',
-    order: Math.max(0, ...rules.value.map((rule) => rule.order)) + 10,
-    enabled: true,
-    kind,
-    overwrite: false,
-    config: descriptor
-      ? JSON.parse(JSON.stringify(descriptor.config))
-      : kind === 'script'
-        ? { code: emptyScript, params: {} }
-        : { pattern: '(?P<value>.+)', capture: 'value' },
-    examples: [],
-  }
-  rules.value.push(rule)
-  void selectRule(rules.value.length - 1)
+
+// Leaving with unsaved list changes would drop them; ask first.
+onBeforeRouteLeave(
+  () =>
+    !dirty.value ||
+    window.confirm('规则列表有未保存的修改，离开后会丢失。继续吗？'),
+)
+function open(key: string) {
+  const draft = drafts.value.find((item) => item.key === key)
+  if (!draft) return
+  void router.push({
+    name: 'recognition-rule-edit',
+    params: { ruleId: draft.rule.id },
+  })
 }
-function move(from: number, to: number) {
-  const id = editing.value?.id
-  moveRule(rules.value, from, to)
-  selected.value = rules.value.findIndex((rule) => rule.id === id)
-  result.value = null
+function add(target: Target, kind: 'script' | 'regex', templateId?: string) {
+  void router.push({
+    name: 'recognition-rule-edit',
+    params: { ruleId: 'new' },
+    query: { target, kind, ...(templateId ? { template: templateId } : {}) },
+  })
 }
 function reset() {
   if (!library.value) return
-  rules.value = JSON.parse(JSON.stringify(library.value.defaults))
-  selected.value = -1
-  notice.value = '已载入默认链，保存后生效'
-  result.value = null
+  load(library.value.defaults, library.value.sourceScripts, false)
+  exampleResults.value = []
+  notice.value = '默认规则已载入，保存后生效'
 }
 async function save() {
+  if (!canSubmit.value) return
   error.value = ''
+  notice.value = ''
+  const rules = JSON.parse(JSON.stringify(validation.value.rules)) as Rule[]
   try {
-    await saveMutation.mutateAsync()
-    await client.invalidateQueries({ queryKey: keys.ruleLibrary })
-    if (library.value)
-      rules.value = JSON.parse(JSON.stringify(library.value.rules))
-    notice.value = '规则链已保存，新的提取调用立即生效'
+    await saveMutation.mutateAsync(rules)
+    markSaved()
+    client.setQueryData(keys.ruleLibrary, { ...library.value!, rules })
+    notice.value = '规则链已保存并生效'
+    void client.invalidateQueries({ queryKey: keys.ruleLibrary })
   } catch (e) {
     error.value = (e as Error).message
   }
 }
 async function examples() {
+  if (!canSubmit.value) return
   error.value = ''
   try {
-    exampleResults.value = await examplesMutation.mutateAsync()
-    if (!exampleResults.value.length)
-      notice.value = '请先在规则编辑器添加测试样例'
+    exampleResults.value = await examplesMutation.mutateAsync(
+      validation.value.rules,
+    )
   } catch (e) {
     error.value = (e as Error).message
   }
+}
+function closeMenu(event: Event) {
+  ;(event.target as HTMLElement).closest('details')?.removeAttribute('open')
 }
 </script>
 <template>
@@ -152,7 +130,7 @@ async function examples() {
     <PageHeader
       title="识别规则"
       eyebrow="PATH EXTRACTION RULES"
-      description="每条规则提取一个字段，按顺序执行，先命中优先。"
+      description="按字段管理规则。点规则进入编辑页，排查路径请用「识别调试」。"
       ><template #actions
         ><button class="button" @click="$emit('back')">
           返回识别工作区
@@ -165,251 +143,198 @@ async function examples() {
       @retry="libraryQuery.refetch()"
     >
       <div class="toolbar">
-        <button class="button" @click="add('regex')" :disabled="!library">
-          新增正则规则</button
-        ><button class="button" @click="add('script')" :disabled="!library">
-          新增脚本规则</button
-        ><button class="button" @click="reset" :disabled="!library">
-          恢复默认链</button
-        ><button
-          class="button primary"
-          :disabled="busy || !library"
-          @click="save"
-        >
-          保存规则链
-        </button>
-      </div>
-      <div class="toolbar">
-        <select v-model="templateId" aria-label="脚本模板">
-          <option value="">选择可编辑的脚本模板</option>
-          <option
-            v-for="item in library?.catalog"
-            :key="item.id"
-            :value="item.id"
-          >
-            {{ targets[item.target] }} · {{ item.name }}
-          </option></select
-        ><button
-          class="button"
-          :disabled="!templateId"
-          @click="add('script', true)"
-        >
-          从模板添加
-        </button>
-      </div>
-      <p v-if="error" class="notice error" role="alert">{{ error }}</p>
-      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
-      <section class="pane">
-        <header class="pane-head">
-          <h2>
-            执行顺序 <span class="count">{{ rules.length }}</span>
-          </h2>
-          <span class="tiny muted"
-            >拖动排序，或使用 ↑ ↓ 按钮；保存时不允许重复顺序。</span
-          >
-        </header>
-        <p v-if="!rules.length" class="padding muted">
-          规则链为空，提取结果将全部未知。
-        </p>
-        <article
-          v-for="(rule, index) in rules"
-          :key="`${index}-${rule.id}`"
-          class="rule-row"
-          :class="{ selected: index === selected }"
-          draggable="true"
-          @dragstart="dragIndex = index"
-          @dragover.prevent
-          @drop.prevent="drop(index)"
-          @dragend="dragIndex = -1"
-        >
-          <input
-            v-model="rule.enabled"
-            type="checkbox"
-            :aria-label="`启用 ${rule.name}`"
-          /><button class="rule-name" @click="selectRule(index)">
-            <strong>{{ rule.order }} · {{ rule.name }}</strong
-            ><span class="tiny muted"
-              >{{ sources[rule.source] }} → {{ targets[rule.target] }} ·
-              {{ rule.overwrite ? '允许覆盖' : '仅补全未知值' }}</span
-            >
-          </button>
-          <div class="row-actions">
+        <details class="menu-wrap">
+          <summary class="button">
+            <Plus :size="14" />新增规则
+          </summary>
+          <div class="menu" @click="closeMenu">
+            <span class="menu-title tiny muted">为哪个字段新增？</span>
             <button
-              class="button small"
-              :aria-label="`上移 ${rule.name}`"
-              :disabled="index === 0"
-              @click="move(index, index - 1)"
+              v-for="target in fieldOrder"
+              :key="target"
+              type="button"
+              :disabled="!library || saving"
+              @click="add(target, 'script')"
             >
-              ↑</button
-            ><button
-              class="button small"
-              :aria-label="`下移 ${rule.name}`"
-              :disabled="index === rules.length - 1"
-              @click="move(index, index + 1)"
-            >
-              ↓</button
-            ><button
-              class="text-button red"
-              :aria-label="`删除 ${rule.name}`"
-              @click="removeRule(index)"
-            >
-              删除
+              {{ targets[target] }}
             </button>
           </div>
-        </article>
-        <div v-if="editing && library" ref="editor">
-          <RuleEditor
-            :key="selected"
-            :rule="editing"
-            :source-scripts="library.sourceScripts"
-            @update="edit"
-          />
-        </div>
-      </section>
-      <form class="pane trial" @submit.prevent="run(rules)">
-        <h2>试跑当前编辑链</h2>
-        <p class="tiny muted">先在编辑器应用修改；试跑不保存规则或历史轨迹。</p>
-        <label for="trial-path">完整文件路径</label
-        ><input
-          id="trial-path"
-          v-model="path"
-          required
-          placeholder="/source/The.Matrix.1999.tmdb-603.mkv"
-        /><label for="trial-root">解析边界（可选）</label
-        ><input
-          id="trial-root"
-          v-model="root"
-          placeholder="留空按源目录自动确定"
-        />
-        <div class="toolbar">
-          <button class="button primary" :disabled="testing">试跑路径</button
-          ><button v-if="testing" class="button" type="button" @click="cancel">
-            取消</button
-          ><button
-            class="button"
-            type="button"
-            :disabled="busy || testing"
-            @click="examples"
-          >
-            运行所有样例
-          </button>
-        </div>
-      </form>
-      <p v-if="testError" class="notice error" role="alert">{{ testError }}</p>
-      <p v-if="testNotice" class="notice">{{ testNotice }}</p>
-      <section v-if="exampleResults.length" class="pane padding">
-        <h2>样例测试</h2>
-        <p
-          v-for="(item, index) in exampleResults"
-          :key="index"
-          class="sample"
-          :class="{ red: !item.passed }"
+        </details>
+        <button
+          class="button"
+          :disabled="!canSubmit || examplesMutation.isPending.value"
+          @click="examples"
         >
-          {{ item.passed ? '通过' : '失败' }} · {{ item.ruleId }} ·
-          {{ item.path }}<br />预期 {{ JSON.stringify(item.expected) }}，实际
+          {{ examplesMutation.isPending.value ? '样例运行中…' : '运行全部样例' }}
+        </button>
+        <details class="menu-wrap">
+          <summary class="button" aria-label="更多操作">
+            <MoreHorizontal :size="15" />
+          </summary>
+          <div class="menu" @click="closeMenu">
+            <button type="button" :disabled="!library || saving" @click="reset">
+              恢复默认规则
+            </button>
+          </div>
+        </details>
+        <span class="save-status" :class="{ dirty }" role="status"
+          ><i />{{
+            saving ? '正在保存…' : dirty ? '有未保存修改' : '与生效链一致'
+          }}</span
+        >
+        <button
+          class="button primary"
+          :disabled="!canSubmit || !dirty"
+          @click="save"
+        >
+          <Save :size="14" />保存
+        </button>
+      </div>
+
+      <p v-if="error" class="notice error" role="alert">{{ error }}</p>
+      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
+      <div v-if="validation.errors.length" class="banner" role="alert">
+        <strong
+          >{{ validation.errors.length }} 条规则需修正，修正前无法保存：</strong
+        ><button
+          v-for="item in validation.errors"
+          :key="item.key"
+          class="text-button"
+          @click="open(item.key)"
+        >
+          {{ item.name }}：{{ item.message }}
+        </button>
+      </div>
+      <div v-if="exampleResults.length" class="banner" role="status">
+        <strong :class="failedExamples.length ? 'red' : 'green'"
+          >样例 {{ exampleResults.length - failedExamples.length }}/{{
+            exampleResults.length
+          }}
+          通过</strong
+        ><button
+          v-for="item in failedExamples"
+          :key="item.ruleId + item.path"
+          class="text-button"
+          @click="router.push({ name: 'recognition-rule-edit', params: { ruleId: item.ruleId } })"
+        >
+          {{ ruleName(item.ruleId) }}：{{ item.path }} 期望
+          {{ JSON.stringify(item.expected) }}，实际
           {{ JSON.stringify(item.actual) }}
-        </p>
-      </section>
-      <ExtractionResult v-if="result" :result="result" />
+        </button>
+      </div>
+
+      <fieldset class="list-area" :disabled="saving">
+        <RuleFieldTable
+          :drafts="drafts"
+          :errors="validationErrors"
+          :catalog="library?.catalog ?? []"
+          :disabled="saving"
+          @open="open"
+          @add="add"
+          @move="move"
+          @remove="remove"
+        />
+      </fieldset>
+      <p class="tiny muted foot">
+        执行顺序按字段固定：TMDB ID → 季号 → 集数 → 媒体类型 → 片名 → 年份 →
+        发布标签；同一字段内先命中的规则生效。启停、排序和删除在点「保存」后生效。
+      </p>
     </QueryState>
   </section>
 </template>
 <style scoped>
 .rules-page {
   display: grid;
-  gap: 20px;
+  gap: 16px;
   min-width: 0;
 }
-.heading,
 .toolbar {
   display: flex;
-  align-items: center;
-  gap: 12px;
   flex-wrap: wrap;
-}
-.heading {
-  justify-content: space-between;
-}
-.heading h1 {
-  margin: 8px 0;
-}
-h2 {
-  font-size: 17px;
-  margin: 0;
-}
-.pane-head {
-  height: auto;
-  min-height: 60px;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.rule-row {
-  padding: 14px 20px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  border-top: 1px solid var(--line);
-}
-.rule-row.selected {
-  background: #f6f3ff;
-}
-.rule-row > input {
-  width: auto;
-}
-.rule-name {
-  flex: 1;
-  text-align: left;
-  border: 0;
-  background: none;
-  cursor: pointer;
-  min-width: 0;
-  display: grid;
-  gap: 7px;
-  color: inherit;
-}
-.rule-name strong {
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-.row-actions {
-  display: flex;
   align-items: center;
   gap: 8px;
 }
-.trial,
-.padding {
-  padding: 20px;
+.toolbar .save-status {
+  margin-left: auto;
 }
-.trial label {
-  margin-top: 16px;
+.menu-wrap {
+  position: relative;
 }
-.trial .toolbar {
-  margin-top: 20px;
+.menu-wrap summary {
+  list-style: none;
 }
-.sample {
+.menu-wrap summary::-webkit-details-marker {
+  display: none;
+}
+.menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 160px;
+  padding: 4px;
+  display: grid;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #2920441a;
+}
+.menu-title {
+  padding: 6px 10px 4px;
+}
+.menu button {
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 8px 10px;
+  border-radius: 6px;
   font-size: 13px;
-  overflow-wrap: anywhere;
-  line-height: 1.8;
 }
-@media (max-width: 600px) {
-  .heading {
-    align-items: flex-start;
-  }
-  .rule-row {
-    padding: 14px 12px;
-    flex-wrap: wrap;
-  }
-  .row-actions {
-    margin-left: auto;
-  }
-  .rule-name {
-    min-width: 180px;
-  }
-  .toolbar .button {
-    flex: 1;
-  }
-  .toolbar {
-    gap: 8px;
+.menu button:hover:not(:disabled) {
+  background: #f4f2fb;
+}
+.save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.save-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+}
+.save-status.dirty i {
+  background: #d8973a;
+}
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  font-size: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fbfaff;
+  border: 1px solid var(--line);
+}
+.list-area {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.foot {
+  line-height: 1.8;
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .toolbar .save-status {
+    margin-left: 0;
+    width: 100%;
+    order: -1;
   }
 }
 </style>

@@ -23,6 +23,7 @@ import { bytes, episodeCode, name } from '../api'
 import Modal from '../components/Modal.vue'
 import FileBrowser from '../components/FileBrowser.vue'
 import Notices from '../components/ui/Notices.vue'
+import PageHeader from '../components/ui/PageHeader.vue'
 import { modeNames } from '../features/records/presentation'
 import { useWorkbench } from '../features/workbench/useWorkbench'
 const {
@@ -86,21 +87,22 @@ const {
   <div class="workbench-page">
     <Notices :error="message" :success="success" />
 
-    <div class="workspace-heading">
-      <div>
-        <span class="eyebrow">YOUR MEDIA, BEAUTIFULLY ORDERED</span>
-        <h1>整理工作台<span class="heading-dot">.</span></h1>
-      </div>
-      <div class="steps" aria-label="整理步骤">
-        <span :class="{ current: step === 1, done: step > 1 }"
-          ><i>{{ step > 1 ? '✓' : '1' }}</i
-          >添加文件</span
-        ><b /><span :class="{ current: step === 2, done: step > 2 }"
-          ><i>{{ step > 2 ? '✓' : '2' }}</i
-          >选择作品</span
-        ><b /><span :class="{ current: step === 3 }"><i>3</i>预览整理</span>
-      </div>
-    </div>
+    <PageHeader
+      class="workflow-heading"
+      title="整理工作台"
+      eyebrow="YOUR MEDIA, BEAUTIFULLY ORDERED"
+      ><template #actions>
+        <div class="steps" aria-label="整理步骤">
+          <span :class="{ current: step === 1, done: step > 1 }"
+            ><i>{{ step > 1 ? '✓' : '1' }}</i
+            >添加文件</span
+          ><b /><span :class="{ current: step === 2, done: step > 2 }"
+            ><i>{{ step > 2 ? '✓' : '2' }}</i
+            >选择作品</span
+          ><b /><span :class="{ current: step === 3 }"><i>3</i>预览整理</span>
+        </div>
+      </template></PageHeader
+    >
     <div class="mobile-switch">
       <button :class="{ active: panel === 'files' }" @click="panel = 'files'">
         源文件 <span>{{ files.length }}</span></button

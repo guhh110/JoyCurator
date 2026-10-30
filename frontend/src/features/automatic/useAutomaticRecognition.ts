@@ -20,6 +20,8 @@ import type {
 import {
   recognitionEdits,
   recognitionGroups,
+  sourceOf,
+  sourceSummaries,
 } from '../../recognition'
 import { useQuery } from '@tanstack/vue-query'
 
@@ -69,8 +71,23 @@ export function useAutomaticRecognition() {
       runtime.executing.value,
   )
   const groups = computed(() => recognitionGroups(task.value?.items || []))
+  // '' shows every added source; otherwise only files from that added path.
+  const source = ref('')
+  const sources = computed(() =>
+    sourceSummaries(task.value?.items || [], task.value?.paths || []),
+  )
+  const scoped = computed(() =>
+    source.value
+      ? recognitionGroups(
+          (task.value?.items || []).filter(
+            (file) =>
+              sourceOf(file.path, task.value?.paths || []) === source.value,
+          ),
+        )
+      : groups.value,
+  )
   const filtered = computed(() =>
-    groups.value.filter(
+    scoped.value.filter(
       (group) =>
         (filter.value === 'all' ||
           group.files.some((file) => file.state === filter.value)) &&
@@ -84,7 +101,7 @@ export function useAutomaticRecognition() {
   )
   const current = computed(
     () =>
-      groups.value.find((group) => group.id === focus.value) ||
+      scoped.value.find((group) => group.id === focus.value) ||
       filtered.value[0],
   )
   const visibleFiles = computed(
@@ -225,6 +242,7 @@ export function useAutomaticRecognition() {
       if (!alive) return
       task.value = value
       preview.value = null
+      source.value = ''
       focus.value = ''
       filePage.value = 1
       groupPage.value = 1
@@ -275,7 +293,7 @@ export function useAutomaticRecognition() {
   }
   async function selectGroup(id: string) {
     await act(async () => {
-      const group = groups.value.find((g) => g.id === id)
+      const group = scoped.value.find((g) => g.id === id)
       if (!group) return
       const ready = group.files.filter((file) => file.state === 'ready')
       const value = !ready.every((file) => file.selected)
@@ -477,6 +495,30 @@ export function useAutomaticRecognition() {
     editing.value = null
     editRequest++
   }
+  async function removeSource(path: string) {
+    if (!task.value) return
+    const count = sources.value.find((item) => item.path === path)?.files ?? 0
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `从工作区移除「${path}」及其 ${count} 个文件？磁盘上的文件不会被删除。`,
+      )
+    )
+      return
+    await act(async () => {
+      task.value = await api<Recognition>(
+        `/recognitions/${task.value!.id}/sources/remove`,
+        { path, revision: task.value!.revision },
+      )
+      preview.value = null
+      if (source.value === path) source.value = ''
+      changeFilter()
+    })
+  }
+  function chooseSource(path: string) {
+    source.value = path
+    changeFilter()
+  }
   function changeFilter() {
     focus.value = ''
     groupPage.value = 1
@@ -535,6 +577,8 @@ export function useAutomaticRecognition() {
     recognizing,
     locked,
     groups,
+    source,
+    sources,
     filtered,
     visibleGroups,
     current,
@@ -574,5 +618,7 @@ export function useAutomaticRecognition() {
     closeSearch,
     closeEdit,
     changeFilter,
+    chooseSource,
+    removeSource,
   }
 }

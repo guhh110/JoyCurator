@@ -2,48 +2,23 @@ package recognition
 
 import "encoding/json"
 
+// DefaultRules is one rule per field. Each script reads the filename and the
+// directories itself, so the rules use the relative path as their source.
+// Season and episodes run before the media type, which reuses their result.
 func DefaultRules() []Rule {
-	rules := []Rule{}
-	add := func(id string, target Target, source Source, templateID string) {
-		d, _ := descriptor(templateID)
-		rules = append(rules, Rule{ID: id, Name: d.Name, Description: d.Description, Target: target, Source: source, Order: (len(rules) + 1) * 10, Enabled: true, Kind: "script", Config: d.Config, Examples: []Example{}})
+	examples := map[string][]Example{
+		"tmdb-id":     {{Path: "/source/Show [tmdb-7]/Season 2/03.mkv", Root: "/source", Expected: json.RawMessage(`7`)}},
+		"season":      {{Path: "/Show.S00E01.mkv", Expected: json.RawMessage(`0`)}, {Path: "/source/Show/第二季/07.mkv", Root: "/source", Expected: json.RawMessage(`2`)}},
+		"episodes":    {{Path: "/Show.S02E03-E05.mkv", Expected: json.RawMessage(`[3,4,5]`)}, {Path: "/source/The.Matrix.1999.tmdb-603.mkv", Root: "/source", Expected: json.RawMessage(`null`)}},
+		"media-type":  {{Path: "/Show.1x03.mkv", Expected: json.RawMessage(`"tv"`)}, {Path: "/The.Matrix.1999.mkv", Expected: json.RawMessage(`null`)}},
+		"title":       {{Path: "/[Group] 1917.2019.1080p.mkv", Expected: json.RawMessage(`"1917"`)}},
+		"year":        {{Path: "/2001.A.Space.Odyssey.1968.mkv", Expected: json.RawMessage(`1968`)}},
+		"release-tag": {{Path: "/Film.2020.1080p-GROUP.mkv", Expected: json.RawMessage(`"GROUP"`)}},
 	}
-	add("id-filename", TMDBID, Filename, "tmdb-id")
-	add("id-directory", TMDBID, Directories, "tmdb-id")
-	add("season-sxe", Season, Filename, "season-sxe")
-	add("episodes-sxe", Episodes, Filename, "episodes-sxe")
-	add("type-sxe", MediaType, Filename, "type-sxe")
-	add("season-x", Season, Filename, "season-x")
-	add("episodes-x", Episodes, Filename, "episodes-x")
-	add("type-x", MediaType, Filename, "type-x")
-	add("season-marker", Season, Filename, "season-marker")
-	add("type-season-marker", MediaType, Filename, "type-season-marker")
-	add("season-folder", Season, Directories, "season-folder")
-	add("type-folder", MediaType, Directories, "type-folder")
-	add("episodes-number", Episodes, Filename, "episodes-number")
-	add("type-number", MediaType, Filename, "type-number")
-	add("episodes-trailing", Episodes, Filename, "episodes-trailing")
-	add("type-trailing", MediaType, Filename, "type-trailing")
-	add("title-filename", Title, Filename, "title-filename")
-	add("title-directory", Title, Directories, "title-directory")
-	add("year-filename", Year, Filename, "year")
-	add("year-directory", Year, Directories, "year")
-	add("release-tag", ReleaseTag, Filename, "release-tag")
-	for i := range rules {
-		switch rules[i].ID {
-		case "id-filename":
-			rules[i].Examples = []Example{{Path: "/source/The.Matrix.1999.tmdb-603.mkv", Root: "/source", Expected: json.RawMessage(`603`)}}
-		case "season-sxe":
-			rules[i].Examples = []Example{{Path: "/Show.S00E01.mkv", Expected: json.RawMessage(`0`)}}
-		case "episodes-sxe":
-			rules[i].Examples = []Example{{Path: "/Show.S02E03-E05.mkv", Expected: json.RawMessage(`[3,4,5]`)}}
-		case "episodes-trailing":
-			rules[i].Examples = []Example{{Path: "/source/The.Matrix.1999.tmdb-603.mkv", Expected: json.RawMessage(`null`)}}
-		case "title-filename":
-			rules[i].Examples = []Example{{Path: "/[Group] 1917.2019.1080p.mkv", Expected: json.RawMessage(`"1917"`)}}
-		case "season-folder":
-			rules[i].Examples = []Example{{Path: "/source/Show/第二季/07.mkv", Root: "/source", Expected: json.RawMessage(`2`)}}
-		}
+	rules := []Rule{}
+	for _, id := range []string{"tmdb-id", "season", "episodes", "media-type", "title", "year", "release-tag"} {
+		d, _ := descriptor(id)
+		rules = append(rules, Rule{ID: id, Name: d.Name, Description: d.Description, Target: d.Target, Source: RelativePath, Order: (len(rules) + 1) * 10, Enabled: true, Kind: "script", Config: d.Config, Examples: examples[id]})
 	}
 	return rules
 }

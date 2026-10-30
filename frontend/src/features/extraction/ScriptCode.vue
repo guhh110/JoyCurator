@@ -11,7 +11,8 @@ const props = defineProps<{
 defineEmits<{ 'update:modelValue': [value: string] }>()
 const lines = computed(() => props.modelValue.split('\n'))
 const gutter = ref<HTMLElement>(),
-  source = ref<HTMLElement>()
+  source = ref<HTMLElement>(),
+  textarea = ref<HTMLTextAreaElement>()
 function scroll(event: Event) {
   if (gutter.value)
     gutter.value.scrollTop = (event.target as HTMLTextAreaElement).scrollTop
@@ -20,10 +21,24 @@ watch(
   () => [props.activeLine, props.focusKey],
   async () => {
     await nextTick()
+    if (!props.readonly && textarea.value && props.activeLine) {
+      const element = textarea.value
+      const start = lines.value
+        .slice(0, props.activeLine - 1)
+        .reduce((n, line) => n + line.length + 1, 0)
+      element.focus({ preventScroll: true })
+      element.setSelectionRange(
+        start,
+        start + (lines.value[props.activeLine - 1]?.length ?? 0),
+      )
+      element.scrollTop = Math.max(0, (props.activeLine - 4) * 20)
+      if (gutter.value) gutter.value.scrollTop = element.scrollTop
+    }
     source.value
       ?.querySelector('[data-active="true"]')
       ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   },
+  { immediate: true },
 )
 </script>
 <template>
@@ -48,6 +63,7 @@ watch(
       lines.map((_, index) => index + 1).join('\n')
     }}</pre>
     <textarea
+      ref="textarea"
       :id="id"
       :value="modelValue"
       :aria-label="label || 'JavaScript 脚本'"

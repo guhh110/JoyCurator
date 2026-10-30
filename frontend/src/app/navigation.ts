@@ -35,9 +35,15 @@ export const navigation = [
     items: [{ name: 'settings', title: '设置', icon: Settings2 }],
   },
 ] as const
+// Detail pages that are not in the menu still belong to their parent's group.
+const detailParents: Record<string, string> = {
+  'recognition-rule-edit': 'recognition-rules',
+}
 export function groupForRoute(name: unknown) {
+  const target = detailParents[String(name)] ?? name
   return (
-    navigation.find((group) => group.items.some((item) => item.name === name))
-      ?.id ?? 'organize'
+    navigation.find((group) =>
+      group.items.some((item) => item.name === target),
+    )?.id ?? 'organize'
   )
 }

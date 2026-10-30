@@ -3,12 +3,23 @@ import { computed, nextTick, ref } from 'vue'
 import ScriptCode from './ScriptCode.vue'
 import type { ExtractionResult, ScriptEvent } from './model'
 import { targets, sources, statuses, valueText } from './model'
-const props = defineProps<{ result: ExtractionResult }>()
+const props = withDefaults(
+  defineProps<{
+    result: ExtractionResult
+    view?: 'all' | 'metadata' | 'steps' | 'json'
+    editable?: boolean
+    // Limit the steps view to one rule (the drawer shows only the edited rule).
+    ruleId?: string
+  }>(),
+  { view: 'all' },
+)
+const emit = defineEmits<{ locate: [ruleId: string, event?: ScriptEvent] }>()
 const activeCode = ref<
   Record<string, { phase: string; line: number; request: number }>
 >({})
 let focusRequest = 0
 function locate(ruleId: string, event: ScriptEvent) {
+  if (props.editable) emit('locate', ruleId, event)
   activeCode.value[ruleId] = {
     phase: event.phase,
     line: event.line,
@@ -23,7 +34,8 @@ const visible = computed(() =>
   props.result.steps.filter(
     (step) =>
       (!status.value || step.status === status.value) &&
-      (!rule.value || step.ruleId === rule.value),
+      (!rule.value || step.ruleId === rule.value) &&
+      (!props.ruleId || step.ruleId === props.ruleId),
   ),
 )
 const details = ref<HTMLDetailsElement>(),
@@ -43,7 +55,7 @@ async function copy() {
 </script>
 <template>
   <div class="extraction-output">
-    <section class="pane metadata">
+    <section v-if="view === 'all' || view === 'metadata'" class="pane metadata">
       <h2>文件元数据</h2>
       <p v-if="result.root" class="tiny muted">解析边界：{{ result.root }}</p>
       <dl>
@@ -53,8 +65,11 @@ async function copy() {
         >
       </dl>
     </section>
-    <section class="pane execution-steps">
-      <header class="pane-head">
+    <section
+      v-if="view === 'all' || view === 'steps'"
+      class="pane execution-steps"
+    >
+      <header v-if="!ruleId" class="pane-head">
         <h2>
           规则执行过程
           <span class="count"
@@ -77,7 +92,12 @@ async function copy() {
         </div>
       </header>
       <p v-if="!visible.length" class="muted padding">没有符合条件的步骤。</p>
-      <details v-for="s in visible" :key="s.ruleId" class="step">
+      <details
+        v-for="s in visible"
+        :key="s.ruleId"
+        class="step"
+        :open="!!ruleId || undefined"
+      >
         <summary>
           <span class="step-order">{{ s.order }}</span
           ><strong>{{ s.ruleName }}</strong
@@ -89,6 +109,13 @@ async function copy() {
           >
         </summary>
         <div class="step-body">
+          <button
+            v-if="editable"
+            class="button small"
+            @click="emit('locate', s.ruleId)"
+          >
+            编辑此规则
+          </button>
           <p>
             {{ s.reason }}
             <strong v-if="s.applied" class="purple">· 已采用</strong>
@@ -184,7 +211,7 @@ async function copy() {
         </div>
       </details>
     </section>
-    <section class="pane raw">
+    <section v-if="view === 'all' || view === 'json'" class="pane raw">
       <header class="pane-head">
         <h2>完整 JSON</h2>
         <button class="button small" @click="copy">复制 JSON</button>

@@ -1,239 +1,261 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import type { Rule, Source } from './model'
+import { computed } from 'vue'
 import ScriptCode from './ScriptCode.vue'
 import { sources, targets, emptyScript } from './model'
-const props = defineProps<{
-  rule: Rule
-  sourceScripts: Partial<Record<Source, string>>
+import { draftRule, type RuleDraft } from './useRuleDraft'
+const draft = defineModel<RuleDraft>({ required: true })
+defineProps<{
+  focus?: { phase: string; line: number; request: number }
 }>()
-const emit = defineEmits<{ update: [value: Rule] }>()
-const draft = ref<Rule>(JSON.parse(JSON.stringify(props.rule)) as Rule)
-const constant = ref(false),
-  constantText = ref(''),
-  paramsText = ref('{}'),
-  sourceCode = ref(''),
-  examplesText = ref('[]'),
-  error = ref('')
-watch(
-  () => props.rule,
-  (value) => {
-    draft.value = JSON.parse(JSON.stringify(value)) as Rule
-    constant.value = Object.hasOwn(value.config, 'value')
-    constantText.value = JSON.stringify(value.config.value ?? 'tv')
-    paramsText.value = JSON.stringify(value.config.params ?? {}, null, 2)
-    examplesText.value = JSON.stringify(value.examples ?? [], null, 2)
-    sourceCode.value =
-      value.config.sourceCode ?? props.sourceScripts.cleanFilename ?? ''
-    error.value = ''
-  },
-  { immediate: true },
-)
+const emit = defineEmits<{ retarget: [] }>()
+const error = computed(() => {
+  try {
+    draftRule(draft.value)
+    return ''
+  } catch (e) {
+    return (e as Error).message
+  }
+})
 function kindChanged() {
-  draft.value.config =
-    draft.value.kind === 'regex'
+  draft.value.rule.config =
+    draft.value.rule.kind === 'regex'
       ? { pattern: '(?P<value>.+)', capture: 'value' }
       : { code: emptyScript }
-  paramsText.value = '{}'
-}
-function commit() {
-  try {
-    const rule = JSON.parse(JSON.stringify(draft.value)) as Rule
-    rule.examples = JSON.parse(examplesText.value)
-    if (!Array.isArray(rule.examples)) throw new Error('样例必须是 JSON 数组')
-    rule.config =
-      rule.kind === 'script'
-        ? { code: rule.config.code, params: JSON.parse(paramsText.value) }
-        : constant.value
-          ? {
-              pattern: rule.config.pattern,
-              value: JSON.parse(constantText.value),
-            }
-          : { pattern: rule.config.pattern, capture: rule.config.capture }
-    if (rule.source === 'cleanFilename')
-      rule.config.sourceCode = sourceCode.value
-    emit('update', rule)
-    error.value = ''
-  } catch (e) {
-    error.value = (e as Error).message
-  }
+  draft.value.paramsText = '{}'
 }
 </script>
 <template>
-  <form class="editor" @submit.prevent="commit">
-    <h2>编辑规则</h2>
-    <div class="grid">
-      <div>
-        <label for="rule-id">规则 ID</label
-        ><input id="rule-id" v-model="draft.id" required />
-      </div>
-      <div>
-        <label for="rule-name">名称</label
-        ><input id="rule-name" v-model="draft.name" required />
-      </div>
-      <div>
-        <label for="rule-target">提取目标（仅一个）</label
-        ><select id="rule-target" v-model="draft.target">
-          <option v-for="(label, key) in targets" :key="key" :value="key">
-            {{ label }}
-          </option>
-        </select>
-      </div>
-      <div>
-        <label for="rule-kind">规则类型</label
-        ><select id="rule-kind" v-model="draft.kind" @change="kindChanged">
-          <option value="regex">自定义正则</option>
-          <option value="script">JavaScript 脚本</option>
-        </select>
-      </div>
-      <div>
-        <label for="rule-source">输入来源</label
-        ><select id="rule-source" v-model="draft.source">
-          <option v-for="(_, key) in sources" :key="key" :value="key">
-            {{ sources[key as keyof typeof sources] }}
-          </option>
-        </select>
-      </div>
-      <div>
-        <label for="rule-order">执行顺序</label
-        ><input
-          id="rule-order"
-          v-model.number="draft.order"
-          type="number"
-          min="0"
-          required
+  <div class="editor">
+    <div class="editor-section">
+      <template v-if="draft.rule.kind === 'script'">
+        <label for="rule-code" class="sr-only">完整脚本（JavaScript）</label>
+        <ScriptCode
+          id="rule-code"
+          v-model="draft.rule.config.code!"
+          label="JavaScript 脚本"
+          :active-line="focus?.phase === 'extract' ? focus.line : undefined"
+          :focus-key="focus?.phase === 'extract' ? focus.request : undefined"
         />
+        <p class="script-help tiny muted">
+          function extract(ctx) 返回本字段值，未命中返回 null。reSearch /
+          reFindAll / reSub 会自动记录过程，trace("说明", 数据) 补充依据。
+        </p>
+      </template>
+      <template v-else>
+        <label for="rule-pattern">Go 正则表达式</label
+        ><input
+          id="rule-pattern"
+          v-model="draft.rule.config.pattern"
+          required
+          spellcheck="false"
+        />
+        <label class="check"
+          ><input
+            v-model="draft.constant"
+            type="checkbox"
+          />使用固定输出值</label
+        >
+        <template v-if="draft.constant"
+          ><label for="rule-value">固定值 JSON（例如 "tv"、0、[1,2]）</label
+          ><input
+            id="rule-value"
+            v-model="draft.constantText"
+            required
+            spellcheck="false"
+        /></template>
+        <template v-else
+          ><label for="rule-capture">命名捕获组</label
+          ><input
+            id="rule-capture"
+            v-model="draft.rule.config.capture"
+            required
+            placeholder="value"
+            spellcheck="false"
+        /></template>
+      </template>
+    </div>
+    <details class="auxiliary">
+      <summary>基本 <span class="muted">名称、字段、说明</span></summary>
+      <div class="grid">
+        <div>
+          <label for="rule-name">规则名称</label
+          ><input id="rule-name" v-model="draft.rule.name" required />
+        </div>
+        <div>
+          <label for="rule-target">提取字段</label
+          ><select
+            id="rule-target"
+            v-model="draft.rule.target"
+            @change="emit('retarget')"
+          >
+            <option v-for="(label, key) in targets" :key="key" :value="key">
+              {{ label }}
+            </option>
+          </select>
+        </div>
       </div>
-    </div>
-    <label for="rule-description">说明</label
-    ><input id="rule-description" v-model="draft.description" />
-    <template v-if="draft.kind === 'script'">
-      <label for="rule-code">完整脚本（JavaScript）</label>
-      <ScriptCode
-        id="rule-code"
-        v-model="draft.config.code!"
-        label="JavaScript 脚本"
-      />
-      <p class="muted tiny">
-        定义同步 function extract(ctx)。使用
-        ctx.text、ctx.directories、ctx.metadata、ctx.params；返回本字段值或
-        null。reSearch / reFindAll / reSub
-        会自动记录参数与结果，trace("说明", 中间值) 可记录判断依据。
-        不提供 Node.js、网络或文件访问，不支持 async / Promise。
-      </p>
-      <label for="rule-params">参数 JSON</label
+      <label for="rule-description">规则说明</label
       ><textarea
-        id="rule-params"
-        v-model="paramsText"
-        rows="3"
-        spellcheck="false"
+        id="rule-description"
+        v-model="draft.rule.description"
+        rows="2"
       />
-    </template>
-    <template v-else
-      ><label for="rule-pattern">Go 正则表达式</label
-      ><input
-        id="rule-pattern"
-        v-model="draft.config.pattern"
-        required
-        spellcheck="false" /><label class="check"
-        ><input v-model="constant" type="checkbox" />使用固定输出值</label
-      ><template v-if="constant"
-        ><label for="rule-value">固定值 JSON（例如 "tv"、0、[1,2]）</label
-        ><input
-          id="rule-value"
-          v-model="constantText"
-          required
-          spellcheck="false" /></template
-      ><template v-else
-        ><label for="rule-capture">命名捕获组</label
-        ><input
-          id="rule-capture"
-          v-model="draft.config.capture"
-          required
-          placeholder="value"
-          spellcheck="false" /></template
-    ></template>
-    <details v-if="draft.source === 'cleanFilename'" class="source-cleaner">
-      <summary>来源清理脚本（同样可编辑与追踪）</summary>
-      <ScriptCode v-model="sourceCode" label="来源清理脚本" />
     </details>
-    <div class="checks">
+    <details
+      class="auxiliary"
+      :open="focus?.phase === 'source' || undefined"
+    >
+      <summary>高级 <span class="muted">来源、覆盖、提取方式、参数、ID</span></summary>
+      <div class="grid">
+        <div>
+          <label for="rule-source">输入来源</label
+          ><select id="rule-source" v-model="draft.rule.source">
+            <option v-for="(label, key) in sources" :key="key" :value="key">
+              {{ label }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label for="rule-kind">提取方式</label
+          ><select
+            id="rule-kind"
+            v-model="draft.rule.kind"
+            @change="kindChanged"
+          >
+            <option value="script">JavaScript 脚本</option>
+            <option value="regex">自定义正则</option>
+          </select>
+        </div>
+        <div>
+          <label for="rule-id">规则 ID</label
+          ><input id="rule-id" v-model="draft.rule.id" required />
+        </div>
+      </div>
       <label class="check"
-        ><input v-model="draft.enabled" type="checkbox" />启用</label
-      ><label class="check"
         ><input
-          v-model="draft.overwrite"
+          v-model="draft.rule.overwrite"
           type="checkbox"
-        />允许覆盖已有目标值</label
+        />允许覆盖已有值（默认只补全未知字段）</label
       >
-    </div>
-    <label for="rule-examples">测试样例 JSON</label
-    ><textarea
-      id="rule-examples"
-      v-model="examplesText"
-      rows="5"
-      spellcheck="false"
-      placeholder='[{"path":"/Show.S02E03.mkv","expected":2}]'
-    />
-    <p class="tiny muted">
-      每个样例填写 path、可选 root、expected；预期值为本条规则提取值，未命中写
-      null。
+      <template v-if="draft.rule.kind === 'script'">
+        <label for="rule-params">参数 JSON（ctx.params）</label
+        ><textarea
+          id="rule-params"
+          v-model="draft.paramsText"
+          rows="3"
+          spellcheck="false"
+        />
+      </template>
+      <template v-if="draft.rule.source === 'cleanFilename'">
+        <label>来源清理脚本（匹配前执行）</label>
+        <ScriptCode
+          v-model="draft.sourceCode"
+          label="来源清理脚本"
+          :active-line="focus?.phase === 'source' ? focus.line : undefined"
+          :focus-key="focus?.phase === 'source' ? focus.request : undefined"
+        />
+      </template>
+    </details>
+    <details class="auxiliary">
+      <summary>测试样例 <span class="muted">path / root / expected</span></summary>
+      <label for="rule-examples" class="sr-only">本规则测试样例 JSON</label
+      ><textarea
+        id="rule-examples"
+        v-model="draft.examplesText"
+        rows="8"
+        spellcheck="false"
+        placeholder='[{"path":"/Show.S02E03.mkv","expected":2}]'
+      />
+      <p class="tiny muted">未命中用 null。顶部「运行样例」检查整条草稿链。</p>
+    </details>
+    <p v-if="error" class="editor-error" role="alert">
+      配置未完成：{{ error }}。修改会保留，修正后可试跑或保存。
     </p>
-    <p v-if="error" class="red" role="alert">{{ error }}</p>
-    <button class="button primary">应用到当前编辑链</button>
-    <p class="tiny muted">应用后可试跑；点击页面顶部“保存规则链”后正式生效。</p>
-  </form>
+  </div>
 </template>
 <style scoped>
 .editor {
-  padding: 20px;
-  border-top: 1px solid var(--line);
+  min-width: 0;
 }
-h2 {
-  font-size: 17px;
-  margin: 0 0 16px;
+.editor-section {
+  padding: 20px;
 }
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 16px;
 }
-.source-cleaner {
+.editor-section > label {
   margin-top: 18px;
 }
-.source-cleaner summary {
-  cursor: pointer;
-  color: var(--purple);
-  margin-bottom: 12px;
-}
-.editor > label {
-  margin-top: 16px;
+.editor-section > label:first-child {
+  margin-top: 0;
 }
 textarea {
   font-family: monospace;
   font-size: 12px;
+  line-height: 1.7;
+}
+.script-help {
+  line-height: 1.8;
+  margin: 12px 0;
+}
+.auxiliary {
+  border-top: 1px solid var(--line);
+  padding: 13px 20px;
+}
+.auxiliary > label {
+  margin-top: 14px;
+}
+.check {
+  margin-top: 14px;
+}
+.auxiliary summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+.auxiliary summary span {
+  margin-left: 6px;
+  font-size: 10px;
+}
+.auxiliary[open] summary {
+  margin-bottom: 12px;
 }
 .check {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 12px;
 }
 .check input {
   width: auto;
 }
-.checks {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-  margin-top: 20px;
-}
-p {
+.editor-error {
+  color: #a8443d;
+  background: #fff4ef;
+  padding: 12px 20px;
+  margin: 0;
+  font-size: 12px;
   line-height: 1.7;
+  border-top: 1px solid #f2d9ce;
 }
-@media (max-width: 600px) {
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 760px) {
   .grid {
     grid-template-columns: 1fr;
   }
-}
+  .editor-section {
+    padding: 16px;
+  }
+      }
 </style>

@@ -36,6 +36,23 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '识别规则', group: 'recognition' },
       },
       {
+        // `new` creates a rule; ?target=&kind=&template= describe it.
+        path: 'recognition/rules/:ruleId',
+        name: 'recognition-rule-edit',
+        component: () => import('../pages/recognition/RuleEditPage.vue'),
+        props: (route) => ({
+          ruleId: String(route.params.ruleId),
+          ...Object.fromEntries(
+            ['target', 'kind', 'template', 'line'].flatMap((key) =>
+              typeof route.query[key] === 'string'
+                ? [[key, route.query[key]]]
+                : [],
+            ),
+          ),
+        }),
+        meta: { title: '编辑规则', group: 'recognition' },
+      },
+      {
         path: 'recognition/history/:traceId?',
         name: 'extraction-history',
         component: () => import('../pages/recognition/HistoryPage.vue'),

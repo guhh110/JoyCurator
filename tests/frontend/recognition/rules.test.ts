@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  moveRule,
+  fieldMajor,
+  fieldOrder,
   valueText,
   type Rule,
 } from '../../../frontend/src/features/extraction/model'
@@ -19,15 +20,16 @@ function rule(id: string, order: number): Rule {
   }
 }
 describe('rule ordering and metadata display', () => {
-  it('moves a rule and assigns distinct ascending orders while retaining IDs and settings', () => {
-    const rules = [rule('a', 10), rule('b', 20), rule('c', 30)]
-    rules[2]!.overwrite = true
-    moveRule(rules, 2, 0)
-    expect(rules.map((item) => item.id)).toEqual(['c', 'a', 'b'])
-    expect(rules.map((item) => item.order)).toEqual([10, 20, 30])
-    expect(rules[0]!.overwrite).toBe(true)
-    moveRule(rules, 0, -1)
-    expect(rules.map((item) => item.id)).toEqual(['c', 'a', 'b'])
+  it('orders rules field by field and keeps relative order inside a field', () => {
+    const a = { ...rule('a', 10), target: 'title' as const }
+    const b = { ...rule('b', 20), target: 'season' as const }
+    const c = { ...rule('c', 30), target: 'title' as const }
+    const d = { ...rule('d', 40), target: 'mediaType' as const }
+    const sorted = fieldMajor([a, b, c, d], (item) => item.target)
+    expect(sorted.map((item) => item.id)).toEqual(['b', 'd', 'a', 'c'])
+    expect(fieldOrder.indexOf('mediaType')).toBeGreaterThan(
+      fieldOrder.indexOf('episodes'),
+    )
   })
   it('distinguishes unknown season from specials and keeps combined episodes', () => {
     expect(valueText(null)).toBe('未知')

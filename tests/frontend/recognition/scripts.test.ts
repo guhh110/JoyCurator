@@ -2,6 +2,7 @@ import { h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { describe, expect, it } from 'vitest'
 import ScriptCode from '../../../frontend/src/features/extraction/ScriptCode.vue'
+import { createRuleDraft } from '../../../frontend/src/features/extraction/useRuleDraft'
 import RuleEditor from '../../../frontend/src/features/extraction/RuleEditor.vue'
 import ExtractionResult from '../../../frontend/src/features/extraction/ExtractionResult.vue'
 import {
@@ -18,13 +19,16 @@ const rule: Rule = {
   enabled: true,
   kind: 'script',
   overwrite: false,
-  config: { code: 'function extract(ctx) {\n  return ctx.text;\n}', params: {} },
+  config: {
+    code: 'function extract(ctx) {\n  return ctx.text;\n}',
+    params: {},
+  },
   examples: [],
 }
 describe('observable script editor and snapshots', () => {
   it('renders editable complete source and script parameters', async () => {
     const html = await renderToString(
-      h(RuleEditor, { rule, sourceScripts: {} }),
+      h(RuleEditor, { modelValue: createRuleDraft(rule) }),
     )
     expect(html).toContain('JavaScript 脚本')
     expect(html).toContain('return ctx.text')

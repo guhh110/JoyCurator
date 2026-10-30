@@ -38,6 +38,20 @@ func identificationRoutes(a Dependencies, add func(string, endpoint)) {
 		v, e := a.Workspace.Update(r.Context(), r.PathValue("id"), in)
 		return respond(w, v, e)
 	})
+	add("POST /api/recognitions/{id}/sources/remove", func(w http.ResponseWriter, r *http.Request) error {
+		var in struct {
+			Path     string `json:"path"`
+			Revision int    `json:"revision"`
+		}
+		if e := read(r, &in); e != nil {
+			return e
+		}
+		if in.Path == "" {
+			return errors.New("请指定要删除的来源")
+		}
+		v, e := a.Workspace.RemoveSource(r.PathValue("id"), in.Path, in.Revision)
+		return respond(w, v, e)
+	})
 	add("POST /api/recognitions/{id}/retry", func(w http.ResponseWriter, r *http.Request) error {
 		v, e := a.Workspace.Start(nil, r.PathValue("id"))
 		return respond(w, v, e)

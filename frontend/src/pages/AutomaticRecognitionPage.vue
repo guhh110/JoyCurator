@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Trash2,
 } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { bytes, episodeCode, name } from '../api'
@@ -17,6 +18,7 @@ import { recognitionStates } from '../recognition'
 import FileBrowser from '../components/FileBrowser.vue'
 import Modal from '../components/Modal.vue'
 import QueryState from '../components/ui/QueryState.vue'
+import PageHeader from '../components/ui/PageHeader.vue'
 import { useAutomaticRecognition } from '../features/automatic/useAutomaticRecognition'
 const {
   runtime,
@@ -91,43 +93,48 @@ const {
   closeSearch,
   closeEdit,
   changeFilter,
+  source,
+  sources,
+  chooseSource,
+  removeSource,
 } = useAutomaticRecognition()
 </script>
 
 <template>
   <section class="auto-workspace" aria-label="自动识别">
-    <div class="workspace-heading">
-      <div>
-        <span class="eyebrow">DISCOVER EVERY STORY</span>
-        <h1>自动识别<span class="heading-dot">.</span></h1>
-        <p class="muted">电影与剧集一起添加，按作品检查，再统一整理。</p>
-      </div>
-      <div class="auto-heading-actions">
-        <RouterLink class="text-button" :to="{ name: 'recognition-rules' }"
-          >识别规则</RouterLink
-        >
-        <RouterLink class="text-button" :to="{ name: 'extraction-history' }"
-          >执行历史</RouterLink
-        >
-        <RouterLink class="text-button" :to="{ name: 'recognition-debug' }"
-          >识别调试</RouterLink
-        >
-        <button
-          v-if="task"
-          class="text-button"
-          :disabled="locked || loading"
-          @click="openBrowser(true)"
-        >
-          新建识别</button
-        ><button
-          class="button primary"
-          :disabled="locked || loading"
-          @click="openBrowser()"
-        >
-          <Plus :size="17" />添加文件或目录
-        </button>
-      </div>
-    </div>
+    <PageHeader
+      class="workflow-heading"
+      title="自动识别"
+      eyebrow="DISCOVER EVERY STORY"
+      description="电影与剧集一起添加，按作品检查，再统一整理。"
+      ><template #actions>
+        <div class="auto-heading-actions">
+          <RouterLink class="text-button" :to="{ name: 'recognition-rules' }"
+            >识别规则</RouterLink
+          >
+          <RouterLink class="text-button" :to="{ name: 'extraction-history' }"
+            >执行历史</RouterLink
+          >
+          <RouterLink class="text-button" :to="{ name: 'recognition-debug' }"
+            >识别调试</RouterLink
+          >
+          <button
+            v-if="task"
+            class="text-button"
+            :disabled="locked || loading"
+            @click="openBrowser(true)"
+          >
+            新建识别</button
+          ><button
+            class="button primary"
+            :disabled="locked || loading"
+            @click="openBrowser()"
+          >
+            <Plus :size="17" />添加文件或目录
+          </button>
+        </div>
+      </template></PageHeader
+    >
     <QueryState
       v-if="taskQuery.error.value || runtime.batchQuery.error.value"
       :error="taskQuery.error.value || runtime.batchQuery.error.value"
@@ -244,9 +251,100 @@ const {
           </button>
         </div>
         <div class="auto-grid">
+          <section class="pane auto-sources" aria-label="添加的来源">
+            <header class="pane-head">
+              <h2>来源</h2>
+              <span class="count">{{ sources.length }}</span>
+            </header>
+            <div class="auto-source-list">
+              <button
+                class="auto-source"
+                :class="{ active: !source }"
+                :aria-pressed="!source"
+                @click="chooseSource('')"
+              >
+                <strong>全部来源</strong
+                ><span class="muted tiny"
+                  >{{ readyCount + pendingCount }} 个文件 ·
+                  {{ groups.length }} 部作品</span
+                >
+              </button>
+              <div
+                v-for="item in sources"
+                :key="item.path"
+                class="auto-source-item"
+              ><button
+                class="auto-source"
+                :class="{ active: source === item.path }"
+                :aria-pressed="source === item.path"
+                :title="item.path"
+                @click="chooseSource(item.path)"
+              >
+                <span class="auto-source-name"
+                  ><FolderOpen :size="15" /><strong>{{
+                    name(item.path) || item.path
+                  }}</strong></span
+                ><span class="auto-source-path muted tiny">{{
+                  item.path
+                }}</span
+                ><span class="muted tiny"
+                  >{{ item.files }} 个文件 · {{ item.works }} 部作品</span
+                ><span
+                  v-if="item.files"
+                  class="auto-source-bar"
+                  aria-hidden="true"
+                  ><i
+                    v-for="state in [
+                      'ready',
+                      'review',
+                      'unmatched',
+                      'failed',
+                      'pending',
+                    ]"
+                    v-show="item.states[state]"
+                    :key="state"
+                    :class="state"
+                    :style="{ flexGrow: item.states[state] }"
+                /></span
+                ><span v-if="item.files" class="auto-source-states tiny"
+                  ><template
+                    v-for="state in [
+                      'ready',
+                      'review',
+                      'unmatched',
+                      'failed',
+                      'pending',
+                    ]"
+                    :key="state"
+                    ><span v-if="item.states[state]" :class="state"
+                      >{{ recognitionStates[state] }}
+                      {{ item.states[state] }}</span
+                    ></template
+                  ></span
+                ><span v-else class="muted tiny">{{
+                  recognizing ? '扫描中…' : '没有找到媒体文件'
+                }}</span>
+              </button><button
+                class="auto-source-remove"
+                :disabled="locked"
+                :aria-label="`移除来源 ${item.path}`"
+                title="移除这个来源"
+                @click="removeSource(item.path)"
+              >
+                <Trash2 :size="14" />
+              </button></div>
+            </div>
+            <button
+              class="auto-source-add"
+              :disabled="locked || loading"
+              @click="openBrowser()"
+            >
+              <Plus :size="15" />添加文件或目录
+            </button>
+          </section>
           <section class="pane auto-groups" aria-label="作品分组">
             <header class="pane-head">
-              <h2>作品分组</h2>
+              <h2>{{ source ? '本来源的作品' : '作品分组' }}</h2>
               <span class="count">{{ filtered.length }}</span>
             </header>
             <div class="auto-group-list">

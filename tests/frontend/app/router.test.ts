@@ -41,6 +41,10 @@ describe('independent pages and grouped navigation', () => {
       'extraction-history',
       'recognition-debug',
     ])
+    const edit = router.resolve('/recognition/rules/season?line=4')
+    expect(edit.name).toBe('recognition-rule-edit')
+    expect(edit.params.ruleId).toBe('season')
+    expect(groupForRoute('recognition-rule-edit')).toBe('recognition')
     const detail = router.resolve('/recognition/history/trace-123?page=2')
     expect(detail.params.traceId).toBe('trace-123')
     expect(detail.query.page).toBe('2')
