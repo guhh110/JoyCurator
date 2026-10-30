@@ -29,6 +29,7 @@ import Select from '../components/ui/Select.vue'
 import Tooltip from '../components/ui/Tooltip.vue'
 import EliText from '../components/ui/EliText.vue'
 import EpisodeComparison from '../features/automatic/EpisodeComparison.vue'
+import EpisodeOffsetDialog from '../features/automatic/EpisodeOffsetDialog.vue'
 import { useAutomaticRecognition } from '../features/automatic/useAutomaticRecognition'
 const {
   runtime,
@@ -100,6 +101,8 @@ const {
   pick,
   openEdit,
   saveEdit,
+  offsetEditor,
+  openOffset,
   moveGroup,
   prepare,
   execute,
@@ -461,6 +464,10 @@ function conflictTargets(issues: string[]) {
                       @update:model-value="value => changeGroupSeason(Number(value))"
                     />
                   </div>
+                <button v-if="current.entry?.type === 'tv'" class="button small"
+                  :disabled="locked || groupSeasonsLoading || !groupSeasons.length" @click="openOffset">
+                  <ArrowLeftRight :size="14" />批量修正季集
+                </button>
                 <button
                   class="button small"
                   :class="{ primary: !current.entry }"
@@ -705,6 +712,7 @@ function conflictTargets(issues: string[]) {
       </p>
     </div>
   </Modal>
+  <EpisodeOffsetDialog v-if="offsetEditor.context.value" :editor="offsetEditor" :locked="locked" />
   <Modal v-if="editing" title="修正季集" @close="closeEdit"
     ><p class="muted">{{ name(editing.path) }}</p>
     <Select

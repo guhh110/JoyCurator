@@ -30,6 +30,7 @@ import { useRuntime } from '../../app/runtime'
 import { useAction } from '../../app/useAction'
 import { keys } from '../../app/query'
 import { confirmAction } from '../../app/confirm'
+import { useEpisodeOffset } from './useEpisodeOffset'
 
 export function useAutomaticRecognition() {
   const runtime = useRuntime()
@@ -256,7 +257,7 @@ export function useAutomaticRecognition() {
         )
     })
   }
-  async function save() {
+  async function save(items?: RecognitionItem[]) {
     if (!task.value) return
     preview.value = null
     const original = task.value
@@ -265,7 +266,7 @@ export function useAutomaticRecognition() {
         `/recognitions/${original.id}`,
         {
           revision: original.revision,
-          items: recognitionEdits(original.items),
+          items: recognitionEdits(items ?? original.items),
         },
         'PUT',
       )
@@ -279,6 +280,28 @@ export function useAutomaticRecognition() {
       if (alive && value) task.value = value
       throw e
     }
+  }
+  const offsetEditor = useEpisodeOffset({
+    task,
+    locked,
+    saveError: error,
+    commit: async (items, id, revision) => {
+      let saved = false
+      await act(async () => {
+        if (task.value?.id !== id || task.value.revision !== revision)
+          throw new Error('工作区已更新，请关闭弹窗后重新打开')
+        await save(items)
+        if (current.value?.entry?.tmdbId === offsetEditor.context.value?.tmdbId)
+          groupSeason.value = offsetEditor.season.value
+        saved = true
+        notice.value = '季集映射已保存，请检查文件校验状态后重新生成整理预览'
+      })
+      return saved
+    },
+  })
+  function openOffset() {
+    if (!current.value || groupSeasonsLoading.value) return
+    offsetEditor.open(current.value.files, groupSeasons.value, groupSeason.value, source.value)
   }
   function openBrowser(fresh = false) {
     freshImport.value = fresh
@@ -604,6 +627,7 @@ export function useAutomaticRecognition() {
     editing.value = null
     transfer.value = null
     preview.value = null
+    offsetEditor.close()
     searchRequest++
     editRequest++
   })
@@ -688,6 +712,8 @@ export function useAutomaticRecognition() {
     pick,
     openEdit,
     saveEdit,
+    offsetEditor,
+    openOffset,
     moveGroup,
     prepare,
     execute,
