@@ -1,15 +1,25 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import ScriptCode from './ScriptCode.vue'
+import ScriptReference from './ScriptReference.vue'
 import Select from '../../components/ui/Select.vue'
+import type { ScriptDiagnostic } from './scriptDiagnostics'
 import type { Target, Source } from './model'
 import { sources, targets, emptyScript } from './model'
 import { draftRule, type RuleDraft } from './useRuleDraft'
 const draft = defineModel<RuleDraft>({ required: true })
 defineProps<{
   focus?: { phase: string; line: number; request: number }
+  diagnostics?: ScriptDiagnostic[]
+  disabled?: boolean
 }>()
 const emit = defineEmits<{ retarget: [] }>()
+const parameterNames = computed(() => {
+  try {
+    const value = JSON.parse(draft.value.paramsText)
+    return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value) : []
+  } catch { return [] }
+})
 const error = computed(() => {
   try {
     draftRule(draft.value)
@@ -29,20 +39,18 @@ function kindChanged() {
 <template>
   <div class="editor">
     <div class="editor-section">
-      <template v-if="draft.rule.kind === 'script'">
-        <label for="rule-code" class="sr-only">完整脚本（JavaScript）</label>
+      <ScriptReference v-if="draft.rule.kind === 'script'" label="JavaScript 脚本" editor-id="rule-code" :target="draft.rule.target">
         <ScriptCode
           id="rule-code"
           v-model="draft.rule.config.code!"
           label="JavaScript 脚本"
+          :parameter-names="parameterNames"
+          :disabled="disabled"
+          :diagnostics="diagnostics?.filter(item => item.phase === 'extract')"
           :active-line="focus?.phase === 'extract' ? focus.line : undefined"
           :focus-key="focus?.phase === 'extract' ? focus.request : undefined"
         />
-        <p class="script-help tiny muted">
-          function extract(ctx) 返回本字段值，未命中返回 null。reSearch /
-          reFindAll / reSub 会自动记录过程，trace("说明", 数据) 补充依据。
-        </p>
-      </template>
+      </ScriptReference>
       <template v-else>
         <label for="rule-pattern">Go 正则表达式</label
         ><input
@@ -129,15 +137,18 @@ function kindChanged() {
           spellcheck="false"
         />
       </template>
-      <template v-if="draft.rule.source === 'cleanFilename'">
-        <label>来源清理脚本（匹配前执行）</label>
+      <ScriptReference v-if="draft.rule.source === 'cleanFilename'" class="source-reference" label="来源清理脚本（匹配前执行）" editor-id="source-code" :target="draft.rule.target" phase="source">
         <ScriptCode
+          id="source-code"
           v-model="draft.sourceCode"
           label="来源清理脚本"
+          :disabled="disabled"
+          :diagnostics="diagnostics?.filter(item => item.phase === 'source')"
+          :parameter-names="parameterNames"
           :active-line="focus?.phase === 'source' ? focus.line : undefined"
           :focus-key="focus?.phase === 'source' ? focus.request : undefined"
         />
-      </template>
+      </ScriptReference>
     </details>
     <details class="auxiliary">
       <summary>测试样例 <span class="muted">path / root / expected</span></summary>
@@ -149,7 +160,7 @@ function kindChanged() {
         spellcheck="false"
         placeholder='[{"path":"/Show.S02E03.mkv","expected":2}]'
       />
-      <p class="tiny muted">未命中用 null。顶部「运行样例」检查整条草稿链。</p>
+      <p class="tiny muted">未命中用 null。保存前自动验证整条草稿链，也可点击「验证全部样例」。</p>
     </details>
     <p v-if="error" class="editor-error" role="alert">
       配置未完成：{{ error }}。修改会保留，修正后可试跑或保存。
@@ -170,6 +181,15 @@ function kindChanged() {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
+.grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.grid :deep(.ui-select-anchor) {
+  margin-top: 0;
+}
 .editor-section > label {
   margin-top: 18px;
 }
@@ -181,10 +201,7 @@ textarea {
   font-size: 12px;
   line-height: 1.7;
 }
-.script-help {
-  line-height: 1.8;
-  margin: 12px 0;
-}
+.source-reference { margin-top:14px; }
 .auxiliary {
   border-top: 1px solid var(--line);
   padding: 13px 20px;

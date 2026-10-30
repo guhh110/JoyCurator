@@ -42,3 +42,5 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 前端继续使用 `pnpm -C frontend test`，Vitest 已配置为只从 `tests/frontend/` 发现测试。Python 测试可用 `python3 -m unittest discover -s tests/scripts -p '*_test.py'` 执行。
 
 新增测试放入相应子目录，沿用 `*_test.go`、`*.test.ts`、`*_test.py` 命名；不要在业务源码旁新增测试文件。
+
+默认识别规则的分类路径样本库位于 [backend/recognition/testdata/](backend/recognition/testdata/README.md)：目前 97 条通过样本、3 条明确记录的待修复样本。每条都包含路径、解析边界、完整元数据期望及预期错误；不会自动覆盖用户已保存的规则。执行 `python3 tests/run_backend.py test -run 'TestRecognition(PathCorpus|KnownGaps|CorpusFormat)' -v ./internal/recognition` 查看样本级结果。

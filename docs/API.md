@@ -26,7 +26,7 @@
 | `GET /extraction/rules` | 当前链、默认链、完整脚本模板目录、目标及来源枚举 |
 | `PUT /extraction/rules` | `{rules}`，全量验证并原子替换当前链 |
 | `POST /extraction/test` | `{path,root?,rules?}`，试跑保存链或提供的编辑链，返回 `{path,root,metadata,steps}` |
-| `POST /extraction/examples` | `{rules}`，返回各规则样例的 `{ruleId,path,expected,actual,passed}` 数组 |
+| `POST /extraction/examples` | `{rules}`，返回各规则样例的 `{ruleId,path,expected,actual,passed,error}` 数组；`error` 无错误时为空字符串，整条链任一规则执行报错均判为失败，即使 `actual` 与 `expected` 都为 `null` |
 | `GET /extraction/traces?page=&path=&workspaceId=` | 每页 20 条执行摘要，返回 `{items,total,page}`；路径为精确筛选 |
 | `GET /extraction/traces/{id}` | `{trace,metadata,steps}`，含执行时规则快照 |
 | `DELETE /extraction/traces/{id}` | 手动清理已结束轨迹及步骤，不修改工作区结果 |

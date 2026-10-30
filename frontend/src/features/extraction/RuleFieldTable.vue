@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from '@lucide/vue'
+import { DropdownMenuItem } from 'reka-ui'
+import ActionMenu from '../../components/ui/ActionMenu.vue'
 import type { Catalog, Target } from './model'
 import { fieldOrder, targets } from './model'
 import type { RuleDraft } from './useRuleDraft'
@@ -19,6 +21,7 @@ const emit = defineEmits<{
   move: [key: string, offset: -1 | 1]
   remove: [key: string]
 }>()
+const openMenu = defineModel<string>('openMenu', { default: '' })
 
 const groups = computed(() =>
   fieldOrder.map((target) => ({
@@ -27,9 +30,6 @@ const groups = computed(() =>
     templates: props.catalog.filter((item) => item.target === target),
   })),
 )
-function close(event: Event) {
-  ;(event.target as HTMLElement).closest('details')?.removeAttribute('open')
-}
 </script>
 <template>
   <section class="pane field-table" aria-label="按字段排列的识别规则">
@@ -43,39 +43,38 @@ function close(event: Event) {
         <span class="field-count muted tiny"
           >{{ group.rules.length }} 条规则</span
         >
-        <details class="add-menu">
-          <summary
+        <ActionMenu :open="openMenu === group.target" :disabled="disabled" align="end" @update:open="value => { if (value) openMenu = group.target; else if (openMenu === group.target) openMenu = '' }">
+          <template #trigger><button
             class="add-button"
+            type="button"
             :aria-label="`为${targets[group.target]}新增规则`"
           >
             <Plus :size="13" />新增
-          </summary>
-          <div class="add-popover" @click="close">
-            <button
-              type="button"
-              :disabled="disabled"
-              @click="emit('add', group.target, 'script')"
-            >
-              空白脚本
-            </button>
-            <button
-              type="button"
-              :disabled="disabled"
-              @click="emit('add', group.target, 'regex')"
-            >
-              正则
-            </button>
-            <button
-              v-for="item in group.templates"
-              :key="item.id"
-              type="button"
-              :disabled="disabled"
-              @click="emit('add', group.target, 'script', item.id)"
-            >
-              模板 · {{ item.name }}
-            </button>
-          </div>
-        </details>
+          </button></template>
+          <DropdownMenuItem
+            class="ui-action-menu-item"
+            :disabled="disabled"
+            @select="emit('add', group.target, 'script')"
+          >
+            空白脚本
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            class="ui-action-menu-item"
+            :disabled="disabled"
+            @select="emit('add', group.target, 'regex')"
+          >
+            正则
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            v-for="item in group.templates"
+            :key="item.id"
+            class="ui-action-menu-item"
+            :disabled="disabled"
+            @select="emit('add', group.target, 'script', item.id)"
+          >
+            模板 · {{ item.name }}
+          </DropdownMenuItem>
+        </ActionMenu>
       </header>
       <p v-if="!group.rules.length" class="no-rule muted tiny">
         这个字段没有规则，结果始终未知。
@@ -171,17 +170,10 @@ function close(event: Event) {
 .field-name {
   font-size: 13px;
 }
-.add-menu {
-  position: relative;
-  margin-left: auto;
-}
-.add-menu summary {
-  list-style: none;
-}
-.add-menu summary::-webkit-details-marker {
-  display: none;
-}
 .add-button {
+  margin-left: auto;
+  border:0;
+  background:transparent;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -191,33 +183,9 @@ function close(event: Event) {
   color: var(--purple);
   cursor: pointer;
 }
-.add-button:hover,
-.add-menu[open] .add-button {
+.add-button:hover:not(:disabled),
+.add-button[data-state='open'] {
   background: #f2effa;
-}
-.add-popover {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 20;
-  min-width: 200px;
-  padding: 6px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px #29204418;
-  display: grid;
-}
-.add-popover button {
-  text-align: left;
-  border: 0;
-  background: none;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-.add-popover button:hover:not(:disabled) {
-  background: #f6f4fc;
 }
 .no-rule {
   margin: 0;

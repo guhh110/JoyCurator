@@ -1,0 +1,78 @@
+[
+  {
+    "issue": "发布组后缀中的 _1 被尾部集号规则误识别，进而推断为 tv。",
+    "sample": {
+      "id": "release-case",
+      "category": "release-tags",
+      "path": "/source/Film.2024.1080p-Group_1.mkv",
+      "root": "/source",
+      "reason": "发布标签保留大小写与下划线。",
+      "expected": {
+        "tmdbId": null,
+        "title": "Film",
+        "mediaType": null,
+        "year": 2024,
+        "season": null,
+        "episodes": [],
+        "releaseTag": "Group_1"
+      },
+      "errors": {}
+    },
+    "differences": [
+      "episodes",
+      "mediaType"
+    ]
+  },
+  {
+    "issue": "SxxExx 合并区间校验出错后，尾部集号兜底重新命中终点，掩盖了错误。",
+    "sample": {
+      "id": "invalid-descending-range",
+      "category": "invalid",
+      "path": "/source/Show.S01E05-E03.mkv",
+      "root": "/source",
+      "reason": "倒序范围拒绝。",
+      "expected": {
+        "tmdbId": null,
+        "title": "Show",
+        "mediaType": "tv",
+        "year": null,
+        "season": 1,
+        "episodes": [],
+        "releaseTag": null
+      },
+      "errors": {
+        "episodes": "合并集范围无效"
+      }
+    },
+    "differences": [
+      "episodes",
+      "errors"
+    ]
+  },
+  {
+    "issue": "SxxExx 合并区间校验出错后，尾部集号兜底重新命中终点，掩盖了错误。",
+    "sample": {
+      "id": "invalid-too-many-episodes",
+      "category": "invalid",
+      "path": "/source/Show.S01E01-E1001.mkv",
+      "root": "/source",
+      "reason": "单文件不能扩展出超过 1000 集。",
+      "expected": {
+        "tmdbId": null,
+        "title": "Show",
+        "mediaType": "tv",
+        "year": null,
+        "season": 1,
+        "episodes": [],
+        "releaseTag": null
+      },
+      "errors": {
+        "episodes": "合并集范围无效"
+      }
+    },
+    "differences": [
+      "episodes",
+      "errors"
+    ]
+  }
+]

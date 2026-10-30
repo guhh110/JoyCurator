@@ -54,6 +54,11 @@ describe('recognition rule pages', () => {
     expect(html).toContain('保存')
     expect(html).not.toContain('完整文件路径')
     expect(html).not.toContain('JavaScript 脚本')
+    expect(html).not.toContain('<details')
+    expect(html).not.toContain('更多操作')
+    expect(html).toContain('恢复默认规则')
+    expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(8)
+    expect(html.match(/data-state="closed"/g)).toHaveLength(8)
   })
   it('shows every field even when the chain is empty', async () => {
     const html = await render([], RecognitionRules)

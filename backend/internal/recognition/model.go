@@ -44,6 +44,14 @@ type Example struct {
 	Root     string          `json:"root,omitempty"`
 	Expected json.RawMessage `json:"expected"`
 }
+type ExampleResult struct {
+	RuleID   string `json:"ruleId"`
+	Path     string `json:"path"`
+	Expected any    `json:"expected"`
+	Actual   any    `json:"actual"`
+	Passed   bool   `json:"passed"`
+	Error    string `json:"error"`
+}
 type Rule struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`

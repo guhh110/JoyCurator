@@ -31,12 +31,30 @@ describe('observable script editor and snapshots', () => {
       h(RuleEditor, { modelValue: createRuleDraft(rule) }),
     )
     expect(html).toContain('JavaScript 脚本')
-    expect(html).toContain('return ctx.text')
+    // CodeMirror creates its document on mount; SSR supplies its host and help.
+    expect(html).toContain('script-code-host')
+    expect(html).toContain('Ctrl + Space')
     expect(html).toContain('rule-params')
+    expect(html).toContain('脚本参考')
+    expect(html).not.toContain('5 个辅助函数')
+    expect(html).toContain('aria-expanded="false"')
     expect(html).not.toContain('内置处理器')
     expect(emptyScript).toContain('trace(')
     expect(emptyScript).toContain('function extract(ctx)')
     expect(emptyScript).toContain('return null')
+  })
+  it('offers independent references for extraction and source cleanup, including regex rules', async () => {
+    for (const kind of ['script', 'regex'] as const) {
+      const draft = createRuleDraft({ ...rule, kind, source: 'cleanFilename', config: kind === 'script' ? rule.config : { pattern: '.+', capture: 'value' } })
+      draft.sourceCode = 'function extract(ctx) { return ctx.text; }'
+      const html = await renderToString(h(RuleEditor, { modelValue: draft }))
+      expect(html).toContain('返回清理后的字符串')
+      expect(html).toContain('for="source-code"')
+      const ids = [...html.matchAll(/<section[^>]* id="([^"]+)"/g)].map(match => match[1])
+      expect(ids).toHaveLength(kind === 'script' ? 2 : 1)
+      expect(new Set(ids).size).toBe(ids.length)
+      for (const id of ids) expect(html).toContain(`aria-controls="${id}"`)
+    }
   })
   it('renders source line numbers and highlights the referenced line', async () => {
     const html = await renderToString(

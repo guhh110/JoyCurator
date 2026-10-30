@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
+import type { ScriptDiagnostic } from './scriptDiagnostics'
+const ScriptEditor = defineAsyncComponent(() => import('./ScriptEditor.vue'))
 const props = defineProps<{
   modelValue: string
   readonly?: boolean
@@ -7,36 +9,21 @@ const props = defineProps<{
   focusKey?: number
   label?: string
   id?: string
+  parameterNames?: string[]
+  diagnostics?: ScriptDiagnostic[]
+  disabled?: boolean
 }>()
 defineEmits<{ 'update:modelValue': [value: string] }>()
 const lines = computed(() => props.modelValue.split('\n'))
-const gutter = ref<HTMLElement>(),
-  source = ref<HTMLElement>(),
-  textarea = ref<HTMLTextAreaElement>()
-function scroll(event: Event) {
-  if (gutter.value)
-    gutter.value.scrollTop = (event.target as HTMLTextAreaElement).scrollTop
-}
+const source = ref<HTMLElement>()
 watch(
   () => [props.activeLine, props.focusKey],
   async () => {
     await nextTick()
-    if (!props.readonly && textarea.value && props.activeLine) {
-      const element = textarea.value
-      const start = lines.value
-        .slice(0, props.activeLine - 1)
-        .reduce((n, line) => n + line.length + 1, 0)
-      element.focus({ preventScroll: true })
-      element.setSelectionRange(
-        start,
-        start + (lines.value[props.activeLine - 1]?.length ?? 0),
-      )
-      element.scrollTop = Math.max(0, (props.activeLine - 4) * 20)
-      if (gutter.value) gutter.value.scrollTop = element.scrollTop
+    const active = source.value?.querySelector<HTMLElement>('[data-active="true"]')
+    if (source.value && active) {
+      source.value.scrollTo({ top: Math.max(0, active.offsetTop - source.value.clientHeight / 2), behavior: 'smooth' })
     }
-    source.value
-      ?.querySelector('[data-active="true"]')
-      ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   },
   { immediate: true },
 )
@@ -58,29 +45,9 @@ watch(
       ><code>{{ line || ' ' }}</code>
     </div>
   </div>
-  <div v-else class="script-edit">
-    <pre ref="gutter" class="line-numbers" aria-hidden="true">{{
-      lines.map((_, index) => index + 1).join('\n')
-    }}</pre>
-    <textarea
-      ref="textarea"
-      :id="id"
-      :value="modelValue"
-      :aria-label="label || 'JavaScript 脚本'"
-      spellcheck="false"
-      wrap="off"
-      rows="18"
-      autocapitalize="off"
-      autocomplete="off"
-      @input="
-        $emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)
-      "
-      @scroll="scroll"
-    />
-  </div>
+  <ScriptEditor v-else :id="id" :model-value="modelValue" :label="label" :active-line="activeLine" :focus-key="focusKey" :parameter-names="parameterNames" :diagnostics="diagnostics" :disabled="disabled" @update:model-value="$emit('update:modelValue', $event)" />
 </template>
 <style scoped>
-.script-edit,
 .script-read {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -91,38 +58,8 @@ watch(
   line-height: 20px;
   min-width: 0;
 }
-.script-edit {
-  display: flex;
-}
-.line-numbers {
-  margin: 0;
-  padding: 12px 10px;
-  min-width: 44px;
-  text-align: right;
-  overflow: hidden;
-  max-height: 384px;
-  background: #eeeff5;
-  color: var(--muted);
-  user-select: none;
-  font: inherit;
-  line-height: 20px;
-}
-.script-edit textarea {
-  border: 0;
-  border-radius: 0;
-  margin: 0;
-  min-width: 0;
-  flex: 1;
-  padding: 12px;
-  resize: vertical;
-  min-height: 160px;
-  max-height: 640px;
-  white-space: pre;
-  font: inherit;
-  line-height: 20px;
-  tab-size: 4;
-}
 .script-read {
+  position: relative;
   max-height: 420px;
   overflow: auto;
   padding: 10px 0;

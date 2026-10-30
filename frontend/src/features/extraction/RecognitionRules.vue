@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
-import { MoreHorizontal, Plus, Save } from '@lucide/vue'
+import { ChevronDown, Plus, Save } from '@lucide/vue'
+import { DropdownMenuItem } from 'reka-ui'
+import ActionMenu from '../../components/ui/ActionMenu.vue'
+import { confirmAction } from '../../app/confirm'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import QueryState from '../../components/ui/QueryState.vue'
 import { keys } from '../../app/query'
+import { useUnsavedChanges } from './useUnsavedChanges'
+import { useRuleExamples } from './useRuleExamples'
+import RuleExamples from './RuleExamples.vue'
+import { draftScriptDiagnostics } from './scriptDiagnostics'
 import { useRuleLibrary } from './queries'
 import { api } from '../../api'
 import type { Rule, Target } from './model'
@@ -22,6 +29,7 @@ const libraryQuery = useRuleLibrary(),
 const library = libraryQuery.data
 const { drafts, dirty, validation, load, move, remove, markSaved } =
   useRuleDraft()
+const unsaved = computed(() => !!library.value && dirty.value)
 const error = ref(''),
   notice = ref('')
 let initialized = false
@@ -39,41 +47,24 @@ watch(
 const validationErrors = computed(() =>
   validation.value.errors.map((item) => item.key),
 )
+const syntaxProblems = computed(() => drafts.value.flatMap(draft => draftScriptDiagnostics(draft)))
 const saveMutation = useMutation({
   mutationFn: (rules: Rule[]) => api('/extraction/rules', { rules }, 'PUT'),
 })
-const examplesMutation = useMutation({
-  mutationFn: (rules: Rule[]) =>
-    api<
-      {
-        ruleId: string
-        path: string
-        expected: unknown
-        actual: unknown
-        passed: boolean
-      }[]
-    >('/extraction/examples', { rules }, 'POST'),
-})
+const { results: exampleResults, checkedKey, busy: checking, error: exampleError, stale: examplesStale, run: checkExamples, reset: resetExamples } = useRuleExamples(() => validation.value.errors.length ? undefined : validation.value.rules)
 const saving = saveMutation.isPending
+const submitting = ref(false)
+const resetting = ref(false)
+const activeMenu = ref('')
+const busy = computed(() => submitting.value || checking.value || resetting.value)
 const canSubmit = computed(
-  () => !!library.value && !validation.value.errors.length && !saving.value,
+  () => !!library.value && !validation.value.errors.length && !syntaxProblems.value.length && !busy.value,
 )
-const exampleResults = ref<
-  NonNullable<typeof examplesMutation.data.value>
->([])
-const failedExamples = computed(() =>
-  exampleResults.value.filter((item) => !item.passed),
-)
-function ruleName(id: string) {
-  return drafts.value.find((item) => item.rule.id === id)?.rule.name ?? id
-}
+let disposed = false
+onBeforeUnmount(() => { disposed = true })
 
 // Leaving with unsaved list changes would drop them; ask first.
-onBeforeRouteLeave(
-  () =>
-    !dirty.value ||
-    window.confirm('规则列表有未保存的修改，离开后会丢失。继续吗？'),
-)
+useUnsavedChanges(unsaved, '规则列表')
 function open(key: string) {
   const draft = drafts.value.find((item) => item.key === key)
   if (!draft) return
@@ -83,24 +74,42 @@ function open(key: string) {
   })
 }
 function add(target: Target, kind: 'script' | 'regex', templateId?: string) {
+  if (!library.value || busy.value) return
   void router.push({
     name: 'recognition-rule-edit',
     params: { ruleId: 'new' },
     query: { target, kind, ...(templateId ? { template: templateId } : {}) },
   })
 }
-function reset() {
-  if (!library.value) return
-  load(library.value.defaults, library.value.sourceScripts, false)
-  exampleResults.value = []
-  notice.value = '默认规则已载入，保存后生效'
+async function reset() {
+  if (!library.value || busy.value) return
+  activeMenu.value = ''
+  resetting.value = true
+  try {
+    const confirmed = await confirmAction({
+      title: '恢复默认规则？',
+      description: '将用默认规则替换当前列表草稿，当前未保存的修改会丢失。不会立即修改已生效的规则，点击「保存」后才生效。',
+      confirmLabel: '替换当前草稿',
+      cancelLabel: '保留当前草稿',
+      destructive: true,
+    })
+    if (!confirmed || disposed || !library.value || submitting.value || checking.value) return
+    load(library.value.defaults, library.value.sourceScripts, false)
+    resetExamples()
+    error.value = ''
+    notice.value = '默认规则已载入，保存后生效'
+  } finally {
+    resetting.value = false
+  }
 }
 async function save() {
   if (!canSubmit.value) return
+  submitting.value = true
   error.value = ''
   notice.value = ''
   const rules = JSON.parse(JSON.stringify(validation.value.rules)) as Rule[]
   try {
+    if (!await checkExamples(rules)) return
     await saveMutation.mutateAsync(rules)
     markSaved()
     client.setQueryData(keys.ruleLibrary, { ...library.value!, rules })
@@ -108,21 +117,13 @@ async function save() {
     void client.invalidateQueries({ queryKey: keys.ruleLibrary })
   } catch (e) {
     error.value = (e as Error).message
+  } finally {
+    submitting.value = false
   }
 }
 async function examples() {
   if (!canSubmit.value) return
-  error.value = ''
-  try {
-    exampleResults.value = await examplesMutation.mutateAsync(
-      validation.value.rules,
-    )
-  } catch (e) {
-    error.value = (e as Error).message
-  }
-}
-function closeMenu(event: Event) {
-  ;(event.target as HTMLElement).closest('details')?.removeAttribute('open')
+  await checkExamples(validation.value.rules)
 }
 </script>
 <template>
@@ -143,43 +144,29 @@ function closeMenu(event: Event) {
       @retry="libraryQuery.refetch()"
     >
       <div class="toolbar">
-        <details class="menu-wrap">
-          <summary class="button">
-            <Plus :size="14" />新增规则
-          </summary>
-          <div class="menu" @click="closeMenu">
-            <span class="menu-title tiny muted">为哪个字段新增？</span>
-            <button
-              v-for="target in fieldOrder"
-              :key="target"
-              type="button"
-              :disabled="!library || saving"
-              @click="add(target, 'script')"
-            >
-              {{ targets[target] }}
-            </button>
-          </div>
-        </details>
+        <ActionMenu :open="activeMenu === 'new'" :disabled="!library || busy" label="为哪个字段新增？" @update:open="value => { if (value) activeMenu = 'new'; else if (activeMenu === 'new') activeMenu = '' }">
+          <template #trigger><button class="button" type="button"><Plus :size="14" />新增规则<ChevronDown :size="13" /></button></template>
+          <DropdownMenuItem
+            v-for="target in fieldOrder"
+            :key="target"
+            class="ui-action-menu-item"
+            :disabled="!library || busy"
+            @select="add(target, 'script')"
+          >
+            {{ targets[target] }}
+          </DropdownMenuItem>
+        </ActionMenu>
         <button
           class="button"
-          :disabled="!canSubmit || examplesMutation.isPending.value"
+          :disabled="!canSubmit"
           @click="examples"
         >
-          {{ examplesMutation.isPending.value ? '样例运行中…' : '运行全部样例' }}
+          {{ checking ? '样例运行中…' : '运行全部样例' }}
         </button>
-        <details class="menu-wrap">
-          <summary class="button" aria-label="更多操作">
-            <MoreHorizontal :size="15" />
-          </summary>
-          <div class="menu" @click="closeMenu">
-            <button type="button" :disabled="!library || saving" @click="reset">
-              恢复默认规则
-            </button>
-          </div>
-        </details>
+        <button class="restore-defaults" type="button" :disabled="!library || busy" @click="reset">恢复默认规则</button>
         <span class="save-status" :class="{ dirty }" role="status"
           ><i />{{
-            saving ? '正在保存…' : dirty ? '有未保存修改' : '与生效链一致'
+            checking ? '正在验证样例…' : saving ? '正在保存…' : dirty ? '有未保存修改' : '与生效链一致'
           }}</span
         >
         <button
@@ -205,30 +192,16 @@ function closeMenu(event: Event) {
           {{ item.name }}：{{ item.message }}
         </button>
       </div>
-      <div v-if="exampleResults.length" class="banner" role="status">
-        <strong :class="failedExamples.length ? 'red' : 'green'"
-          >样例 {{ exampleResults.length - failedExamples.length }}/{{
-            exampleResults.length
-          }}
-          通过</strong
-        ><button
-          v-for="item in failedExamples"
-          :key="item.ruleId + item.path"
-          class="text-button"
-          @click="router.push({ name: 'recognition-rule-edit', params: { ruleId: item.ruleId } })"
-        >
-          {{ ruleName(item.ruleId) }}：{{ item.path }} 期望
-          {{ JSON.stringify(item.expected) }}，实际
-          {{ JSON.stringify(item.actual) }}
-        </button>
-      </div>
+      <p v-if="syntaxProblems.length" class="notice error" role="alert">规则包含脚本错误，请进入编辑页修正后保存。</p>
+      <RuleExamples :results="exampleResults" :checked="!!checkedKey" :busy="checking" :stale="examplesStale" :error="exampleError" />
 
-      <fieldset class="list-area" :disabled="saving">
+      <fieldset class="list-area" :disabled="busy">
         <RuleFieldTable
+          v-model:open-menu="activeMenu"
           :drafts="drafts"
           :errors="validationErrors"
           :catalog="library?.catalog ?? []"
-          :disabled="saving"
+          :disabled="busy"
           @open="open"
           @add="add"
           @move="move"
@@ -257,42 +230,8 @@ function closeMenu(event: Event) {
 .toolbar .save-status {
   margin-left: auto;
 }
-.menu-wrap {
-  position: relative;
-}
-.menu-wrap summary {
-  list-style: none;
-}
-.menu-wrap summary::-webkit-details-marker {
-  display: none;
-}
-.menu {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 6px);
-  z-index: 20;
-  min-width: 160px;
-  padding: 4px;
-  display: grid;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px #2920441a;
-}
-.menu-title {
-  padding: 6px 10px 4px;
-}
-.menu button {
-  text-align: left;
-  border: 0;
-  background: none;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-}
-.menu button:hover:not(:disabled) {
-  background: #f4f2fb;
-}
+.restore-defaults { padding:8px; border:0; border-radius:6px; background:transparent; color:var(--muted); font-size:12px; }
+.restore-defaults:hover:not(:disabled) { background:#f4f2fb; color:var(--purple-dark); }
 .save-status {
   display: inline-flex;
   align-items: center;

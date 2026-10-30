@@ -270,7 +270,7 @@ func TestDefaultChainHasOneRulePerField(t *testing.T) {
 		t.Fatalf("only %d examples", len(results))
 	}
 	for _, result := range results {
-		if result["passed"] != true {
+		if !result.Passed {
 			t.Fatalf("example failed: %+v", result)
 		}
 	}

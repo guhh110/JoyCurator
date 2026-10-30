@@ -1,0 +1,1783 @@
+[
+  {
+    "id": "movie-chinese",
+    "category": "movies",
+    "path": "/source/流浪地球.2019.2160p.mkv",
+    "root": "/source",
+    "reason": "中文电影名保留，年份独立提取，不凭缺少季集信息推断电影。",
+    "expected": {
+      "tmdbId": null,
+      "title": "流浪地球",
+      "mediaType": null,
+      "year": 2019,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "sxe-range",
+    "category": "tv",
+    "path": "/source/[Group] Show.Name.S02E03-E05.1080p.mkv",
+    "root": "/source",
+    "reason": "连续合并集展开为完整列表。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show Name",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3,
+        4,
+        5
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "sxe-discrete",
+    "category": "tv",
+    "path": "/source/Show.S01E01E03.mkv",
+    "root": "/source",
+    "reason": "非连续合并集不能填充缺失集。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        1,
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "sxe-special",
+    "category": "tv",
+    "path": "/source/Show.S00E01.mkv",
+    "root": "/source",
+    "reason": "季号 0 是特别篇，不是未知。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 0,
+      "episodes": [
+        1
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "cross",
+    "category": "tv",
+    "path": "/source/Show.1x03.mkv",
+    "root": "/source",
+    "reason": "1x03 写法同时提供季号和集数。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "folder-chinese",
+    "category": "directories",
+    "path": "/source/某剧/第二季/07.mkv",
+    "root": "/source",
+    "reason": "纯集号从中文季目录与剧名目录补全。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        7
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "folder-id",
+    "category": "ids",
+    "path": "/source/Show [tmdb-2]/Season 2/03.mkv",
+    "root": "/source",
+    "reason": "剧目录 ID 不得混入季集号。",
+    "expected": {
+      "tmdbId": 2,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "folder-specials",
+    "category": "directories",
+    "path": "/source/Show/Specials/01.mkv",
+    "root": "/source",
+    "reason": "Specials 目录表示第 0 季。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 0,
+      "episodes": [
+        1
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-arabic",
+    "category": "chinese",
+    "path": "/source/某剧/第03集.mp4",
+    "root": "/source",
+    "reason": "第03集在父目录上下文中识别。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-one",
+    "category": "chinese",
+    "path": "/source/fan人修仙/第一季/第一集.mp4",
+    "root": "/source",
+    "reason": "中文第一集配合第一季目录。",
+    "expected": {
+      "tmdbId": null,
+      "title": "fan人修仙",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        1
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-ten",
+    "category": "chinese",
+    "path": "/source/某剧/第一季/第十集.mp4",
+    "root": "/source",
+    "reason": "中文十的隐含十位为 1。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        10
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-twelve",
+    "category": "chinese",
+    "path": "/source/某剧/第一季/第十二集.mp4",
+    "root": "/source",
+    "reason": "中文十位与个位组合。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        12
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-twenty-three",
+    "category": "chinese",
+    "path": "/source/某剧/第一季/第二十三集.mp4",
+    "root": "/source",
+    "reason": "中文二十三不能按字符拼接。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        23
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-two-hundred",
+    "category": "chinese",
+    "path": "/source/某剧/第一季/第两百零三集.mp4",
+    "root": "/source",
+    "reason": "两百零三处理百位与零占位。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        203
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-thousand",
+    "category": "chinese",
+    "path": "/source/某剧/第一季/第一千零一集.mp4",
+    "root": "/source",
+    "reason": "一千零一处理千位与零占位。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        1001
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-maximum",
+    "category": "chinese",
+    "path": "/source/某剧/第一季/第九千九百九十九集.mp4",
+    "root": "/source",
+    "reason": "9999 为集号上限。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        9999
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-spaces",
+    "category": "chinese",
+    "path": "/source/某剧/第一季/第 二十 话.mp4",
+    "root": "/source",
+    "reason": "中文集号允许外围空白及话后缀。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        20
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-digit-sequence",
+    "category": "chinese",
+    "path": "/source/某剧/第一季/第〇一話.mp4",
+    "root": "/source",
+    "reason": "〇一按数字串解释，支持繁体話。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        1
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "chinese-no-parent",
+    "category": "boundary",
+    "path": "/source/第一集.mp4",
+    "root": "/source",
+    "reason": "无边界内父目录，不把第一集猜成集号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "第一集",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "anime-brackets",
+    "category": "anime",
+    "path": "/source/[Group] Show - 01 [1080p][CHS].mkv",
+    "root": "/source",
+    "reason": "发布组及字幕画质标签不影响尾部集号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        1
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "numeric-title-year",
+    "category": "years",
+    "path": "/source/1917.2019.1080p.mkv",
+    "root": "/source",
+    "reason": "1917 是片名，2019 才是年份。",
+    "expected": {
+      "tmdbId": null,
+      "title": "1917",
+      "mediaType": null,
+      "year": 2019,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "numeric-title-group",
+    "category": "years",
+    "path": "/source/[Group] 1917.2019.1080p.mkv",
+    "root": "/source",
+    "reason": "前导发布组不改变数字片名与年份区分。",
+    "expected": {
+      "tmdbId": null,
+      "title": "1917",
+      "mediaType": null,
+      "year": 2019,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "numeric-title-odyssey",
+    "category": "years",
+    "path": "/source/2001.A.Space.Odyssey.1968.mkv",
+    "root": "/source",
+    "reason": "片名开头 2001 保留，取后面的 1968。",
+    "expected": {
+      "tmdbId": null,
+      "title": "2001 A Space Odyssey",
+      "mediaType": null,
+      "year": 1968,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "numeric-title-only",
+    "category": "years",
+    "path": "/source/1917.mkv",
+    "root": "/source",
+    "reason": "孤立 1917 不猜成年份或集号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "1917",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-nested",
+    "category": "ids",
+    "path": "/source/inbox/01-movies/The.Matrix.1999.tmdb-603.mkv",
+    "root": "/source",
+    "reason": "分类目录不影响文件名中的 TMDB ID。",
+    "expected": {
+      "tmdbId": 603,
+      "title": "The Matrix",
+      "mediaType": null,
+      "year": 1999,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-equals",
+    "category": "ids",
+    "path": "/source/The.Matrix.1999.tmdb=603.mkv",
+    "root": "/source",
+    "reason": "tmdb= 标记等价于显式 ID。",
+    "expected": {
+      "tmdbId": 603,
+      "title": "The Matrix",
+      "mediaType": null,
+      "year": 1999,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-trailing-episode",
+    "category": "ids",
+    "path": "/source/Show - 03.tmdb-603.mkv",
+    "root": "/source",
+    "reason": "移除 ID 后仍提取真正的尾部集号。",
+    "expected": {
+      "tmdbId": 603,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-sxe",
+    "category": "ids",
+    "path": "/source/Show.S01E02.tmdb-603.mkv",
+    "root": "/source",
+    "reason": "显式季集与 ID 各自提取。",
+    "expected": {
+      "tmdbId": 603,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        2
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "numeric-title-parent",
+    "category": "years",
+    "path": "/source/电影/1917.mkv",
+    "root": "/source",
+    "reason": "即使有父目录，1917 仍保留为数字片名。",
+    "expected": {
+      "tmdbId": null,
+      "title": "1917",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "quality-only-parent",
+    "category": "quality",
+    "path": "/source/4k/01.mkv",
+    "root": "/source",
+    "reason": "画质目录不能成为片名；纯集号仍可识别。",
+    "expected": {
+      "tmdbId": null,
+      "title": null,
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        1
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-no-parent",
+    "category": "boundary",
+    "path": "/source/01.mkv",
+    "root": "/source",
+    "reason": "解析边界本身不算父目录，01 保留为片名。",
+    "expected": {
+      "tmdbId": null,
+      "title": "01",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "movie-latin",
+    "category": "movies",
+    "path": "/source/The.Matrix.1999.1080p.mkv",
+    "root": "/source",
+    "reason": "拉丁片名中的点转空格，画质截断。",
+    "expected": {
+      "tmdbId": null,
+      "title": "The Matrix",
+      "mediaType": null,
+      "year": 1999,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "movie-parentheses",
+    "category": "movies",
+    "path": "/source/Film (2024).mkv",
+    "root": "/source",
+    "reason": "括号年份不残留在片名末尾。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "movie-unicode",
+    "category": "movies",
+    "path": "/source/𠮷祥.2024.mkv",
+    "root": "/source",
+    "reason": "辅助平面字符不能破坏 UTF-16 截取位置。",
+    "expected": {
+      "tmdbId": null,
+      "title": "𠮷祥",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "movie-hyphen-title",
+    "category": "movies",
+    "path": "/source/Spider-Man.2002.1080p.mkv",
+    "root": "/source",
+    "reason": "片名内部连字符保留，不把含点后缀当发布组。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Spider-Man",
+      "mediaType": null,
+      "year": 2002,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "movie-no-year",
+    "category": "movies",
+    "path": "/source/Film.mkv",
+    "root": "/source",
+    "reason": "无元数据标记时保留片名，其余未知。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "sxe-lowercase",
+    "category": "tv",
+    "path": "/source/Show.s02e03.mkv",
+    "root": "/source",
+    "reason": "季集标记不区分大小写。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "sxe-short",
+    "category": "tv",
+    "path": "/source/Show.S2E3.mkv",
+    "root": "/source",
+    "reason": "季集号不要求补零。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "sxe-range-no-e",
+    "category": "tv",
+    "path": "/source/Show.S02E03-05.mkv",
+    "root": "/source",
+    "reason": "范围终点允许省略 E。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3,
+        4,
+        5
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "sxe-mixed-list",
+    "category": "tv",
+    "path": "/source/Show.S01E01E03-E05.mkv",
+    "root": "/source",
+    "reason": "离散集与连续区间组合，保留缺口。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        1,
+        3,
+        4,
+        5
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "sxe-season-maximum",
+    "category": "tv",
+    "path": "/source/Show.S999E9999.mkv",
+    "root": "/source",
+    "reason": "季号与集号合法上限。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 999,
+      "episodes": [
+        9999
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "cross-uppercase",
+    "category": "tv",
+    "path": "/source/Show.02X004.mkv",
+    "root": "/source",
+    "reason": "交叉格式支持大写 X 及前导零。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        4
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "season-marker-only",
+    "category": "tv",
+    "path": "/source/Show.S02.mkv",
+    "root": "/source",
+    "reason": "只有季号也足以确定 tv，但不凭空补集号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "season-marker-special",
+    "category": "tv",
+    "path": "/source/Show.S00.mkv",
+    "root": "/source",
+    "reason": "只有特别篇季号仍能确定 tv。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 0,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-ep",
+    "category": "tv",
+    "path": "/source/Show/EP04.mkv",
+    "root": "/source",
+    "reason": "EP 纯集号使用父目录片名，不猜季号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        4
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-e-dot",
+    "category": "tv",
+    "path": "/source/Show/E. 04.mkv",
+    "root": "/source",
+    "reason": "E 点号及空格的纯集号格式。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        4
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-version",
+    "category": "anime",
+    "path": "/source/Show/07v2.mkv",
+    "root": "/source",
+    "reason": "v2 是修订号，不是第二集。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        7
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "anime-tail-ep",
+    "category": "anime",
+    "path": "/source/[Group] Show - EP03 [720p][CHT].mkv",
+    "root": "/source",
+    "reason": "尾部 EP 集号与字幕标签。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "anime-cjk-brackets",
+    "category": "anime",
+    "path": "/source/【字幕组】 某剧 - 03 【1080p】.mp4",
+    "root": "/source",
+    "reason": "中文方括号标签应清除。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-arabic-hua",
+    "category": "chinese",
+    "path": "/source/某剧/03话.mp4",
+    "root": "/source",
+    "reason": "阿拉伯数字加话后缀。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "bare-chinese-digit-multiple",
+    "category": "chinese",
+    "path": "/source/某剧/第一〇二集.mp4",
+    "root": "/source",
+    "reason": "无位值单位时按数字串解释。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": null,
+      "episodes": [
+        102
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-space",
+    "category": "ids",
+    "path": "/source/Film.2024 [tmdb 603].mkv",
+    "root": "/source",
+    "reason": "空格分隔显式 ID。",
+    "expected": {
+      "tmdbId": 603,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-case",
+    "category": "ids",
+    "path": "/source/Film.2024 [TMDB-603].mkv",
+    "root": "/source",
+    "reason": "ID 标记不区分大小写。",
+    "expected": {
+      "tmdbId": 603,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-no-separator",
+    "category": "ids",
+    "path": "/source/Film.2024.tmdb603.mkv",
+    "root": "/source",
+    "reason": "当前显式 tmdb 标记支持无分隔符。",
+    "expected": {
+      "tmdbId": 603,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-leading-zeroes",
+    "category": "ids",
+    "path": "/source/Film.2024.tmdb-000603.mkv",
+    "root": "/source",
+    "reason": "ID 前导零转换为整数。",
+    "expected": {
+      "tmdbId": 603,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-year-protection",
+    "category": "ids",
+    "path": "/source/Film.tmdb-2024.mkv",
+    "root": "/source",
+    "reason": "ID 恰好像年份时，也不能识别为年份或集号。",
+    "expected": {
+      "tmdbId": 2024,
+      "title": "Film",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-only",
+    "category": "ids",
+    "path": "/source/tmdb-603.mkv",
+    "root": "/source",
+    "reason": "仅有 ID 不能猜出片名或媒体类型。",
+    "expected": {
+      "tmdbId": 603,
+      "title": null,
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-filename-wins",
+    "category": "conflicts",
+    "path": "/source/Show [tmdb-7]/Season 2/Show.S02E03.tmdb-9.mkv",
+    "root": "/source",
+    "reason": "文件名显式 ID 优先于目录 ID。",
+    "expected": {
+      "tmdbId": 9,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "id-nearest-directory",
+    "category": "conflicts",
+    "path": "/source/Outer [tmdb-7]/Inner [tmdb-8]/Season 2/03.mkv",
+    "root": "/source",
+    "reason": "多个目录 ID 选择最近的；纯集号片名也取最近作品目录。",
+    "expected": {
+      "tmdbId": 8,
+      "title": "Inner",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "quality-not-episode",
+    "category": "quality",
+    "path": "/source/Film.1080p.mkv",
+    "root": "/source",
+    "reason": "分辨率不是尾部集号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "quality-codec",
+    "category": "quality",
+    "path": "/source/Film.2024.2160p.x265.10bit.mkv",
+    "root": "/source",
+    "reason": "画质、编码和位深不能产生季集号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "quality-after-episode",
+    "category": "quality",
+    "path": "/source/Show.S01E03 1080p.mkv",
+    "root": "/source",
+    "reason": "季集标记后的画质数字不能被吞入集号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "year-after-episode",
+    "category": "years",
+    "path": "/source/Show.S01E03 2024.mkv",
+    "root": "/source",
+    "reason": "集号后年份是独立字段，不得扩展合并集。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": 2024,
+      "season": 1,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "year-minimum",
+    "category": "years",
+    "path": "/source/Film.1900.mkv",
+    "root": "/source",
+    "reason": "默认年份下界包含 1900。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 1900,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "year-maximum",
+    "category": "years",
+    "path": "/source/Film.2099.mkv",
+    "root": "/source",
+    "reason": "默认年份上界包含 2099。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2099,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "year-first-candidate",
+    "category": "conflicts",
+    "path": "/source/Film.1999.2024.mkv",
+    "root": "/source",
+    "reason": "同一文件名中多个合法年份选首个，而不是最后一个。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 1999,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "year-filename-wins",
+    "category": "conflicts",
+    "path": "/source/Film.1999/Film.2024.mkv",
+    "root": "/source",
+    "reason": "文件名年份优先于目录年份。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "year-directory-fallback",
+    "category": "directories",
+    "path": "/source/Film.1999/Film.mkv",
+    "root": "/source",
+    "reason": "文件名缺年份时可从作品目录补全。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 1999,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "year-bracket-prefix",
+    "category": "years",
+    "path": "/source/[2024] Film.mkv",
+    "root": "/source",
+    "reason": "只有前导标签中的年份不算片名后的年份。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "year-numeric-title-no-date",
+    "category": "years",
+    "path": "/source/2001.A.Space.Odyssey.mkv",
+    "root": "/source",
+    "reason": "片名开头数字不是发行年份。",
+    "expected": {
+      "tmdbId": null,
+      "title": "2001 A Space Odyssey",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "folder-season-short",
+    "category": "directories",
+    "path": "/source/Show/S02/03.mkv",
+    "root": "/source",
+    "reason": "短季目录 S02。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "folder-season-space",
+    "category": "directories",
+    "path": "/source/Show/Season2/03.mkv",
+    "root": "/source",
+    "reason": "Season 与季号之间空格可省略。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "folder-special-chinese",
+    "category": "directories",
+    "path": "/source/某剧/特别篇/01.mkv",
+    "root": "/source",
+    "reason": "简体特别篇目录。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 0,
+      "episodes": [
+        1
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "folder-special-traditional",
+    "category": "directories",
+    "path": "/source/某剧/特別篇/01.mkv",
+    "root": "/source",
+    "reason": "繁体特别篇目录。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 0,
+      "episodes": [
+        1
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "folder-chinese-twenty-three",
+    "category": "directories",
+    "path": "/source/某剧/第二十三季/07.mkv",
+    "root": "/source",
+    "reason": "中文两位季号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": "tv",
+      "year": null,
+      "season": 23,
+      "episodes": [
+        7
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "filename-season-wins",
+    "category": "conflicts",
+    "path": "/source/Show/Season 2/Show.S03E04.mkv",
+    "root": "/source",
+    "reason": "文件名明确季号优先于季目录。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 3,
+      "episodes": [
+        4
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "nearest-season-wins",
+    "category": "conflicts",
+    "path": "/source/Show/Season 2/Season 3/04.mkv",
+    "root": "/source",
+    "reason": "最近季目录优先，片名跳过所有季目录。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 3,
+      "episodes": [
+        4
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "filename-title-wins",
+    "category": "conflicts",
+    "path": "/source/Other/Season 2/Show.S02E03.mkv",
+    "root": "/source",
+    "reason": "可用文件名片名优先于作品目录。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "boundary-excludes-root",
+    "category": "boundary",
+    "path": "/library/Show [tmdb-999]/source/Season 2/01.mkv",
+    "root": "/library/Show [tmdb-999]/source",
+    "reason": "边界外片名与 ID 不可泄漏进结果。",
+    "expected": {
+      "tmdbId": null,
+      "title": null,
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        1
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "boundary-season-is-root",
+    "category": "boundary",
+    "path": "/source/Show/Season 2/03.mkv",
+    "root": "/source/Show/Season 2",
+    "reason": "边界目录本身不提供季号，边界内无父目录，不识别纯集号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "03",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "boundary-show-is-root",
+    "category": "boundary",
+    "path": "/source/Show/Season 2/03.mkv",
+    "root": "/source/Show",
+    "reason": "季目录可见但作品目录是边界，片名保持未知。",
+    "expected": {
+      "tmdbId": null,
+      "title": null,
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "path-normalization",
+    "category": "boundary",
+    "path": "/source/Show/Season 2/../Season 3/04.mkv",
+    "root": "/source",
+    "reason": "先规范化路径，不能把已被 .. 消去的季目录当来源。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 3,
+      "episodes": [
+        4
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "release-group",
+    "category": "release-tags",
+    "path": "/source/Film.2020.1080p-GROUP.mkv",
+    "root": "/source",
+    "reason": "末尾发布组正常识别。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2020,
+      "season": null,
+      "episodes": [],
+      "releaseTag": "GROUP"
+    },
+    "errors": {}
+  },
+  {
+    "id": "release-tv",
+    "category": "release-tags",
+    "path": "/source/Show.S02E03.1080p-GROUP.mkv",
+    "root": "/source",
+    "reason": "剧集季集与发布组独立提取。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 2,
+      "episodes": [
+        3
+      ],
+      "releaseTag": "GROUP"
+    },
+    "errors": {}
+  },
+  {
+    "id": "release-numeric",
+    "category": "release-tags",
+    "path": "/source/Film.2024.1080p-123.mkv",
+    "root": "/source",
+    "reason": "当前尾部数字策略将 -123 视为集号，但纯数字仍不能作为发布组；画质前的年份不改变该优先级。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": "tv",
+      "year": 2024,
+      "season": null,
+      "episodes": [
+        123
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "release-episode",
+    "category": "release-tags",
+    "path": "/source/Show.S01E01-E03.mkv",
+    "root": "/source",
+    "reason": "合并集终点 E03 不是发布组。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [
+        1,
+        2,
+        3
+      ],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "release-quality",
+    "category": "release-tags",
+    "path": "/source/Film.2024-1080p.mkv",
+    "root": "/source",
+    "reason": "画质后缀不是发布组。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "release-space",
+    "category": "release-tags",
+    "path": "/source/Film.2024.1080p-GROUP TEAM.mkv",
+    "root": "/source",
+    "reason": "含空格的末尾文本不作为发布标签。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "release-dot",
+    "category": "release-tags",
+    "path": "/source/Film.2024.1080p-GROUP.COM.mkv",
+    "root": "/source",
+    "reason": "含点的后缀不是发布组。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {}
+  },
+  {
+    "id": "invalid-zero-episode",
+    "category": "invalid",
+    "path": "/source/Show.S01E00.mkv",
+    "root": "/source",
+    "reason": "第 0 集必须拒绝，但有效季号仍保留。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "episodes": "集数超出范围或重复"
+    }
+  },
+  {
+    "id": "invalid-duplicate-episodes",
+    "category": "invalid",
+    "path": "/source/Show.S01E01E01.mkv",
+    "root": "/source",
+    "reason": "重复集数拒绝，而不是悄悄去重。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "episodes": "集数超出范围或重复"
+    }
+  },
+  {
+    "id": "invalid-long-sxe",
+    "category": "invalid",
+    "path": "/source/Show.S01E10001.mkv",
+    "root": "/source",
+    "reason": "五位集号不能截断成合法四位；季集规则都报告格式错误。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "season": "季集标记中的数字超出范围",
+      "episodes": "季集标记中的数字超出范围"
+    }
+  },
+  {
+    "id": "invalid-long-cross",
+    "category": "invalid",
+    "path": "/source/Show.1x10001.mkv",
+    "root": "/source",
+    "reason": "交叉格式五位集号也不能被截断。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "season": "季集标记中的数字超出范围",
+      "episodes": "季集标记中的数字超出范围"
+    }
+  },
+  {
+    "id": "invalid-chinese-zero",
+    "category": "invalid",
+    "path": "/source/某剧/第零集.mp4",
+    "root": "/source",
+    "reason": "中文零不是有效集号。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "episodes": "集数超出范围或重复"
+    }
+  },
+  {
+    "id": "invalid-chinese-units",
+    "category": "invalid",
+    "path": "/source/某剧/第十百集.mp4",
+    "root": "/source",
+    "reason": "中文单位顺序非法，不能猜测数值。",
+    "expected": {
+      "tmdbId": null,
+      "title": "某剧",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "episodes": "中文集号无效"
+    }
+  },
+  {
+    "id": "invalid-id-zero",
+    "category": "invalid",
+    "path": "/source/Film.tmdb-0.mkv",
+    "root": "/source",
+    "reason": "ID 必须为正整数，不能默认变成未知且静默通过。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "tmdb-id": "tmdbId 提取值类型或范围无效"
+    }
+  },
+  {
+    "id": "invalid-id-large",
+    "category": "invalid",
+    "path": "/source/Film.tmdb-1000000000.mkv",
+    "root": "/source",
+    "reason": "超范围 ID 报错，其数字不得污染其他字段。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": null,
+      "season": null,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "tmdb-id": "tmdbId 提取值类型或范围无效"
+    }
+  }
+]
