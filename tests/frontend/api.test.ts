@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bytes, episodeCode, parseEpisodes } from '../../frontend/src/api'
+import { bytes, episodeCode, name, parseEpisodes } from '../../frontend/src/api'
 describe('manual episode mapping', () => {
   it('accepts merged episodes and Chinese separators', () =>
     expect(parseEpisodes('1，3-5')).toEqual([1, 3, 4, 5]))
@@ -15,4 +15,8 @@ describe('manual episode mapping', () => {
   it('preserves specials', () =>
     expect(episodeCode(0, [2, 3])).toBe('S00E02 · E03'))
   it('formats file sizes', () => expect(bytes(1024 ** 3)).toBe('1.0 GB'))
+  it('shows only the filename for Windows and Unix paths', () => {
+    expect(name('E:\\Media\\Show\\episode.mkv')).toBe('episode.mkv')
+    expect(name('/media/Show/episode.mkv')).toBe('episode.mkv')
+  })
 })

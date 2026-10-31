@@ -200,7 +200,7 @@ export async function api<T>(
   return value
 }
 export function name(path: string) {
-  return path.split('/').pop() || path
+  return path.split(/[\\/]/).pop() || path
 }
 export function bytes(n: number) {
   return n < 1024

@@ -27,6 +27,7 @@ onUnmounted(() => previous?.focus())
       <div>
         <span class="eyebrow">JOY / CURATOR</span>
         <h2>{{ title }}</h2>
+        <slot name="subtitle" />
       </div>
       <button
         class="icon-button"

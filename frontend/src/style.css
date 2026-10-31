@@ -2835,13 +2835,18 @@ small {
 .auto-batch-run strong { flex:1; overflow-wrap:anywhere; }
 .auto-batch .pane-head { height:auto; padding:12px 18px; }
 .auto-batch .pane-head p { margin:2px 0 0; }
-.auto-preview-summary { display:flex; gap:16px; justify-content:space-between; flex-wrap:wrap; }
+.auto-preview-summary { margin-top:7px; color:var(--muted); font-size:11px; line-height:1.5; }
 .auto-issue-count { font-weight:600; }
 .auto-row-issue { color:var(--red); }
 .auto-preview-target { display:flex; align-items:center; gap:10px; }
-.auto-duplicate-policy { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:8px; background:#f8f7fb; }
-.auto-duplicate-policy label { font-size:12px; font-weight:600; }
-.auto-duplicate-policy p { margin-top:4px; }
+.modal-foot:has(.auto-duplicate-policy) { justify-content:space-between; flex-wrap:wrap; }
+.auto-duplicate-policy { display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; }
+.auto-duplicate-policy label { font-size:12px; font-weight:600; white-space:nowrap; }
+.auto-duplicate-policy > .ui-select-anchor { min-width:120px; }
+.auto-duplicate-count { white-space:nowrap; }
+.auto-preview-confirm { display:flex; align-items:center; justify-content:flex-end; gap:12px; min-width:0; margin-left:auto; }
+.auto-overwrite-warning { color:var(--red); font-size:11px; line-height:1.45; }
+.auto-preview-confirm .button { flex-shrink:0; }
 .auto-preview-action { display:inline-block; margin-left:10px; padding:2px 6px; border-radius:4px; font-size:11px; color:var(--muted); background:#f1f0f5; }
 .auto-preview-action.overwrite { color:#956117; background:#fff2dc; }
 .auto-preview-target > .eli-text { flex:1; min-width:0; }
@@ -2849,6 +2854,10 @@ small {
 .auto-preview-target > svg { flex-shrink:0; cursor:help; }
 .auto-preview-rows article { padding:14px 0; border-bottom:1px solid var(--line); }
 .auto-preview-rows p { margin:6px 0 0; }
+@media (max-width:600px) {
+  .auto-preview-confirm { width:100%; }
+  .auto-overwrite-warning { flex:1; }
+}
 .state-pill.ready { background:#e8f4ed; color:var(--green); }
 .state-pill.review, .state-pill.queued, .state-pill.pending { background:#fff2d9; color:#9a722b; }
 .state-pill.unmatched { background:#efedf4; color:var(--muted); }
