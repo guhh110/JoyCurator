@@ -17,21 +17,23 @@ type Row struct {
 }
 
 type Plan struct {
-	ID              string       `json:"id"`
-	Title           string       `json:"title"`
-	Mode            string       `json:"mode"`
-	DuplicatePolicy string       `json:"duplicatePolicy"`
-	Rows            []Row        `json:"rows"`
-	Required        int64        `json:"required"`
-	Issues          []string     `json:"issues"`
-	Version         int          `json:"-"`
-	Expires         time.Time    `json:"-"`
-	Ops             []model.Work `json:"-"`
-	Groups          []*Plan      `json:"groups,omitempty"`
-	Type            string       `json:"type,omitempty"`
-	TMDBID          int          `json:"tmdbId,omitempty"`
-	RecognitionID   string       `json:"-"`
-	Revision        int          `json:"-"`
+	ID              string               `json:"id"`
+	Title           string               `json:"title"`
+	Mode            string               `json:"mode"`
+	DuplicatePolicy string               `json:"duplicatePolicy"`
+	Rows            []Row                `json:"rows"`
+	Required        int64                `json:"required"`
+	Issues          []string             `json:"issues"`
+	Version         int                  `json:"-"`
+	Expires         time.Time            `json:"-"`
+	Ops             []model.Work         `json:"-"`
+	Mappings        []model.MediaMapping `json:"-"`
+	Purpose         string               `json:"-"`
+	Groups          []*Plan              `json:"groups,omitempty"`
+	Type            string               `json:"type,omitempty"`
+	TMDBID          int                  `json:"tmdbId,omitempty"`
+	RecognitionID   string               `json:"-"`
+	Revision        int                  `json:"-"`
 }
 
 type PreviewRequest struct {

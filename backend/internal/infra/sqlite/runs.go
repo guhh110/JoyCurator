@@ -37,11 +37,15 @@ func (a *Store) Run(id string) (organizer.Run, error) {
 	return r, err
 }
 func (a *Store) Runs(page int) (map[string]any, error) {
+	return a.RunsByPurpose(page, "organize")
+}
+
+func (a *Store) RunsByPurpose(page int, purpose string) (map[string]any, error) {
 	var total int
-	if err := a.db.QueryRow("SELECT COUNT(*) FROM runs").Scan(&total); err != nil {
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM runs WHERE json_extract(value,'$.purpose')=?", purpose).Scan(&total); err != nil {
 		return nil, err
 	}
-	rows, err := a.db.Query("SELECT value FROM runs ORDER BY rowid DESC LIMIT 20 OFFSET ?", (page-1)*20)
+	rows, err := a.db.Query("SELECT value FROM runs WHERE json_extract(value,'$.purpose')=? ORDER BY rowid DESC LIMIT 20 OFFSET ?", purpose, (page-1)*20)
 	if err != nil {
 		return nil, err
 	}
@@ -109,10 +113,15 @@ func (a *Store) Owned(target string) (*model.Work, error) {
 	err = decode(raw, &work)
 	return &work, err
 }
-func (a *Store) Shared(id, target string) (bool, error) {
+func (a *Store) Shared(id, target, identity string) (bool, error) {
 	var n int
 	err := a.db.QueryRow(`SELECT COUNT(*) FROM runs, json_each(runs.value,'$.ops') op
- WHERE runs.id<>? AND json_extract(runs.value,'$.state')<>'undone' AND json_extract(op.value,'$.target')=?
- AND json_extract(op.value,'$.status') IN ('completed','published')`, id, target).Scan(&n)
+	 WHERE runs.id<>? AND json_extract(runs.value,'$.purpose')='scrape'
+	 AND json_extract(op.value,'$.target')=?
+	 AND ((json_extract(runs.value,'$.state')<>'undone'
+	   AND json_extract(op.value,'$.status') IN ('completed','published')
+	   AND json_extract(op.value,'$.identity')=?)
+	 OR (json_extract(op.value,'$.replaceIdentity')=?
+	   AND json_extract(op.value,'$.status') IN ('completed','published','undone')))`, id, target, identity, identity).Scan(&n)
 	return n > 0, err
 }

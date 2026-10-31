@@ -42,6 +42,19 @@ func (r *Resolved) CheckEpisodes(ctx context.Context, season int, numbers []int)
 	return r.seasons[season], CheckEpisodes(numbers, episodes), nil
 }
 
+func (r *Resolved) SeasonEpisodes(ctx context.Context, season int) (model.Season, []model.Episode, error) {
+	if _, ok := r.episodes[season]; !ok {
+		if _, _, err := r.CheckEpisodes(ctx, season, nil); err != nil {
+			return model.Season{}, nil, err
+		}
+	}
+	return r.seasons[season], r.episodes[season], nil
+}
+
+func (r *Resolved) Artwork(ctx context.Context, language string) ([]model.Artwork, error) {
+	return r.provider.Artwork(ctx, r.Entry.Type, r.Entry.TMDBID, language)
+}
+
 func EpisodeInputValid(season int, numbers []int) bool {
 	return season >= 0 && season <= 999 && len(numbers) > 0 && len(numbers) <= 1000
 }

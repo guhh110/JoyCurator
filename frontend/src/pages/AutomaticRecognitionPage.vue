@@ -752,13 +752,13 @@ function conflictTargets(issues: string[]) {
       >
     </div>
     <div class="auto-duplicate-policy">
-      <div><label for="duplicate-policy">重复文件处理</label><p class="muted tiny">按目标路径判断；已有 NFO 和海报保留。</p></div>
+      <div><label for="duplicate-policy">重复文件处理</label><p class="muted tiny">此处只整理视频与字幕；NFO 和图片在刮削工作区处理。</p></div>
       <Select id="duplicate-policy" :model-value="duplicatePolicy" label="重复文件处理" :disabled="busy"
         :options="[{ value: 'skip', label: '跳过重复' }, { value: 'overwrite', label: '覆盖重复' }]" @update:model-value="changeDuplicatePolicy" />
       <span class="muted tiny" role="status">{{ busy ? '正在更新预览…' : preview.duplicatePolicy !== duplicatePolicy ? '预览未更新，请重试' : `跳过 ${preview.rows.filter(row => row.action === 'skip').length} · 覆盖 ${preview.rows.filter(row => row.action === 'overwrite').length}` }}</span>
       <button v-if="preview.duplicatePolicy !== duplicatePolicy && !busy" class="text-button" @click="prepare">重新预览</button>
     </div>
-    <p v-if="duplicatePolicy === 'overwrite'" class="tiny muted">覆盖前备份已有视频和同名字幕，撤销时恢复；备份保留在目标目录中。</p>
+    <p v-if="duplicatePolicy === 'overwrite'" class="tiny muted">直接覆盖已有文件，不保留备份；撤销无法恢复旧内容。</p>
     <p class="muted">每部作品单独记录并依次执行，可独立重试或撤销。</p>
     <div v-if="previewIssues.length" class="notice error">
       <p v-for="[issue, count] in previewIssues" :key="issue">
@@ -768,7 +768,7 @@ function conflictTargets(issues: string[]) {
     </div>
     <div class="auto-preview-rows">
       <article v-for="row in previewRows" :key="row.source">
-        <strong>{{ name(row.source) }}</strong><span class="auto-preview-action" :class="row.action">{{ row.action === 'skip' ? '跳过重复' : row.action === 'overwrite' ? '备份后覆盖' : '新增' }}</span>
+        <strong>{{ name(row.source) }}</strong><span class="auto-preview-action" :class="row.action">{{ row.action === 'skip' ? '跳过重复' : row.action === 'overwrite' ? '直接覆盖' : '新增' }}</span>
         <p class="muted tiny auto-path"><EliText :text="row.source" ellipsis="start" /></p>
         <p class="auto-path auto-preview-target" :class="{ 'auto-row-issue': conflictTargets([...row.issues, ...preview.issues]).includes(row.target) }">
           <span aria-hidden="true">→</span><EliText :text="row.target" ellipsis="start" />
@@ -812,13 +812,13 @@ function conflictTargets(issues: string[]) {
     </div>
     <template #footer
       ><span class="muted"
-        >确认后依次执行 {{ preview.groups.filter(group => group.rows.some(row => row.action !== 'skip')).length }} 部作品</span
+        >确认后登记 {{ preview.groups.length }} 部作品；跳过的视频也会进入刮削待办</span
       ><button
         class="button primary"
         :disabled="!previewReady"
         @click="execute"
       >
-        {{ preview.rows.every(row => row.action === 'skip') ? '全部重复，无需整理' : '确认整理' }}
+        {{ preview.rows.every(row => row.action === 'skip') ? '登记刮削待办' : '确认整理' }}
       </button></template
     ></Modal
   >

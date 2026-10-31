@@ -17,6 +17,8 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('../pages/RecordsPage.vue'),
         meta: { title: '整理记录', group: 'records' },
       },
+      { path: 'scrape', name: 'scrape', component: () => import('../pages/ScrapePage.vue'), meta: { title: '媒体刮削', group: 'workspace' } },
+      { path: 'scrape/records', name: 'scrape-records', component: () => import('../pages/ScrapeRecordsPage.vue'), meta: { title: '刮削记录', group: 'records' } },
       {
         path: 'recognition',
         name: 'automatic-recognition',

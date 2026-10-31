@@ -203,7 +203,7 @@ export function useAutomaticRecognition() {
   }
   const previewPage = ref(1)
   const duplicatePolicy = ref<DuplicatePolicy>('skip')
-  const previewReady = computed(() => !!preview.value && preview.value.duplicatePolicy === duplicatePolicy.value && !busy.value && !preview.value.issues.length && preview.value.rows.some(row => row.action !== 'skip'))
+  const previewReady = computed(() => !!preview.value && preview.value.duplicatePolicy === duplicatePolicy.value && !busy.value && !preview.value.issues.length && preview.value.rows.length > 0)
   const previewRows = computed(() => {
     if (!preview.value) return []
     const groupOrder = new Map(preview.value.groups.flatMap((group, index) => group.rows.map(row => [row.source, index] as const)))

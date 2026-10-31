@@ -14,6 +14,7 @@ type Provider interface {
 	SeasonDetail(context.Context, int, int) (model.Season, []model.Episode, error)
 	SeasonEpisodes(context.Context, int, int) ([]model.Episode, error)
 	Image(context.Context, string) ([]byte, error)
+	Artwork(context.Context, string, int, string) ([]model.Artwork, error)
 }
 
 // Factory returns a provider configured for this settings snapshot and trace recorder.

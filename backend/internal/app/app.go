@@ -71,6 +71,8 @@ func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
 		return &organizer.Engine{FS: access, Image: image}
 	})
 	organize = organizer.New(coordinator, store, config, planner, files, factory, runner, workspace.Revision, workspace.FinishRun)
+	organize.SetMappings(store)
+	organize.SetTargetAccess(access)
 	deps := Dependencies{Auth: auth.New(store), Secure: secure, Health: store.Ping, Config: config, Matching: match, Recognition: recognize, Workspace: workspace, Files: files, Planning: planner, Organizer: organize}
 	return &App{store: store, coordinator: coordinator, dependencies: deps}, nil
 }

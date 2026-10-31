@@ -3,12 +3,16 @@ package organizer
 import (
 	"context"
 	"errors"
+	"runtime"
 	"time"
 
 	"joycurator/internal/model"
 )
 
 func (a *Service) ExecuteBatch(id string) (Batch, error) {
+	if runtime.GOOS == "windows" {
+		return Batch{}, errors.New("Windows 暂不支持执行文件整理")
+	}
 	a.coordinator.mu.Lock()
 	defer a.coordinator.mu.Unlock()
 	if a.coordinator.closed {
@@ -21,7 +25,7 @@ func (a *Service) ExecuteBatch(id string) (Batch, error) {
 	if p == nil || time.Now().After(p.Expires) {
 		return Batch{}, errors.New("预览已过期，请重新预览")
 	}
-	if len(p.Groups) == 0 || len(p.Ops) == 0 || len(p.Issues) > 0 {
+	if len(p.Groups) == 0 || len(p.Mappings) == 0 || len(p.Issues) > 0 {
 		return Batch{}, errors.New("请先处理预览中的冲突")
 	}
 	revision, err := a.revision(p.RecognitionID)
@@ -41,12 +45,15 @@ func (a *Service) ExecuteBatch(id string) (Batch, error) {
 	if err = a.plans.ValidateOps(p.Ops); err != nil {
 		return Batch{}, err
 	}
+	if err = a.validateSkipped(p.Mappings, p.Ops); err != nil {
+		return Batch{}, err
+	}
 	batch := Batch{ID: model.Key(), Runs: []Run{}, Active: true}
 	for _, group := range p.Groups {
-		if len(group.Ops) == 0 {
+		if len(group.Mappings) == 0 {
 			continue
 		}
-		run := Run{ID: model.Key(), Title: group.Title, Mode: p.Mode, State: "queued", Created: time.Now().Format(time.RFC3339), Ops: append([]model.Work(nil), group.Ops...), Total: len(group.Ops), BatchID: batch.ID, Version: p.Version, RecognitionID: p.RecognitionID}
+		run := Run{ID: model.Key(), Title: group.Title, Mode: p.Mode, State: "queued", Created: time.Now().Format(time.RFC3339), Ops: append([]model.Work(nil), group.Ops...), Total: len(group.Ops), BatchID: batch.ID, Version: p.Version, RecognitionID: p.RecognitionID, Purpose: "organize", Mappings: group.Mappings}
 
 		batch.Runs = append(batch.Runs, run)
 	}
@@ -96,6 +103,9 @@ func (a *Service) runBatch(ctx context.Context, cancel context.CancelFunc, batch
 		}
 		if err == nil {
 			err = a.plans.ValidateOps(run.Ops)
+		}
+		if err == nil {
+			err = a.validateSkipped(run.Mappings, run.Ops)
 		}
 		if err != nil {
 			run.State, run.Error = "failed", err.Error()

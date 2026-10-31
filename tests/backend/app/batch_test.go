@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,7 @@ func waitBatch(t *testing.T, a *App, id string) organizer.Batch {
 	return organizer.Batch{}
 }
 func TestBatchExecuteSeparateRecordsAndUndo(t *testing.T) {
+	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
 	a, _, task, plan := batchFixture(t)
 	if len(plan.Groups) != 2 || len(plan.Rows) != 2 {
 		t.Fatal(plan)
@@ -114,7 +116,6 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 	t.Run("global collision", func(t *testing.T) {
 		a, _, task, _ := batchFixture(t)
 		s, _ := a.dependencies.Config.Load()
-		s.NFO = false
 		s.Rules.MovieFolder = "collision"
 		s.Rules.MovieFile = "video.{ext}"
 		s.Rules.TVFolder = "collision"
@@ -133,6 +134,7 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 		}
 	})
 	t.Run("aggregate disk space", func(t *testing.T) {
+		if runtime.GOOS == "windows" { t.Skip("Windows sparse-file truncation unavailable") }
 		a, _, task, _ := batchFixture(t)
 		available, _, err := testAccess(t, a).CheckTarget(filepath.Join(testAccess(t, a).Roots[1], "space.mkv"))
 		if err != nil {

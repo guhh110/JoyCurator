@@ -59,7 +59,7 @@ class ArchitectureTest(unittest.TestCase):
         for source in INTERNAL.rglob('*.go'):
             if 'webui/dist' in str(source):
                 continue
-            if 'infra/sqlite' not in str(source):
+            if 'infra/sqlite' not in source.as_posix():
                 self.assertNotIn('"database/sql"', source.read_text(), str(source))
         for source in (INTERNAL / 'infra').rglob('*.go'):
             self.assertNotRegex(source.read_text(), r'\b(?:DecideMatch|CompareCandidate|buildPreview|runBatch)\(')

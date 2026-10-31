@@ -102,7 +102,7 @@ describe('independent pages and grouped navigation', () => {
       '配置',
     ])
     expect(navigation.flatMap(group => group.items.map(item => item.name))).toEqual([
-      'automatic-recognition', 'records', 'extraction-history',
+      'automatic-recognition', 'scrape', 'records', 'scrape-records', 'extraction-history',
       'recognition-rules', 'recognition-debug', 'settings',
     ])
     expect(html).toContain('href="/settings"')

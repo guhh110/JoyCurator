@@ -1,4 +1,5 @@
 import pathlib
+import os
 import runpy
 import tempfile
 import unittest
@@ -34,7 +35,12 @@ class PrivacyCheckTest(unittest.TestCase):
             path.write_text('fixture-password-2026')
             self.assertEqual(inspect(path, 'fixture.txt'), [])
             link = path.with_name('link.txt')
-            link.symlink_to(path)
+            try:
+                link.symlink_to(path)
+            except OSError as exc:
+                if os.name == 'nt' and getattr(exc, 'winerror', None) == 1314:
+                    self.skipTest('Windows symlink privilege unavailable')
+                raise
             self.assertIn('symlink', inspect(link, 'link.txt')[0])
 
 

@@ -31,11 +31,11 @@ export function createRuntime() {
     refetchInterval: (query) => (query.state.data?.active ? 1200 : false),
   })
   const activeQuery = useQuery({
-    queryKey: computed(() => keys.run(activeId.value)),
+    queryKey: computed(() => activeId.value.startsWith('scrape:') ? ['scrape', 'active', activeId.value] : keys.run(activeId.value)),
     enabled: computed(() => !!activeId.value),
     queryFn: ({ signal }) =>
       api<Run>(
-        `/runs/${encodeURIComponent(activeId.value)}`,
+        `${activeId.value.startsWith('scrape:') ? '/scrape' : ''}/runs/${encodeURIComponent(activeId.value.replace(/^scrape:/, ''))}`,
         undefined,
         'GET',
         { signal },
@@ -47,11 +47,11 @@ export function createRuntime() {
         : false,
   })
   const detailQuery = useQuery({
-    queryKey: computed(() => keys.run(detailId.value)),
+    queryKey: computed(() => detailId.value.startsWith('scrape:') ? ['scrape', 'detail', detailId.value] : keys.run(detailId.value)),
     enabled: computed(() => !!detailId.value),
     queryFn: ({ signal }) =>
       api<Run>(
-        `/runs/${encodeURIComponent(detailId.value)}`,
+        `${detailId.value.startsWith('scrape:') ? '/scrape' : ''}/runs/${encodeURIComponent(detailId.value.replace(/^scrape:/, ''))}`,
         undefined,
         'GET',
         { signal },
@@ -80,32 +80,35 @@ export function createRuntime() {
     completedId = value.id
     localStorage.removeItem('joycurator-active')
     void client.invalidateQueries({ queryKey: ['runs', 'list'] })
+    void client.invalidateQueries({ queryKey: ['scrape'] })
   })
   function startRun(value: Run) {
     client.setQueryData(keys.run(value.id), value)
-    activeId.value = value.id
-    localStorage.setItem('joycurator-active', value.id)
+    activeId.value = value.purpose === 'scrape' ? `scrape:${value.id}` : value.id
+    localStorage.setItem('joycurator-active', activeId.value)
   }
   function acceptBatch(value: Batch | null) {
     client.setQueryData(keys.batch, value)
   }
   function inspect(value: Run) {
     detailTitle.value = value.title
-    detailId.value = value.id
+    detailId.value = value.purpose === 'scrape' ? `scrape:${value.id}` : value.id
   }
   const action = useMutation({
     mutationFn: async ({ run, kind }: { run: Run; kind: string }) => {
       error.value = ''
+      const prefix = run.purpose === 'scrape' ? '/scrape' : ''
       if (kind === 'cancel') {
-        await api(`/runs/${run.id}/cancel`, {})
+        await api(`${prefix}/runs/${run.id}/cancel`, {})
         await client.invalidateQueries({ queryKey: keys.run(run.id) })
       } else {
-        const value = await api<Run>(`/runs/${run.id}/${kind}`, {})
+        const value = await api<Run>(`${prefix}/runs/${run.id}/${kind}`, {})
         startRun(value)
         detailId.value = ''
       }
       await Promise.all([
         client.invalidateQueries({ queryKey: ['runs', 'list'] }),
+        client.invalidateQueries({ queryKey: ['scrape'] }),
         client.invalidateQueries({ queryKey: keys.batch }),
       ])
     },

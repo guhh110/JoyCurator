@@ -74,6 +74,8 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 		plan.Groups = append(plan.Groups, group)
 		plan.Rows = append(plan.Rows, group.Rows...)
 		plan.Ops = append(plan.Ops, group.Ops...)
+		plan.Mappings = append(plan.Mappings, group.Mappings...)
+		plan.Purpose = "organize"
 		plan.Required += group.Required
 		plan.Issues = append(plan.Issues, group.Issues...)
 	}

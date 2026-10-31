@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"runtime"
 	"testing"
 
 	"joycurator/internal/model"
@@ -10,6 +11,7 @@ import (
 )
 
 func TestPlanEditInvalidatesOldConfirmationAndDeleteOnlyDiscardsPreview(t *testing.T) {
+	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "planned.mkv")
 	input := planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{file}}

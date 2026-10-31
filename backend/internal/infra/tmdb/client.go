@@ -318,8 +318,13 @@ func (c *Client) Image(ctx context.Context, path string) ([]byte, error) {
 			}
 			return nil, errors.New("图片下载失败")
 		}
-		if len(data) == 0 || len(data) >= 30<<20 || !strings.HasPrefix(http.DetectContentType(data), "image/") {
+		contentType := http.DetectContentType(data)
+		if len(data) == 0 || len(data) >= 30<<20 || (contentType != "image/jpeg" && contentType != "image/png") {
 			return nil, errors.New("返回内容不是有效图片")
+		}
+		ext := strings.ToLower(path)
+		if (strings.HasSuffix(ext, ".png") && contentType != "image/png") || ((strings.HasSuffix(ext, ".jpg") || strings.HasSuffix(ext, ".jpeg")) && contentType != "image/jpeg") {
+			return nil, errors.New("图片格式与文件扩展名不符")
 		}
 		return data, nil
 	}
@@ -360,6 +365,7 @@ func (c *Client) SeasonDetail(ctx context.Context, id, season int) (model.Season
 		AirDate      string `json:"air_date"`
 		PosterPath   string `json:"poster_path"`
 		Episodes     []struct {
+			ID            int    `json:"id"`
 			EpisodeNumber int    `json:"episode_number"`
 			Name          string `json:"name"`
 			AirDate       string `json:"air_date"`
@@ -377,6 +383,7 @@ func (c *Client) SeasonDetail(ctx context.Context, id, season int) (model.Season
 	episodes := make([]model.Episode, 0, len(raw.Episodes))
 	for _, item := range raw.Episodes {
 		episodes = append(episodes, model.Episode{
+			TMDBID:   item.ID,
 			Season:   season,
 			Number:   item.EpisodeNumber,
 			Name:     item.Name,
@@ -392,4 +399,56 @@ func (c *Client) SeasonDetail(ctx context.Context, id, season int) (model.Season
 func (c *Client) SeasonEpisodes(ctx context.Context, id, season int) ([]model.Episode, error) {
 	_, episodes, err := c.SeasonDetail(ctx, id, season)
 	return episodes, err
+}
+
+func (c *Client) Artwork(ctx context.Context, kind string, id int, language string) ([]model.Artwork, error) {
+	if (kind != "movie" && kind != "tv") || id < 1 {
+		return nil, errors.New("作品无效")
+	}
+	var raw struct {
+		Posters   []artworkImage `json:"posters"`
+		Backdrops []artworkImage `json:"backdrops"`
+		Logos     []artworkImage `json:"logos"`
+	}
+	// Explicitly request all languages; filtering below also protects cached responses.
+	if err := c.Get(ctx, fmt.Sprintf("/%s/%d/images", kind, id), url.Values{"include_image_language": {language + ",en,null"}}, &raw); err != nil {
+		return nil, err
+	}
+	items := []model.Artwork{}
+	for _, group := range []struct {
+		kind   string
+		images []artworkImage
+	}{{"poster", raw.Posters}, {"fanart", raw.Backdrops}, {"clearlogo", raw.Logos}} {
+		for _, image := range group.images {
+			ext := strings.ToLower(image.Path)
+			if !strings.HasSuffix(ext, ".png") && !strings.HasSuffix(ext, ".jpg") && !strings.HasSuffix(ext, ".jpeg") {
+				continue
+			}
+			primary := strings.SplitN(language, "-", 2)[0]
+			if image.Language != "" && image.Language != language && image.Language != primary && image.Language != "en" {
+				continue
+			}
+			if !strings.HasPrefix(image.Path, "/") || strings.Contains(image.Path, "..") || strings.ContainsAny(image.Path, "?#\\") || strings.Count(image.Path, "/") != 1 {
+				continue
+			}
+			items = append(items, model.Artwork{Path: image.Path, Language: image.Language, Score: image.Score, Votes: image.Votes, Kind: group.kind})
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Score != items[j].Score {
+			return items[i].Score > items[j].Score
+		}
+		if items[i].Votes != items[j].Votes {
+			return items[i].Votes > items[j].Votes
+		}
+		return items[i].Path < items[j].Path
+	})
+	return items, nil
+}
+
+type artworkImage struct {
+	Path     string  `json:"file_path"`
+	Language string  `json:"iso_639_1"`
+	Score    float64 `json:"vote_average"`
+	Votes    int     `json:"vote_count"`
 }

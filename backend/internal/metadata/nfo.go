@@ -89,14 +89,22 @@ func SeasonNFO(show model.Entry, season model.Season) ([]byte, error) {
 
 // EpisodeNFO renders one episodedetails block per episode number. A file that
 // holds several episodes (a merged release) yields several blocks.
-func EpisodeNFO(item model.Entry, season int, episodes []int) ([]byte, error) {
+func EpisodeNFO(item model.Entry, episodes []model.Episode) ([]byte, error) {
 	var result bytes.Buffer
-	for _, number := range episodes {
-		season, number := season, number
-		episode := base(item)
+	for _, info := range episodes {
+		season, number := info.Season, info.Number
+		episode := document{}
 		episode.XMLName.Local = "episodedetails"
 		episode.ShowTitle = item.Title
-		episode.Title = fmt.Sprintf("%s S%02dE%02d", item.Title, season, number)
+		episode.Title = info.Name
+		if episode.Title == "" {
+			episode.Title = fmt.Sprintf("%s S%02dE%02d", item.Title, season, number)
+		}
+		episode.Plot = info.Overview
+		episode.Aired = info.AirDate
+		if info.TMDBID > 0 {
+			episode.ID = &uniqueID{Type: "tmdb", Default: "true", Value: info.TMDBID}
+		}
 		episode.Season = &season
 		episode.Episode = &number
 		data, err := encode(episode)

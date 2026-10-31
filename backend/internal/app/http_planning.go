@@ -44,11 +44,11 @@ func organizationRoutes(a Dependencies, add func(string, endpoint)) {
 	})
 	for _, action := range []string{"retry", "undo"} {
 		add("POST /api/runs/{id}/"+action, func(w http.ResponseWriter, r *http.Request) error {
-			v, e := a.Organizer.Resume(r.PathValue("id"), strings.HasSuffix(r.URL.Path, "/undo"))
+			v, e := a.Organizer.OrganizeResume(r.PathValue("id"), strings.HasSuffix(r.URL.Path, "/undo"))
 			return respond(w, v, e)
 		})
 	}
 	add("POST /api/runs/{id}/cancel", func(w http.ResponseWriter, r *http.Request) error {
-		return respond(w, map[string]bool{"ok": true}, a.Organizer.Cancel(r.PathValue("id")))
+		return respond(w, map[string]bool{"ok": true}, a.Organizer.OrganizeCancel(r.PathValue("id")))
 	})
 }

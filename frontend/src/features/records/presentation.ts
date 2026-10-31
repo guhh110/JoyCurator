@@ -2,6 +2,7 @@ export const modeNames: Record<string, string> = {
   copy: '复制',
   move: '移动',
   hardlink: '硬链接',
+  scrape: '刮削',
 }
 export const kindNames: Record<string, string> = {
   video: '视频',

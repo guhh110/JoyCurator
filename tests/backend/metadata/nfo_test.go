@@ -44,7 +44,7 @@ func TestMovieEscapingAndEpisodeBlocks(t *testing.T) {
 		t.Fatal("invalid XML", err)
 	}
 	item.Type = "tv"
-	data, err = EpisodeNFO(item, 0, []int{1, 2})
+	data, err = EpisodeNFO(item, []model.Episode{{TMDBID: 101, Season: 0, Number: 1, Name: "首集", Overview: "第一集剧情", AirDate: "2023-01-02"}, {TMDBID: 102, Season: 0, Number: 2, Name: "次集", Overview: "第二集剧情", AirDate: "2023-01-09"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +64,9 @@ func TestMovieEscapingAndEpisodeBlocks(t *testing.T) {
 	}
 	if blocks != 2 {
 		t.Fatalf("episode blocks %d", blocks)
+	}
+	if !bytes.Contains(data, []byte("<title>首集</title>")) || !bytes.Contains(data, []byte("<plot>第二集剧情</plot>")) || !bytes.Contains(data, []byte("<aired>2023-01-02</aired>")) || bytes.Contains(data, []byte("<plot>Plot")) {
+		t.Fatalf("episode-specific metadata missing: %s", data)
 	}
 	data, err = ShowNFO(item)
 	if err != nil || !strings.Contains(string(data), "<tvshow>") {

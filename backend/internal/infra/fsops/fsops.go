@@ -119,7 +119,7 @@ func (f *FS) MkdirAll(name string) error {
 		if err := root.Mkdir(current, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 			return err
 		}
-		info, err := root.Stat(current)
+		info, err := root.Lstat(current)
 		if err != nil {
 			return err
 		}

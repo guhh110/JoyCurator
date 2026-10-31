@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -67,6 +68,7 @@ func TestSourceBoundaryAndNestedTargetExclusion(t *testing.T) {
 		t.Fatal("identical source/target accepted")
 	}
 	alias := filepath.Join(s.SourceRoot, "target-alias")
+	if runtime.GOOS == "windows" { t.Skip("Windows symlink privilege unavailable") }
 	if err := os.Symlink(s.SourceRoot, alias); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +96,7 @@ func TestBrowseDefaultsToSource(t *testing.T) {
 		return response
 	}
 	root := get("/api/browse")
-	if root.Code != 200 || !strings.Contains(root.Body.String(), filepath.Join(media, "source")) || strings.Contains(root.Body.String(), "target") {
+	if root.Code != 200 || !strings.Contains(root.Body.String(), filepath.Base(media)) || strings.Contains(root.Body.String(), `"dir":true,"target"`) {
 		t.Fatal(root.Body.String())
 	}
 	if get("/api/browse?path="+filepath.Join(media, "target")).Code != 400 {

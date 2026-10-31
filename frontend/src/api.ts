@@ -42,8 +42,6 @@ export interface Settings {
   targetRoot: string
   proxyURL: string
   language: string
-  nfo: boolean
-  images: boolean
   hasToken: boolean
   roots: string[]
   rules: {
@@ -80,7 +78,7 @@ export interface Operation {
   status: string
   error: string
   owner: string
-  backup?: { target: string }
+  replaceIdentity?: string
 }
 export interface Run {
   id: string
@@ -94,6 +92,26 @@ export interface Run {
   undo: boolean
   ops?: Operation[]
   batchId?: string
+  purpose: 'organize' | 'scrape'
+}
+export interface MediaMapping {
+  path: string
+  source: string
+  type: 'movie' | 'tv'
+  tmdbId: number
+  season: number
+  episodes: number[]
+  state: 'pending' | 'completed' | 'failed' | 'unavailable'
+}
+export interface ScrapePreview {
+  id: string
+  title: string
+  type: string
+  tmdbId: number
+  targets: string[]
+  artifacts: string[]
+  issues: string[]
+  required: number
 }
 export interface RecognitionItem extends MediaFile {
   traceId?: string

@@ -288,7 +288,7 @@ AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognition
 预览 → POST /batches/preview → buildPreview（按作品）
   → 校验源路径和文件身份、读取设置与 TMDB 元数据
   → rules.Target / ShowRoot 渲染分类与命名
-  → 生成视频／字幕／NFO／图片操作
+  → 整理仅生成视频／字幕操作并登记目标视频映射；独立刮削预览生成 NFO／图片操作
   → 校验冲突、磁盘需求等 → storePlan
 确认 → POST /batches/execute {id} → 按作品执行 → launch → work
   → organizer.Engine.Run，逐步持久化操作状态
@@ -296,7 +296,7 @@ AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognition
 
 `buildPreview` 是手动与批量共用的规划入口。前端只提交作品、映射和模式，不能提交可信文件操作指令。预览在内存中短期保存（15 分钟），包含配置版本及服务端生成的 ops；服务重启后须重新预览。
 
-`organizer` 按操作处理视频、字幕和刮削产物，通过 `fsops` 完成受限目录内的读写、暂存与发布。操作记录保留身份、哈希、暂存路径及进度，供恢复和撤销使用；不要绕开这层直接移动媒体。
+`organizer` 将整理的视频／字幕和独立刮削的 NFO／图片分开记录，通过 `fsops` 完成受限目录内的读写、暂存与发布。操作记录保留身份、哈希、暂存路径及进度，供恢复和撤销使用；不要绕开这层直接移动媒体。覆盖没有备份，撤销只能删除仍属本次操作的产物，不能恢复旧内容。
 
 ## 10. 多作品批次与执行互斥
 

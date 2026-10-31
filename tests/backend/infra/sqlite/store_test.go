@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -33,8 +34,8 @@ func TestWorkspaceRejectsUnknownFieldsWithoutRewritingData(t *testing.T) {
 func openStore(t *testing.T) *Store {
 	t.Helper()
 	s := model.DefaultSettings()
-	s.SourceRoot = "/source"
-	s.TargetRoot = "/target"
+	s.SourceRoot = filepath.Join(t.TempDir(), "source")
+	s.TargetRoot = filepath.Join(t.TempDir(), "target")
 	store, err := Open(t.TempDir(), s)
 	if err != nil {
 		t.Fatal(err)

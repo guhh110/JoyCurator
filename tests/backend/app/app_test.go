@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,6 @@ func fixture(t *testing.T) (*App, string) {
 	}
 	t.Cleanup(func() { _ = a.Close() })
 	s, _ := a.dependencies.Config.Load()
-	s.Images = false
 	if _, err = testDB(t, a).Exec("UPDATE config SET value=?,token=?", jsonText(s), "fixture-secret"); err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +98,7 @@ func executePlan(t *testing.T, a *App, p *planning.Plan) organizer.Run {
 	return r
 }
 func TestTVPreviewExecuteUndoWithSharedArtifacts(t *testing.T) {
+	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
 	a, root := fixture(t)
 	f1 := mediaFile(t, a, root, "山海旅人.S01E01.mkv")
 	f2 := mediaFile(t, a, root, "山海旅人.S01E02.mkv")
@@ -105,7 +106,7 @@ func TestTVPreviewExecuteUndoWithSharedArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.Rows) != 2 || len(p.Ops) != 6 {
+	if len(p.Rows) != 2 || len(p.Ops) != 2 {
 		t.Fatalf("preview: %+v", p)
 	}
 	r := executePlan(t, a, p)
@@ -133,7 +134,8 @@ func TestTVPreviewExecuteUndoWithSharedArtifacts(t *testing.T) {
 		}
 	}
 }
-func TestSharedNFORemainsUntilLastBatchUndo(t *testing.T) {
+func TestSeparateOrganizeRunsOnlyRegisterVideoMappings(t *testing.T) {
+	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
 	a, root := fixture(t)
 	f1 := mediaFile(t, a, root, "Show.S01E01.mkv")
 	f2 := mediaFile(t, a, root, "Show.S01E02.mkv")
@@ -144,11 +146,14 @@ func TestSharedNFORemainsUntilLastBatchUndo(t *testing.T) {
 		t.Fatal(err)
 	}
 	r2 := executePlan(t, a, p)
-	var shared string
-	for _, op := range r1.Ops {
-		if filepath.Base(op.Target) == "tvshow.nfo" {
-			shared = op.Target
+	for _, op := range append(r1.Ops, r2.Ops...) {
+		if op.Kind != "video" && op.Kind != "subtitle" {
+			t.Fatal("organize produced scrape artifact", op.Kind)
 		}
+	}
+	mappings, err := a.store.Mappings()
+	if err != nil || len(mappings) != 2 {
+		t.Fatalf("expected two registered videos: %+v %v", mappings, err)
 	}
 	u, err := a.dependencies.Organizer.Resume(r1.ID, true)
 	if err != nil {
@@ -157,8 +162,9 @@ func TestSharedNFORemainsUntilLastBatchUndo(t *testing.T) {
 	if done(t, a, u).State != "undone" {
 		t.Fatal("undo 1")
 	}
-	if _, err = os.Stat(shared); err != nil {
-		t.Fatal("shared artifact removed too soon")
+	mappings, err = a.store.Mappings()
+	if err != nil || len(mappings) != 1 || mappings[0].RunID != r2.ID {
+		t.Fatalf("first undo affected second mapping: %+v %v", mappings, err)
 	}
 	u, err = a.dependencies.Organizer.Resume(r2.ID, true)
 	if err != nil {
@@ -167,8 +173,9 @@ func TestSharedNFORemainsUntilLastBatchUndo(t *testing.T) {
 	if done(t, a, u).State != "undone" {
 		t.Fatal("undo 2")
 	}
-	if _, err = os.Stat(shared); !os.IsNotExist(err) {
-		t.Fatal("last shared artifact retained")
+	mappings, err = a.store.Mappings()
+	if err != nil || len(mappings) != 0 {
+		t.Fatalf("mapping retained after both undos: %+v %v", mappings, err)
 	}
 }
 func TestStalePlanAndSourceChangesRejected(t *testing.T) {
@@ -200,6 +207,7 @@ func TestStalePlanAndSourceChangesRejected(t *testing.T) {
 	}
 }
 func TestNoOverwriteAndModifiedTargetStopsUndo(t *testing.T) {
+	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
 	in := planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}}
@@ -234,6 +242,7 @@ func TestNoOverwriteAndModifiedTargetStopsUndo(t *testing.T) {
 	}
 }
 func TestMoveAndHardlink(t *testing.T) {
+	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
 	for _, mode := range []string{"move", "hardlink"} {
 		t.Run(mode, func(t *testing.T) {
 			a, root := fixture(t)
@@ -326,13 +335,14 @@ func TestScanExcludesTargetsSymlinksAndPreservesUnknownSeason(t *testing.T) {
 }
 
 func TestInterruptedRunCanResumeAfterRestart(t *testing.T) {
+	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
 	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := organizer.Run{ID: model.Key(), Title: p.Title, Mode: p.Mode, State: "running", Ops: p.Ops, Total: len(p.Ops)}
+	r := organizer.Run{ID: model.Key(), Title: p.Title, Mode: p.Mode, State: "running", Ops: p.Ops, Total: len(p.Ops), Purpose: "organize", Mappings: p.Mappings}
 	if err = a.store.SaveRun(r); err != nil {
 		t.Fatal(err)
 	}

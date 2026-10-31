@@ -6,12 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"joycurator/internal/infra/fsops"
 )
 
 func TestWalkExclusionsAndSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" { t.Skip("Windows symlink privilege unavailable") }
 	dir := t.TempDir()
 	output := filepath.Join(dir, "library")
 	if err := os.Mkdir(output, 0755); err != nil {

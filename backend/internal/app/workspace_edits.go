@@ -108,6 +108,11 @@ func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Up
 }
 func (a *WorkspaceService) FinishRun(run organizer.Run) {
 	completed := map[string]bool{}
+	for _, mapping := range run.Mappings {
+		if mapping.Identity != "" && run.State == "completed" {
+			completed[mapping.Source] = true
+		}
+	}
 	for _, op := range run.Ops {
 		if op.Kind == "video" && op.Status == "completed" {
 			completed[op.Source] = true

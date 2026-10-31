@@ -1,7 +1,6 @@
 package planning
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"joycurator/internal/infra/fsops"
 	"joycurator/internal/infra/scanner"
 	"joycurator/internal/matching"
-	"joycurator/internal/metadata"
 	"joycurator/internal/model"
 	"joycurator/internal/rules"
 )
@@ -55,7 +53,7 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 		return nil, err
 	}
 	entry := resolved.Entry
-	plan := &Plan{ID: model.Key(), Title: entry.Title, Type: in.Type, TMDBID: in.TMDBID, Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(15 * time.Minute)}
+	plan := &Plan{ID: model.Key(), Title: entry.Title, Type: in.Type, TMDBID: in.TMDBID, Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(15 * time.Minute), Purpose: "organize"}
 	seen := map[string]model.Operation{}
 	free := map[uint64]int64{}
 	needed := map[uint64]int64{}
@@ -63,10 +61,7 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 	add := func(row *Row, op model.Operation) {
 		issue := func(msg string) { row.Issues = append(row.Issues, msg); plan.Issues = append(plan.Issues, msg) }
 		targetKey := strings.ToLower(op.Target)
-		if old, ok := seen[targetKey]; ok {
-			if op.Kind == "nfo" && old.Kind == op.Kind && bytes.Equal(old.Content, op.Content) || op.Kind == "image" && old.Kind == op.Kind && old.URL == op.URL {
-				return
-			}
+		if _, ok := seen[targetKey]; ok {
 			issue("目标重复：" + op.Target)
 			return
 		}
@@ -74,17 +69,6 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 		if existing, e := a.access.Stat(op.Target); e == nil {
 			if !existing.Mode().IsRegular() {
 				issue("目标不是普通文件，不能跳过或覆盖：" + op.Target)
-				return
-			}
-			if op.Kind == "nfo" || op.Kind == "image" {
-				row.Artifacts = append(row.Artifacts, "保留已有 "+filepath.Base(op.Target))
-				if owned, err := a.ownership.Owned(op.Target); err != nil {
-					issue(err.Error())
-				} else if owned != nil {
-					owned.Owner = row.Source
-					owned.Reused = true
-					plan.Ops = append(plan.Ops, *owned)
-				}
 				return
 			}
 			switch in.DuplicatePolicy {
@@ -96,9 +80,8 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 				return
 			case "overwrite":
 				row.Action = "overwrite"
-				op.Backup = &model.Operation{Kind: "backup", Mode: "move", Source: op.Target,
-					Target: filepath.Join(filepath.Dir(op.Target), ".joycurator-backup-"+model.Key()),
-					Size:   existing.Size(), MTime: existing.ModTime().UnixNano(), SourceIdentity: fsops.Identity(existing), Status: "pending"}
+				op.Replace = true
+				op.ReplaceIdentity, op.ReplaceSize, op.ReplaceMTime = fsops.Identity(existing), existing.Size(), existing.ModTime().UnixNano()
 				if op.Kind != "video" {
 					row.Artifacts = append(row.Artifacts, "覆盖已有 "+filepath.Base(op.Target))
 				}
@@ -157,25 +140,19 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 			plan.Rows = append(plan.Rows, row)
 			continue
 		}
-		still := ""
-		seasonInfo := model.Season{}
 		if in.Type == "tv" {
 			if !matching.EpisodeInputValid(f.Season, f.Episodes) {
 				fail("季集无效：" + filepath.Base(f.Path))
 				plan.Rows = append(plan.Rows, row)
 				continue
 			}
-			details, checks, err := resolved.CheckEpisodes(ctx, f.Season, f.Episodes)
+			_, checks, err := resolved.CheckEpisodes(ctx, f.Season, f.Episodes)
 			if err != nil {
 				return nil, err
 			}
-			seasonInfo = details
 			for _, check := range checks {
 				if !check.NonNegative || !check.Exists || check.Duplicate {
 					fail(fmt.Sprintf("第 %d 季没有有效的第 %d 集", f.Season, check.Number))
-				} else if still == "" {
-					// A merged file has one thumbnail: prefer the first episode with a still.
-					still = check.Still
 				}
 			}
 		}
@@ -191,11 +168,17 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 			continue
 		}
 		row.Target = target
+		mapping := model.MediaMapping{Path: target, Source: f.Path, Type: in.Type, TMDBID: in.TMDBID, Season: f.Season, Episodes: f.Episodes, State: "pending"}
 		add(&row, model.Operation{Kind: "video", Mode: in.Mode, Source: f.Path, Target: target, Size: f.Size, MTime: f.MTime})
 		if row.Action == "skip" {
+			if existing, err := a.access.Stat(target); err == nil {
+				mapping.Identity, mapping.Size, mapping.MTime = fsops.Identity(existing), existing.Size(), existing.ModTime().UnixNano()
+			}
+			plan.Mappings = append(plan.Mappings, mapping)
 			plan.Rows = append(plan.Rows, row)
 			continue
 		}
+		plan.Mappings = append(plan.Mappings, mapping)
 		// Associate only subtitles with the exact video stem plus optional language/flags.
 		root, rel, e := a.access.Root(filepath.Dir(f.Path))
 		if e != nil {
@@ -239,59 +222,6 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 				}
 			}
 			add(&row, model.Operation{Kind: "subtitle", Mode: in.Mode, Source: path, Target: targetStem + strings.TrimPrefix(base, stem) + ext, Size: stat.Size(), MTime: stat.ModTime().UnixNano()})
-		}
-		if s.NFO {
-			var body []byte
-			if entry.Type == "movie" {
-				body, e = metadata.MovieNFO(entry)
-			} else {
-				body, e = metadata.EpisodeNFO(entry, f.Season, f.Episodes)
-			}
-			if e != nil {
-				fail(e.Error())
-			} else {
-				add(&row, model.Operation{Kind: "nfo", Mode: "copy", Target: targetStem + ".nfo", Content: body})
-			}
-		}
-		if entry.Type == "tv" && s.NFO {
-			body, err := metadata.SeasonNFO(entry, seasonInfo)
-			if err != nil {
-				fail(err.Error())
-			} else {
-				add(&row, model.Operation{Kind: "nfo", Mode: "copy", Target: filepath.Join(filepath.Dir(target), "season.nfo"), Content: body})
-			}
-		}
-		dir := filepath.Dir(target)
-		if entry.Type == "tv" {
-			dir, e = rules.ShowRoot(src, s)
-			if e != nil {
-				fail(e.Error())
-			} else if s.NFO {
-				body, e := metadata.ShowNFO(entry)
-				if e != nil {
-					fail(e.Error())
-				} else {
-					add(&row, model.Operation{Kind: "nfo", Mode: "copy", Target: filepath.Join(dir, "tvshow.nfo"), Content: body})
-				}
-			}
-		}
-		if s.Images {
-			if entry.Type == "tv" {
-				if still != "" {
-					add(&row, model.Operation{Kind: "image", Mode: "copy", Target: targetStem + ".jpg", URL: still})
-				}
-				if seasonInfo.PosterPath != "" {
-					name := fmt.Sprintf("season%02d-poster.jpg", f.Season)
-					add(&row, model.Operation{Kind: "image", Mode: "copy", Target: filepath.Join(filepath.Dir(target), name), URL: seasonInfo.PosterPath})
-				}
-			}
-			if dir != "" {
-				for name, path := range map[string]string{"poster.jpg": entry.PosterPath, "fanart.jpg": entry.BackdropPath} {
-					if path != "" {
-						add(&row, model.Operation{Kind: "image", Mode: "copy", Target: filepath.Join(dir, name), URL: path})
-					}
-				}
-			}
 		}
 		plan.Rows = append(plan.Rows, row)
 	}

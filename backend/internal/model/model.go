@@ -30,13 +30,11 @@ type Settings struct {
 	Token      string `json:"-"`
 	ProxyURL   string `json:"proxyURL"`
 	Language   string `json:"language"`
-	NFO        bool   `json:"nfo"`
-	Images     bool   `json:"images"`
 	Rules      Rules  `json:"rules"`
 }
 
 func DefaultSettings() Settings {
-	return Settings{Version: 1, Language: "zh-CN", NFO: true, Images: true, Rules: Rules{
+	return Settings{Version: 1, Language: "zh-CN", Rules: Rules{
 		MovieFolder: "{category}/{title} ({year}) [tmdb-{tmdb_id}]", MovieFile: "{title} ({year}) - {resolution}.{ext}",
 		TVFolder: "{category}/{title} ({year}) [tmdb-{tmdb_id}]/Season {season:02}", TVFile: "{title} - {episode_range} - {resolution}.{ext}", Categories: DefaultCategories(),
 	}}
@@ -106,29 +104,37 @@ type Source struct {
 
 // Operation is one file action the organizer knows how to run and reverse.
 type Operation struct {
-	ID             int64      `json:"id"`
-	Kind           string     `json:"kind"`
-	Source         string     `json:"source"`
-	Target         string     `json:"target"`
-	Mode           string     `json:"mode"`
-	Size           int64      `json:"size"`
-	MTime          int64      `json:"mtime"`
-	Content        []byte     `json:"content,omitempty"`
-	URL            string     `json:"url,omitempty"`
-	Status         string     `json:"status"`
-	Error          string     `json:"error"`
-	Hash           string     `json:"hash"`
-	Temp           string     `json:"temp"`
-	Identity       string     `json:"identity"`
-	SourceIdentity string     `json:"sourceIdentity"`
-	Undo           *Operation `json:"undo,omitempty"`
-	Backup         *Operation `json:"backup,omitempty"`
+	ID               int64      `json:"id"`
+	Kind             string     `json:"kind"`
+	Source           string     `json:"source"`
+	Target           string     `json:"target"`
+	Mode             string     `json:"mode"`
+	Size             int64      `json:"size"`
+	MTime            int64      `json:"mtime"`
+	Content          []byte     `json:"content,omitempty"`
+	URL              string     `json:"url,omitempty"`
+	ConvertJPEG      bool       `json:"convertJpeg,omitempty"`
+	Status           string     `json:"status"`
+	Error            string     `json:"error"`
+	Hash             string     `json:"hash"`
+	Temp             string     `json:"temp"`
+	ReplaceHold      string     `json:"replaceHold,omitempty"`
+	RemoveHold       string     `json:"removeHold,omitempty"`
+	SourceRemoveHold string     `json:"sourceRemoveHold,omitempty"`
+	Identity         string     `json:"identity"`
+	SourceIdentity   string     `json:"sourceIdentity"`
+	Replace          bool       `json:"replace,omitempty"`
+	ReplaceIdentity  string     `json:"replaceIdentity,omitempty"`
+	ReplaceSize      int64      `json:"replaceSize,omitempty"`
+	ReplaceMTime     int64      `json:"replaceMtime,omitempty"`
+	Undo             *Operation `json:"undo,omitempty"`
 }
 
 type Work struct {
 	Operation
-	Owner  string `json:"owner"`
-	Reused bool   `json:"reused,omitempty"`
+	Owner  string   `json:"owner"`
+	Owners []string `json:"owners,omitempty"`
+	Reused bool     `json:"reused,omitempty"`
 }
 
 type File struct {
@@ -167,6 +173,30 @@ type Episode struct {
 	AirDate  string `json:"airDate"`
 	Overview string `json:"overview"`
 	Still    string `json:"stillPath"`
+	TMDBID   int    `json:"tmdbId"`
+}
+
+// MediaMapping is the durable bridge between organization and scraping.
+type MediaMapping struct {
+	Path     string `json:"path"`
+	RunID    string `json:"runId"`
+	Source   string `json:"source"`
+	Type     string `json:"type"`
+	TMDBID   int    `json:"tmdbId"`
+	Season   int    `json:"season"`
+	Episodes []int  `json:"episodes"`
+	State    string `json:"state"`
+	Identity string `json:"identity"`
+	Size     int64  `json:"size"`
+	MTime    int64  `json:"mtime"`
+}
+
+type Artwork struct {
+	Path     string  `json:"path"`
+	Language string  `json:"language"`
+	Score    float64 `json:"score"`
+	Votes    int     `json:"votes"`
+	Kind     string  `json:"kind"`
 }
 
 var ErrNotFound = errors.New("TMDB 条目或季集不存在")

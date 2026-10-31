@@ -17,7 +17,7 @@ func TestTemplatesAndCategories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(path, "科幻/标题_片名 (2020)") || strings.HasSuffix(path, " - .mkv") {
+	if !strings.Contains(path, filepath.Join("科幻", "标题_片名 (2020)")) || strings.HasSuffix(path, " - .mkv") {
 		t.Fatal(path)
 	}
 	s.Rules.MovieFile = "{title} - {codec}.{ext}"
@@ -53,7 +53,7 @@ func TestNestedCategoryPaths(t *testing.T) {
 	settings.TargetRoot = "/target"
 	file := model.Source{Path: "/source/file.mkv", Entry: &model.Entry{TMDBID: 1, Type: "tv", Title: "剧名", Year: 2024, Countries: []string{"CN"}}, Season: 1, Episodes: []int{1}}
 	target, err := Target(file, settings)
-	if err != nil || !strings.HasPrefix(target, "/target/电视剧/国产剧/") {
+	if err != nil || !strings.HasPrefix(target, filepath.Join(settings.TargetRoot, "电视剧", "国产剧")+string(filepath.Separator)) {
 		t.Fatal(target, err)
 	}
 	show, err := ShowRoot(file, settings)

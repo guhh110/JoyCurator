@@ -50,7 +50,6 @@ const detail = computed(() => detailQuery.data.value)
             <span class="operation-kind">{{ kindNames[op.kind] }}</span>
             <div>
               <code><EliText :text="op.target" ellipsis="start" /></code>
-              <p v-if="op.backup" class="muted tiny">覆盖备份：<EliText :text="op.backup.target" ellipsis="start" /></p>
               <p v-if="op.error" class="danger">{{ op.error }}</p>
             </div>
             <span
@@ -80,13 +79,13 @@ const detail = computed(() => detailQuery.data.value)
           :disabled="busy || running"
           @click="undoing = detail"
         >
-          <Undo2 :size="15" />{{ detail.undo ? '继续撤销' : '撤销本次整理' }}
+          <Undo2 :size="15" />{{ detail.undo ? '继续撤销' : `撤销本次${detail.purpose === 'scrape' ? '刮削' : '整理'}` }}
         </button>
       </div></template
     ></Modal
   ><Modal
     v-if="undoing"
-    title="撤销这次整理？"
+    :title="`撤销这次${undoing.purpose === 'scrape' ? '刮削' : '整理'}？`"
     :locked="busy"
     @close="undoing = null"
     ><p>将撤销「{{ undoing.title }}」的文件操作。</p>
@@ -96,6 +95,7 @@ const detail = computed(() => detailQuery.data.value)
           ? '视频和字幕将恢复到原路径。原路径被占用时停止对应操作。'
           : '将移除本次创建的目标文件，来源文件保持原样。'
       }}目标内容被修改时会停止，不会删除被替换的文件。
+      覆盖过的旧文件没有备份，撤销不会恢复其旧内容。
     </p>
     <template #footer
       ><button class="button" @click="undoing = null">保留整理结果</button

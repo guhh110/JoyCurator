@@ -21,7 +21,7 @@ const { active, activeId, inspect, recordAction } = useRuntime()
     /><Clock3 v-else :size="19" />
     <div>
       <strong
-        >{{ active.undo ? '撤销' : '整理' }}{{ states[active.state] }}</strong
+        >{{ active.undo ? '撤销' : active.purpose === 'scrape' ? '刮削' : '整理' }}{{ states[active.state] }}</strong
       ><span
         >{{ active.title }} · {{ active.completed }}/{{ active.total }} 项</span
       >

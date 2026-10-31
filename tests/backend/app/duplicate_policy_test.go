@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -14,6 +15,9 @@ import (
 func TestBatchDuplicatePolicySkipAndOverwrite(t *testing.T) {
 	for _, policy := range []string{"skip", "overwrite"} {
 		t.Run(policy, func(t *testing.T) {
+			if runtime.GOOS == "windows" {
+				t.Skip("Windows organizer execution unsupported")
+			}
 			a, _, task, initial := batchFixture(t)
 			target := initial.Rows[0].Target
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
@@ -44,7 +48,7 @@ func TestBatchDuplicatePolicySkipAndOverwrite(t *testing.T) {
 			}
 			if policy == "skip" {
 				if len(batch.Runs) != 1 {
-					t.Fatal("created empty run")
+					t.Fatal("skipped mapping registration run missing")
 				}
 				got, _ := os.ReadFile(target)
 				if string(got) != "old video" {
@@ -65,9 +69,8 @@ func TestBatchDuplicatePolicySkipAndOverwrite(t *testing.T) {
 				if done(t, a, run).State != "undone" {
 					t.Fatal("undo failed")
 				}
-				got, _ := os.ReadFile(target)
-				if string(got) != "old video" {
-					t.Fatal("old video not restored")
+				if _, err := os.Stat(target); !os.IsNotExist(err) {
+					t.Fatal("no-backup overwrite restored old video")
 				}
 			}
 		})
@@ -79,7 +82,6 @@ func TestDuplicatePoliciesDoNotAllowInBatchCollisions(t *testing.T) {
 		t.Run(policy, func(t *testing.T) {
 			a, root, task, _ := batchFixture(t)
 			s, _ := a.dependencies.Config.Load()
-			s.NFO, s.Images = false, false
 			s.Rules.MovieFolder, s.Rules.TVFolder = "collision", "collision"
 			s.Rules.MovieFile, s.Rules.TVFile = "video.{ext}", "video.{ext}"
 			s.Version++
@@ -107,6 +109,9 @@ func TestDuplicatePoliciesDoNotAllowInBatchCollisions(t *testing.T) {
 func TestDuplicateSubtitleAndNonregularTargetPolicies(t *testing.T) {
 	for _, policy := range []string{"skip", "overwrite"} {
 		t.Run(policy, func(t *testing.T) {
+			if runtime.GOOS == "windows" {
+				t.Skip("Windows organizer execution unsupported")
+			}
 			a, root := fixture(t)
 			file := mediaFile(t, a, root, "film.mkv")
 			subtitle := strings.TrimSuffix(file.Path, ".mkv") + ".srt"
@@ -141,12 +146,17 @@ func TestDuplicateSubtitleAndNonregularTargetPolicies(t *testing.T) {
 			if err != nil || done(t, a, undo).State != "undone" {
 				t.Fatal("undo failed", err)
 			}
-			if got, _ := os.ReadFile(target); string(got) != "old subtitle" {
-				t.Fatal("original subtitle lost")
+			if policy == "overwrite" {
+				if _, err := os.Stat(target); !os.IsNotExist(err) {
+					t.Fatal("no-backup subtitle restored after undo")
+				}
+			} else if got, _ := os.ReadFile(target); string(got) != "old subtitle" {
+				t.Fatal("skipped subtitle changed")
 			}
 		})
 		for _, kind := range []string{"directory", "symlink"} {
 			t.Run(policy+"-"+kind, func(t *testing.T) {
+				if runtime.GOOS == "windows" && kind == "symlink" { t.Skip("Windows symlink privilege unavailable") }
 				a, root := fixture(t)
 				file := mediaFile(t, a, root, "film.mkv")
 				in := planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{file}, DuplicatePolicy: policy}
@@ -203,7 +213,7 @@ func TestDuplicatePolicyRevalidatesTargetAndRejectsInvalidPolicy(t *testing.T) {
 	}
 }
 
-func TestAllSkippedBatchDoesNotCreateRuns(t *testing.T) {
+func TestAllSkippedBatchRegistersMappings(t *testing.T) {
 	a, _, task, initial := batchFixture(t)
 	for _, row := range initial.Rows {
 		if err := os.MkdirAll(filepath.Dir(row.Target), 0755); err != nil {
@@ -217,8 +227,20 @@ func TestAllSkippedBatchDoesNotCreateRuns(t *testing.T) {
 	if err != nil || len(plan.Issues) != 0 || len(plan.Ops) != 0 || plan.Required != 0 {
 		t.Fatal(plan, err)
 	}
-	if _, err = a.dependencies.Organizer.ExecuteBatch(plan.ID); err == nil {
-		t.Fatal("empty batch accepted")
+	if runtime.GOOS != "windows" {
+		batch, executeErr := a.dependencies.Organizer.ExecuteBatch(plan.ID)
+		if executeErr != nil || len(batch.Runs) == 0 {
+			t.Fatalf("registration batch rejected: %+v %v", batch, executeErr)
+		}
+		for _, run := range batch.Runs {
+			if done(t, a, run).State != "completed" {
+				t.Fatal("skipped mapping not completed")
+			}
+		}
+		mappings, e := a.store.Mappings()
+		if e != nil || len(mappings) != len(plan.Mappings) {
+			t.Fatalf("skipped videos not registered: %+v %v", mappings, e)
+		}
 	}
 	for _, item := range task.Items {
 		if _, err = os.Stat(item.Path); err != nil {
@@ -277,7 +299,8 @@ func TestSkipStillDetectsSameWorkTargetCollision(t *testing.T) {
 	}
 }
 
-func TestOverwriteRestoresIdentityForEarlierRunUndo(t *testing.T) {
+func TestOverwriteDoesNotRestoreEarlierRunOnUndo(t *testing.T) {
+	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "film.mkv")
 	in := planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{file}, DuplicatePolicy: "error"}
@@ -303,7 +326,7 @@ func TestOverwriteRestoresIdentityForEarlierRunUndo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if done(t, a, undo).State != "undone" {
-		t.Fatal("restored original identity no longer matches earlier record")
+	if done(t, a, undo).State != "failed" {
+		t.Fatal("old content unexpectedly restored after no-backup overwrite")
 	}
 }

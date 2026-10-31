@@ -99,6 +99,14 @@ func (f *FS) Remove(name string) error {
 	return windows.NtSetInformationFile(windows.Handle(file.Fd()), &windows.IO_STATUS_BLOCK{}, &one, 1, windows.FileDispositionInformation)
 }
 
+func (f *FS) RemoveOwned(name, identity string) error {
+	return errors.New("Windows 暂不支持安全撤销")
+}
+
+func (f *FS) IsolateOwned(name, hold, identity string) error {
+	return errors.New("Windows 暂不支持安全隔离")
+}
+
 func (f *FS) Publish(source, target string) error {
 	s, src, err := f.parent(source)
 	if err != nil {
@@ -117,6 +125,10 @@ func (f *FS) Publish(source, target string) error {
 	defer file.Close()
 	// Zero Flags means the kernel refuses to replace any existing target.
 	return setRelativeFileInfo(file, d, dst, windows.FileRenameInformation)
+}
+
+func (f *FS) Replace(source, target, hold, identity string, size, mtime int64, stagedIdentity string) error {
+	return errors.New("Windows 暂不支持替换媒体文件")
 }
 
 func checkTargetDir(dir *os.File) (int64, uint64, error) {

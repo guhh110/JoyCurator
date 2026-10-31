@@ -84,7 +84,16 @@ func (m *memoryRuns) SaveBatch(runs []Run) error {
 	}
 	return nil
 }
-func (m *memoryRuns) Shared(string, string) (bool, error) { return false, nil }
+func (m *memoryRuns) Shared(string, string, string) (bool, error)                 { return false, nil }
+func (m *memoryRuns) SaveMapping(model.MediaMapping) error                        { return nil }
+func (m *memoryRuns) DeleteMapping(model.MediaMapping) error                      { return nil }
+func (m *memoryRuns) UpdateMappingState(model.MediaMapping, string, string) error { return nil }
+func (m *memoryRuns) Mapping(string) (*model.MediaMapping, error) {
+	return nil, nil
+}
+func (m *memoryRuns) RunsByPurpose(page int, purpose string) (map[string]any, error) {
+	return m.Runs(page)
+}
 
 type fixedSettings struct{}
 
@@ -123,6 +132,9 @@ func (noCatalog) SeasonDetail(context.Context, int, int) (model.Season, []model.
 	return model.Season{}, nil, nil
 }
 func (noCatalog) SeasonEpisodes(context.Context, int, int) ([]model.Episode, error) {
+	return nil, nil
+}
+func (noCatalog) Artwork(context.Context, string, int, string) ([]model.Artwork, error) {
 	return nil, nil
 }
 func (noCatalog) Image(context.Context, string) ([]byte, error) { return nil, nil }

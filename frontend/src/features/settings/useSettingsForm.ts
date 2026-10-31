@@ -16,7 +16,7 @@ export function useSettingsForm() {
     clearToken = ref(false),
     directoryTarget = ref<'sourceRoot' | 'targetRoot' | null>(null)
   const running = runtime.executing
-  const sections = ['folders', 'tmdb', 'rules', 'output']
+  const sections = ['folders', 'tmdb', 'rules']
   const settingsSection = computed({
     get: () =>
       sections.includes(String(route.query.section))

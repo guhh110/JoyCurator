@@ -49,7 +49,7 @@ const {
         <PageHeader
           title="偏好设置"
           eyebrow="MAKE IT YOURS"
-          description="配置目录、TMDB、命名与整理产物。"
+          description="配置目录、TMDB、命名与分类。"
           ><template #actions>
             <button
               class="button primary"
@@ -80,12 +80,7 @@ const {
               @click="settingsSection = 'rules'"
             >
               <Layers3 :size="17" />命名与分类</button
-            ><button
-              :class="{ active: settingsSection === 'output' }"
-              @click="settingsSection = 'output'"
             >
-              <ArrowDownToLine :size="17" />刮削产物
-            </button>
           </nav>
           <section
             class="pane settings-content"
@@ -339,34 +334,7 @@ const {
                 </section>
               </div></template
             >
-            <template v-else
-              ><h2>补全收藏的每一个细节</h2>
-              <p class="muted">
-                所有关联产物都会列入预览。已有 NFO、海报、背景图及季集封面会保留。
-              </p>
-              <label class="output-choice"
-                ><span
-                  ><strong>生成 NFO 元数据</strong
-                  ><small
-                    >影片、剧集、季及单集的信息文件，供媒体库读取。</small
-                  ></span
-                ><input
-                  v-model="settings.nfo"
-                  type="checkbox"
-                  role="switch" /></label
-              ><label class="output-choice"
-                ><span
-                  ><strong>下载媒体图片</strong
-                  ><small>从 TMDB 下载海报、背景图、季海报，以及单集视频同名的 .jpg 封面。</small></span
-                ><input v-model="settings.images" type="checkbox" role="switch"
-              /></label>
-              <div class="tip">
-                <Copy :size="18" />
-                <p>
-                  同名字幕自动关联，无需额外开关。<br />支持 SRT、ASS、SSA、VTT
-                  及成对的 IDX/SUB。
-                </p>
-              </div></template
+            <template v-else><p>整理只处理视频及同名字幕。刮削在独立工作区进行。</p></template>
             >
           </section>
         </div>

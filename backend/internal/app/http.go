@@ -76,6 +76,7 @@ func NewHTTP(a Dependencies, frontend fs.FS) http.Handler {
 	organizationRoutes(a, add)
 	identificationRoutes(a, add)
 	batchRoutes(a, add)
+	scrapeRoutes(a, add)
 	extractionRoutes(a, add)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {

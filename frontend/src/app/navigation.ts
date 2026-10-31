@@ -14,6 +14,7 @@ export const navigation = [
     icon: FolderOpen,
     items: [
       { name: 'automatic-recognition', title: '整理工作区', icon: Layers3 },
+      { name: 'scrape', title: '媒体刮削', icon: FolderOpen },
     ],
   },
   {
@@ -22,6 +23,7 @@ export const navigation = [
     icon: Layers3,
     items: [
       { name: 'records', title: '整理记录', icon: History },
+      { name: 'scrape-records', title: '刮削记录', icon: History },
       { name: 'extraction-history', title: '识别历史', icon: FileClock },
     ],
   },

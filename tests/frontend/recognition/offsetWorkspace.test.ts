@@ -37,7 +37,7 @@ async function fixture() {
 }
 
 describe('workspace offset save integration', () => {
-  it('rebuilds duplicate policy previews and blocks confirmation after a failed policy refresh or all-skipped result', async () => {
+  it('rebuilds duplicate policy previews and allows all-skipped registration', async () => {
     let fail = false, skipAll = false
     const fetch = vi.fn(async (url: string, options: RequestInit) => {
       if (url === '/api/batches/preview') {
@@ -66,7 +66,7 @@ describe('workspace offset save integration', () => {
     expect(state.previewReady.value).toBe(true)
     skipAll = true
     await state.changeDuplicatePolicy('skip')
-    expect(state.previewReady.value).toBe(false)
+    expect(state.previewReady.value).toBe(true)
     expect(fetch.mock.calls.filter(([url]) => url === '/api/batches/preview').map(([, options]) => JSON.parse(options.body as string).duplicatePolicy)).toEqual(['skip', 'overwrite', 'overwrite', 'skip'])
     state.duplicatePolicy.value = 'overwrite'
     state.preview.value = null

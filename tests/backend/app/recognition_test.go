@@ -196,7 +196,7 @@ func TestRecognitionRemoveSourceKeepsOtherSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	outer := mediaFile(t, a, root, "outer.mkv")
-	inner := mediaFile(t, a, root, "4k/inner.mkv")
+	inner := mediaFile(t, a, root, filepath.Join("4k", "inner.mkv"))
 	outerDir := filepath.Dir(outer.Path)
 	innerDir := filepath.Dir(inner.Path)
 	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{outerDir, innerDir}, Items: []matching.Item{
