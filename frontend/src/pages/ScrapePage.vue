@@ -50,7 +50,7 @@ const artifactGroups = computed(() => {
   const artifacts = preview.value?.artifacts ?? []
   return [
     { key: 'nfo', title: '元数据文件', description: '作品、季度及单集的独立资料', icon: FileText, files: artifacts.filter(path => path.toLowerCase().endsWith('.nfo')) },
-    { key: 'image', title: '图片文件', description: '封面、季海报与 TMDB 候选图片', icon: ImageIcon, files: artifacts.filter(path => !path.toLowerCase().endsWith('.nfo')) },
+    { key: 'image', title: '图片文件', description: '作品主图、季海报与单集封面', icon: ImageIcon, files: artifacts.filter(path => !path.toLowerCase().endsWith('.nfo')) },
   ].filter(group => group.files.length)
 })
 const selectedGroup = computed(() => {

@@ -59,7 +59,7 @@ func TestScrapePreviewUsesEpisodeMetadataAndSharedArtwork(t *testing.T) {
 	if err != nil || len(plan.Issues) > 0 {
 		t.Fatalf("scrape preview: %+v %v", plan, err)
 	}
-	for _, name := range []string{"tvshow.nfo", "season.nfo", "season01-poster.jpg", "first.nfo", "second.nfo", "first.jpg", "second.jpg", "p.png", "f.jpg", "l.png", "poster.jpg", "fanart.jpg", "clearlogo.png"} {
+	for _, name := range []string{"tvshow.nfo", "season.nfo", "season01-poster.jpg", "first.nfo", "second.nfo", "first.jpg", "second.jpg", "poster.jpg", "fanart.jpg", "clearlogo.png"} {
 		found := false
 		for _, target := range plan.Artifacts {
 			if filepath.Base(target) == name {
@@ -71,6 +71,12 @@ func TestScrapePreviewUsesEpisodeMetadataAndSharedArtwork(t *testing.T) {
 			t.Errorf("missing %s", name)
 		}
 	}
+	for _, target := range plan.Artifacts {
+		switch filepath.Base(target) {
+		case "p.png", "f.jpg", "l.png":
+			t.Errorf("raw TMDB image still planned: %s", target)
+		}
+	}
 	if runtime.GOOS == "windows" {
 		if _, err := a.dependencies.Organizer.ScrapeExecute(plan.ID); err == nil {
 			t.Fatal("Windows scrape executed")
@@ -78,7 +84,7 @@ func TestScrapePreviewUsesEpisodeMetadataAndSharedArtwork(t *testing.T) {
 	}
 }
 
-func TestMovieScrapePreviewFiltersImagesAndRejectsCollisions(t *testing.T) {
+func TestMovieScrapePreviewKeepsOnlyStandardArtwork(t *testing.T) {
 	a, root := fixture(t)
 	seed := func(value string) {
 		t.Helper()
@@ -108,14 +114,14 @@ func TestMovieScrapePreviewFiltersImagesAndRejectsCollisions(t *testing.T) {
 	if err != nil || len(plan.Issues) != 0 {
 		t.Fatalf("movie scrape preview: %+v %v", plan, err)
 	}
-	want := map[string]bool{"version.nfo": false, "poster-raw.jpg": false, "backdrop-raw.png": false, "logo-raw.png": false, "poster.jpg": false, "fanart.jpg": false, "clearlogo.png": false}
+	want := map[string]bool{"version.nfo": false, "poster.jpg": false, "fanart.jpg": false, "clearlogo.png": false}
 	for _, artifact := range plan.Artifacts {
 		base := filepath.Base(artifact)
 		if _, ok := want[base]; ok {
 			want[base] = true
 		}
-		if base == "ignored.svg" || base == "french.jpg" {
-			t.Fatal("invalid image candidate included", base)
+		if base == "ignored.svg" || base == "french.jpg" || base == "poster-raw.jpg" || base == "backdrop-raw.png" || base == "logo-raw.png" {
+			t.Fatal("raw or invalid image candidate included", base)
 		}
 	}
 	for name, found := range want {
@@ -123,13 +129,30 @@ func TestMovieScrapePreviewFiltersImagesAndRejectsCollisions(t *testing.T) {
 			t.Error("missing artwork", name)
 		}
 	}
-	if plan.Required < int64(6*(30<<20)) {
-		t.Fatal("image space budget understated", plan.Required)
+	// NFO content is included in the estimate; the image portion is three files.
+	if plan.Required < 3*(30<<20) || plan.Required >= 4*(30<<20) {
+		t.Fatal("image space budget does not reflect three images", plan.Required)
 	}
 	seed(`{"posters":[{"file_path":"/same.jpg","iso_639_1":"en"}],"backdrops":[{"file_path":"/same.jpg","iso_639_1":null}],"logos":[]}`)
 	plan, err = a.dependencies.Organizer.ScrapePreview(context.Background(), []string{path})
-	if err != nil || len(plan.Issues) == 0 {
-		t.Fatalf("raw filename collision not reported: %+v %v", plan, err)
+	if err != nil || len(plan.Issues) != 0 {
+		t.Fatalf("raw filename collision should not matter: %+v %v", plan, err)
+	}
+	for _, artifact := range plan.Artifacts {
+		if filepath.Base(artifact) == "same.jpg" {
+			t.Fatal("raw filename collision was planned")
+		}
+	}
+	if len(plan.Artifacts) != 3 || plan.Required < 2*(30<<20) || plan.Required >= 3*(30<<20) {
+		t.Fatal("missing logo should leave just two images and one NFO", plan.Artifacts, plan.Required)
+	}
+	seed(`{"posters":[],"backdrops":[],"logos":[{"file_path":"/only-logo.jpg","iso_639_1":"en"}]}`)
+	plan, err = a.dependencies.Organizer.ScrapePreview(context.Background(), []string{path})
+	if err != nil || len(plan.Issues) != 0 || len(plan.Artifacts) != 2 {
+		t.Fatal("JPEG-only logo preview failed", plan, err)
+	}
+	if filepath.Base(plan.Artifacts[0]) != "clearlogo.jpg" && filepath.Base(plan.Artifacts[1]) != "clearlogo.jpg" {
+		t.Fatal("JPEG logo did not keep its extension", plan.Artifacts)
 	}
 }
 
@@ -181,7 +204,7 @@ func TestScrapeQueueUnavailableAndSameEpisodeVersions(t *testing.T) {
 	for _, target := range plan.Artifacts {
 		counts[filepath.Base(target)]++
 	}
-	for _, name := range []string{"version-a.nfo", "version-a.jpg", "version-b.nfo", "version-b.jpg", "season.nfo", "tvshow.nfo", "p.jpg"} {
+	for _, name := range []string{"version-a.nfo", "version-a.jpg", "version-b.nfo", "version-b.jpg", "season.nfo", "tvshow.nfo", "poster.jpg"} {
 		if counts[name] != 1 {
 			t.Errorf("unexpected artifact count for %s: %d", name, counts[name])
 		}

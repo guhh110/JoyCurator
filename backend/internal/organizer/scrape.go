@@ -263,24 +263,7 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 	if err != nil {
 		return plan, err
 	}
-	best := map[string]model.Artwork{}
-	rawImages := map[string]string{}
-	for _, image := range art {
-		base := filepath.Base(image.Path)
-		if base == "." || base == "" || base == "/" {
-			continue
-		}
-		for _, dir := range dirs {
-			if previous, exists := rawImages[strings.ToLower(filepath.Join(dir, base))]; exists && previous != image.Kind {
-				plan.Issues = append(plan.Issues, "不同类型图片争用同一目标："+filepath.Join(dir, base))
-			}
-			rawImages[strings.ToLower(filepath.Join(dir, base))] = image.Kind
-			add(filepath.Join(dir, base), "image", image.Path, nil, showDirs[dir])
-		}
-		if _, ok := best[image.Kind]; !ok {
-			best[image.Kind] = image
-		}
-	}
+	best := selectArtwork(art, s.Language)
 	for _, kind := range []string{"poster", "fanart", "clearlogo"} {
 		image, ok := best[kind]
 		if !ok {
@@ -322,6 +305,38 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 	a.scrapePlans[plan.ID] = scrapePreview{plan: plan, ops: ops, version: s.Version, expires: time.Now().Add(15 * time.Minute), mappings: items}
 	a.scrapeMu.Unlock()
 	return plan, nil
+}
+
+func selectArtwork(candidates []model.Artwork, language string) map[string]model.Artwork {
+	primary := strings.SplitN(language, "-", 2)[0]
+	rank := func(value string) int {
+		switch {
+		case value == language || value == primary:
+			return 0
+		case value == "":
+			return 1
+		case value == "en":
+			return 2
+		default:
+			return 3
+		}
+	}
+	best := map[string]model.Artwork{}
+	for _, image := range candidates {
+		if image.Kind != "poster" && image.Kind != "fanart" && image.Kind != "clearlogo" || rank(image.Language) == 3 {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(image.Path))
+		if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
+			continue
+		}
+		previous, exists := best[image.Kind]
+		if !exists || rank(image.Language) < rank(previous.Language) || rank(image.Language) == rank(previous.Language) &&
+			(image.Score > previous.Score || image.Score == previous.Score && (image.Votes > previous.Votes || image.Votes == previous.Votes && image.Path < previous.Path)) {
+			best[image.Kind] = image
+		}
+	}
+	return best
 }
 
 func (a *Service) ScrapeExecute(id string) (Run, error) {
