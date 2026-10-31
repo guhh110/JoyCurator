@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"joycurator/internal/model"
 	"joycurator/internal/planning"
 )
 
@@ -118,7 +117,7 @@ func TestDuplicateSubtitleAndNonregularTargetPolicies(t *testing.T) {
 			if err := os.WriteFile(subtitle, []byte("new subtitle"), 0644); err != nil {
 				t.Fatal(err)
 			}
-			in := planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{file}, DuplicatePolicy: policy}
+			in := previewRequest(t, a, "movie", 1, "copy", policy, file)
 			first, err := a.dependencies.Planning.Preview(context.Background(), in)
 			if err != nil {
 				t.Fatal(err)
@@ -156,10 +155,12 @@ func TestDuplicateSubtitleAndNonregularTargetPolicies(t *testing.T) {
 		})
 		for _, kind := range []string{"directory", "symlink"} {
 			t.Run(policy+"-"+kind, func(t *testing.T) {
-				if runtime.GOOS == "windows" && kind == "symlink" { t.Skip("Windows symlink privilege unavailable") }
+				if runtime.GOOS == "windows" && kind == "symlink" {
+					t.Skip("Windows symlink privilege unavailable")
+				}
 				a, root := fixture(t)
 				file := mediaFile(t, a, root, "film.mkv")
-				in := planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{file}, DuplicatePolicy: policy}
+				in := previewRequest(t, a, "movie", 1, "copy", policy, file)
 				initial, err := a.dependencies.Planning.Preview(context.Background(), in)
 				if err != nil {
 					t.Fatal(err)
@@ -278,7 +279,7 @@ func TestSkipStillDetectsSameWorkTargetCollision(t *testing.T) {
 	a, root := fixture(t)
 	first := mediaFile(t, a, root, "first.mkv")
 	second := mediaFile(t, a, root, "second.mkv")
-	in := planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{first, second}, DuplicatePolicy: "skip"}
+	in := previewRequest(t, a, "movie", 1, "copy", "skip", first, second)
 	initial, err := a.dependencies.Planning.Preview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
@@ -300,10 +301,12 @@ func TestSkipStillDetectsSameWorkTargetCollision(t *testing.T) {
 }
 
 func TestOverwriteDoesNotRestoreEarlierRunOnUndo(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows organizer execution unsupported")
+	}
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "film.mkv")
-	in := planning.PreviewRequest{Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{file}, DuplicatePolicy: "error"}
+	in := previewRequest(t, a, "movie", 1, "copy", "error", file)
 	first, err := a.dependencies.Planning.Preview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)

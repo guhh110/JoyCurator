@@ -22,6 +22,8 @@ export const states: Record<string, string> = {
   published: '已写入',
   staged: '待发布',
   preparing: '处理中',
+  cleanup: '清理中',
+  manual_review: '需人工确认',
   undoing: '撤销中',
 }
 export function date(value: string) {

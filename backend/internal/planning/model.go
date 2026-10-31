@@ -37,11 +37,11 @@ type Plan struct {
 }
 
 type PreviewRequest struct {
-	Type            string       `json:"type"`
-	TMDBID          int          `json:"tmdbId"`
-	Mode            string       `json:"mode"`
-	Files           []model.File `json:"files"`
-	DuplicatePolicy string       `json:"duplicatePolicy"`
+	RecognitionID   string   `json:"recognitionId"`
+	Revision        int      `json:"revision"`
+	Paths           []string `json:"paths"`
+	Mode            string   `json:"mode"`
+	DuplicatePolicy string   `json:"duplicatePolicy"`
 }
 
 type BatchPreviewRequest struct {

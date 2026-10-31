@@ -14,6 +14,8 @@ import (
 
 var tokenRE = regexp.MustCompile(`\{([a-z_]+)(?::(02))?\}`)
 var illegalRE = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
+var qualityRE = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(2160p|1080p|720p|480p|4k|uhd|fhd)(?:[^a-z0-9]|$)`)
+var codecRE = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(x265|h265|hevc|x264|h264|avc|av1)(?:[^a-z0-9]|$)`)
 var allowed = map[string]bool{"category": true, "title": true, "original_title": true, "year": true, "tmdb_id": true, "season": true, "episode": true, "episode_range": true, "resolution": true, "codec": true, "release_tag": true, "original_stem": true, "ext": true}
 
 func Clean(value string) string {
@@ -114,6 +116,20 @@ func EpisodeRange(season int, episodes []int) string {
 }
 func values(file model.Source, rule model.Rules) map[string]string {
 	item := file.Entry
+	stem := strings.TrimSuffix(filepath.Base(file.Path), filepath.Ext(file.Path))
+	resolution, codec := "", ""
+	if match := qualityRE.FindStringSubmatch(stem); len(match) > 1 {
+		resolution = strings.ToLower(match[1])
+		switch resolution {
+		case "4k", "uhd":
+			resolution = "2160p"
+		case "fhd":
+			resolution = "1080p"
+		}
+	}
+	if match := codecRE.FindStringSubmatch(stem); len(match) > 1 {
+		codec = strings.ToLower(match[1])
+	}
 	v := map[string]string{
 		"category":       Category(*item, rule.Categories),
 		"title":          item.Title,
@@ -121,10 +137,10 @@ func values(file model.Source, rule model.Rules) map[string]string {
 		"tmdb_id":        strconv.Itoa(item.TMDBID),
 		"season":         strconv.Itoa(file.Season),
 		"episode_range":  EpisodeRange(file.Season, file.Episodes),
-		"resolution":     file.Probe.Resolution,
-		"codec":          file.Probe.Codec,
+		"resolution":     resolution,
+		"codec":          codec,
 		"release_tag":    releaseTag(file.Metadata.ReleaseTag),
-		"original_stem":  strings.TrimSuffix(filepath.Base(file.Path), filepath.Ext(file.Path)),
+		"original_stem":  stem,
 		"ext":            strings.TrimPrefix(filepath.Ext(file.Path), "."),
 	}
 	if item.Year > 0 {

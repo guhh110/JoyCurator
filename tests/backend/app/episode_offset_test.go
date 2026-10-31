@@ -32,7 +32,7 @@ func TestWorkspaceEpisodeZeroValidationAndPreview(t *testing.T) {
 			file := mediaFile(t, a, root, "Show.S01E01.mkv")
 			file.Season, file.Episodes = 1, []int{1}
 			task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{file.Path}, Total: 1, Items: []matching.Item{
-				{File: file, Metadata: recognition.Metadata{Episodes: []int{1}}, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2}, State: "ready", Selected: true},
+				{File: file, Metadata: recognition.Metadata{Episodes: []int{1}}, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2, Title: "山海旅人", Year: 2023}, State: "ready", Selected: true},
 			}}
 			seedRecognitionCache(t, a, "/tv/2?language=zh-CN", `{"seasons":[{"season_number":1}]}`)
 			seedRecognitionCache(t, a, "/tv/2/season/1?language=zh-CN", tc.catalog)
@@ -53,12 +53,15 @@ func TestWorkspaceEpisodeZeroValidationAndPreview(t *testing.T) {
 			if err != nil || !slices.Equal(reloaded.Items[0].Episodes, tc.numbers) || !slices.Equal(reloaded.Items[0].Metadata.Episodes, []int{1}) {
 				t.Fatal(reloaded, err)
 			}
-			plan, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{reloaded.Items[0].File}})
-			if err != nil {
-				t.Fatal(err)
+			plan, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{RecognitionID: task.ID, Revision: reloaded.Revision, Paths: []string{file.Path}, Mode: "copy", DuplicatePolicy: "error"})
+			if !tc.ready {
+				if err == nil {
+					t.Fatal("unconfirmed mapping was previewed", plan)
+				}
+				return
 			}
-			if (len(plan.Issues) == 0) != tc.ready {
-				t.Fatal(plan.Issues)
+			if err != nil || len(plan.Issues) != 0 {
+				t.Fatal(plan, err)
 			}
 			if tc.ready {
 				if len(plan.Rows) != 1 || !strings.Contains(plan.Rows[0].Target, "S01E00") {

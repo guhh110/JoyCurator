@@ -21,8 +21,8 @@ func batchFixture(t *testing.T) (*App, string, matching.Workspace, *planning.Pla
 	movie := mediaFile(t, a, root, "film.mkv")
 	tv := mediaFile(t, a, root, "Show.S01E01.mkv")
 	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{filepath.Join(root, "source")}, Items: []matching.Item{
-		{File: movie, Group: "movie", Entry: &model.Entry{Type: "movie", TMDBID: 1}, State: "ready", Selected: true},
-		{File: tv, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2}, State: "ready", Selected: true},
+		{File: movie, Group: "movie", Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "长夜旅途", Year: 2024}, State: "ready", Selected: true},
+		{File: tv, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2, Title: "山海旅人", Year: 2023}, State: "ready", Selected: true},
 	}}
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
@@ -50,7 +50,9 @@ func waitBatch(t *testing.T, a *App, id string) organizer.Batch {
 	return organizer.Batch{}
 }
 func TestBatchExecuteSeparateRecordsAndUndo(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows organizer execution unsupported")
+	}
 	a, _, task, plan := batchFixture(t)
 	if len(plan.Groups) != 2 || len(plan.Rows) != 2 {
 		t.Fatal(plan)
@@ -134,7 +136,9 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 		}
 	})
 	t.Run("aggregate disk space", func(t *testing.T) {
-		if runtime.GOOS == "windows" { t.Skip("Windows sparse-file truncation unavailable") }
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows sparse-file truncation unavailable")
+		}
 		a, _, task, _ := batchFixture(t)
 		available, _, err := testAccess(t, a).CheckTarget(filepath.Join(testAccess(t, a).Roots[1], "space.mkv"))
 		if err != nil {

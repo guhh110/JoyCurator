@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -tags pro
     -ldflags "-s -w -X main.version=$VERSION" -o /out/joycurator ./cmd/joycurator
 
 FROM debian:trixie-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /app /data /source /target \
     && chown -R 1000:1000 /app /data /source /target

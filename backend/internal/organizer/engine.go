@@ -73,6 +73,9 @@ func (e *Engine) Run(ctx context.Context, op *model.Operation, save func() error
 	if runtime.GOOS == "windows" {
 		return errors.New("Windows 暂不支持安全地执行文件整理")
 	}
+	if op.Kind == "video" || op.Kind == "subtitle" {
+		return e.fastRun(ctx, op, save)
+	}
 	return e.run(ctx, op, save)
 }
 
@@ -514,6 +517,9 @@ func (e *Engine) removeJournaled(ctx context.Context, op *model.Operation, sourc
 func (e *Engine) Undo(ctx context.Context, op *model.Operation, save func() error) error {
 	if runtime.GOOS == "windows" {
 		return errors.New("Windows 暂不支持安全地撤销文件整理")
+	}
+	if op.Kind == "video" || op.Kind == "subtitle" {
+		return e.fastUndo(ctx, op, save)
 	}
 	if err := ctx.Err(); err != nil {
 		return err

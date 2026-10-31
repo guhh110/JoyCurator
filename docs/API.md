@@ -19,7 +19,7 @@
 | `GET /search?type=&q=&year=` | 搜索 TMDB，`type` 为 `movie` 或 `tv` |
 | `GET /seasons?id=` | 作品的季列表 |
 | `GET /episodes?id=&season=` | 指定季的集列表，季号 0 为特别篇 |
-| `POST /preview` | `{type,tmdbId,mode,files,duplicatePolicy}`，创建后端预览；重复策略必填 `error/skip/overwrite` |
+| `POST /preview` | `{recognitionId,revision,paths,mode,duplicatePolicy}`，仅预览同一工作区内已确认的一部作品；不接受任意 TMDB ID/文件组合，不请求 TMDB；重复策略必填 `error/skip/overwrite` |
 | `POST /execute` | `{id}`，执行已确认的预览，返回任务 |
 | `GET /recognitions` | 最近的识别工作区，无记录时返回 `null` |
 | `POST /recognitions` | `{paths,id?}`，创建异步识别任务；提供 `id` 时补充现有工作区并保留修正 |
@@ -45,7 +45,7 @@
 | `POST /runs/{id}/retry` | 重试失败、取消或中断的整理 |
 | `POST /runs/{id}/undo` | 整批撤销；撤销中断后再次调用以继续 |
 
-扫描文件结构含 `path`、`size`、`mtime`、`metadata`、`season`、`episodes` 和 `probe`。metadata 是规则直接提取的原始结果，季集映射可由用户另行修正。`mtime` 为纳秒时间戳字符串，避免 JavaScript 数值精度损失；未知季号为 `-1`，预览前由用户选择的季补全。
+扫描文件结构含 `path`、`size`、`mtime`、`metadata`、`season` 和 `episodes`。metadata 是规则直接提取的原始结果，季集映射可由用户另行修正。`mtime` 为纳秒时间戳字符串，避免 JavaScript 数值精度损失；未知季号为 `-1`，预览前由用户选择的季补全。
 
 预览返回 `id`、`rows`、`required`、`issues`。仅无阻塞问题的预览可执行；需要跳过冲突文件时，去掉对应文件后重新请求预览。前端不提交文件操作指令。
 

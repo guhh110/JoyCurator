@@ -36,13 +36,19 @@ func (a *Service) Execute(id string) (Run, error) {
 	if s.Version != p.Version {
 		return Run{}, errors.New("设置已更新，请重新预览")
 	}
+	if p.RecognitionID != "" {
+		revision, revisionErr := a.revision(p.RecognitionID)
+		if revisionErr != nil || revision != p.Revision {
+			return Run{}, errors.New("识别结果已修改，请重新预览")
+		}
+	}
 	if err = a.plans.ValidateOps(p.Ops); err != nil {
 		return Run{}, err
 	}
 	if err = a.validateSkipped(p.Mappings, p.Ops); err != nil {
 		return Run{}, err
 	}
-	r := Run{ID: model.Key(), Title: p.Title, Mode: p.Mode, State: "running", Created: time.Now().Format(time.RFC3339), Ops: append([]model.Work(nil), p.Ops...), Total: len(p.Ops), Purpose: p.Purpose, Mappings: p.Mappings}
+	r := Run{ID: model.Key(), Title: p.Title, Mode: p.Mode, State: "running", Created: time.Now().Format(time.RFC3339), Ops: append([]model.Work(nil), p.Ops...), Total: len(p.Ops), Purpose: p.Purpose, Mappings: p.Mappings, Version: p.Version, RecognitionID: p.RecognitionID}
 	result, err := a.launch(r)
 	if err == nil {
 		a.plans.Remove(id)
@@ -64,6 +70,23 @@ func (a *Service) Resume(id string, undo bool) (Run, error) {
 	}
 	if !undo && (r.State == "completed" || r.Undo) {
 		return r, errors.New("此记录无需重试；撤销中断后请继续撤销")
+	}
+	if r.Purpose == "organize" {
+		s, settingsErr := a.settings.Load()
+		if settingsErr != nil {
+			return r, settingsErr
+		}
+		for _, op := range r.Ops {
+			if undo && (op.Status == "preparing" || op.Status == "staged" || op.Status == "published" || op.Status == "cleanup" || op.Status == "undoing" || op.Status == "manual_review") {
+				return r, errors.New("存在状态不明的整理操作，请先人工核对，不能自动撤销")
+			}
+			if !withinMedia(s.TargetRoot, op.Target) || (op.Source != "" && !withinMedia(s.SourceRoot, op.Source)) {
+				return r, errors.New("整理路径已超出当前媒体目录")
+			}
+			if !undo && op.Source != "" && op.Status == "pending" && !a.sources.SourceAllowed(op.Source, s) {
+				return r, errors.New("来源已变化，请重新添加")
+			}
+		}
 	}
 	if !undo && r.Purpose == "scrape" {
 		settings, e := a.settings.Load()
@@ -181,6 +204,20 @@ func (a *Service) work(ctx context.Context, cancel context.CancelFunc, r Run) {
 			i = len(r.Ops) - 1 - step
 		}
 		op := &r.Ops[i]
+		if r.Purpose == "organize" && (op.Kind == "video" || op.Kind == "subtitle") &&
+			(op.Status == "preparing" || op.Status == "staged" || op.Status == "published" || op.Status == "cleanup" || op.Status == "undoing" || op.Status == "manual_review") {
+			op.Status = "manual_review"
+			op.Error = errManualReview.Error()
+			failures = append(failures, filepath.Base(op.Target)+"："+op.Error)
+			if op.Kind == "video" {
+				blocked[op.Owner] = true
+			}
+			if saveErr := a.store.SaveRun(r); saveErr != nil {
+				failures = append(failures, saveErr.Error())
+				break
+			}
+			continue
+		}
 		if !r.Undo && blocked[op.Owner] {
 			op.Error = "视频未完成，本项待重试"
 			if err = a.store.SaveRun(r); err != nil {
@@ -206,6 +243,9 @@ func (a *Service) work(ctx context.Context, cancel context.CancelFunc, r Run) {
 		}
 		if err != nil {
 			op.Error = err.Error()
+			if r.Purpose == "organize" && (op.Kind == "video" || op.Kind == "subtitle") && op.Status != "pending" && op.Status != "completed" {
+				op.Status = "manual_review"
+			}
 			failures = append(failures, filepath.Base(op.Target)+"："+err.Error())
 			if op.Kind == "video" {
 				blocked[op.Owner] = true

@@ -102,7 +102,13 @@ func (a *Service) runBatch(ctx context.Context, cancel context.CancelFunc, batch
 			}
 		}
 		if err == nil {
-			err = a.plans.ValidateOps(run.Ops)
+			pending := make([]model.Work, 0, len(run.Ops))
+			for _, op := range run.Ops {
+				if op.Status == "pending" {
+					pending = append(pending, op)
+				}
+			}
+			err = a.plans.ValidateOps(pending)
 		}
 		if err == nil {
 			err = a.validateSkipped(run.Mappings, run.Ops)

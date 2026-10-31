@@ -61,7 +61,7 @@ func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
 	workspace := NewWorkspace(store, config, factory, recognize, WorkspaceFiles{Access: access, SourceAccess: files}, coordinator)
 	var organize *organizer.Service
 	match := matching.New(config, factory)
-	planner = planning.New(planning.Dependencies{Settings: config, Access: access, Sources: files, Recognition: recognize, Matching: match, Workspaces: workspace, Ownership: store, Verifier: &organizer.Engine{FS: access}, Submit: func(id string, batch bool) (any, error) {
+	planner = planning.New(planning.Dependencies{Settings: config, Access: access, Sources: files, Workspaces: workspace, Ownership: store, Verifier: &organizer.Engine{FS: access}, Submit: func(id string, batch bool) (any, error) {
 		if batch {
 			return organize.ExecuteBatch(id)
 		}

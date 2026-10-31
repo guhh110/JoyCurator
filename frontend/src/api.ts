@@ -6,7 +6,6 @@ export interface MediaFile {
   mtime: string
   season: number
   episodes: number[]
-  probe: { resolution: string; codec: string; warning?: string }
 }
 export interface Entry {
   tmdbId: number

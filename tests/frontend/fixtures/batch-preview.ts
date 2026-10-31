@@ -7,8 +7,7 @@ import { provideRuntime } from '../../../frontend/src/app/runtime'
 import { createQueryClient } from '../../../frontend/src/app/query'
 import '../../../frontend/src/style.css'
 
-const files = [1, 2, 3].map(number => ({ path: `/media/inbox/Show/${number}.mp4`, size: 1024, mtime: '1', group: 'tv:1', season: 1, episodes: [number],
-  probe: { resolution: '', codec: '' }, metadata: { title: '示例剧集', season: 1, episodes: [number], mediaType: 'tv', tmdbId: 1, year: 2024, releaseTag: null },
+const files = [1, 2, 3].map(number => ({ path: `/media/inbox/Show/${number}.mp4`, size: 1024, mtime: '1', group: 'tv:1', season: 1, episodes: [number], metadata: { title: '示例剧集', season: 1, episodes: [number], mediaType: 'tv', tmdbId: 1, year: 2024, releaseTag: null },
   entry: { title: '示例剧集', originalTitle: '', tmdbId: 1, type: 'tv', year: 2024, overview: '', posterPath: '' }, candidates: [], state: 'ready', reason: '', selected: true, removed: false }))
 const scenario = new URLSearchParams(location.search)
 let failedPreview = false

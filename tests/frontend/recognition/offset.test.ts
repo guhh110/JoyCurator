@@ -12,7 +12,7 @@ vi.mock('../../../frontend/src/components/ui/Select.vue', () => ({ default: { pr
 const seasons: Season[] = [{ number: 0, name: '特别篇', count: 12 }, { number: 1, name: '第一季', count: 20 }, { number: 2, name: '第二季', count: 12 }]
 const episodes = (numbers = Array.from({ length: 20 }, (_, i) => i + 1)): Episode[] => numbers.map(number => ({ number, season: 1, name: '', airDate: '' }))
 function file(path = '/source/a/01.mkv', original = [1], current = original): RecognitionItem {
-  return { path, group: 'tv:1', state: 'review', size: 32, mtime: '1', season: 1, episodes: [...current], probe: { resolution: '', codec: '' },
+  return { path, group: 'tv:1', state: 'review', size: 32, mtime: '1', season: 1, episodes: [...current],
     metadata: { title: 'Show', year: null, mediaType: 'tv', tmdbId: 1, season: 1, episodes: [...original], releaseTag: null },
     entry: { tmdbId: 1, type: 'tv', title: 'Show', originalTitle: '', year: 2024, overview: '', posterPath: '' },
     candidates: [], selected: false, removed: false, reason: '' }

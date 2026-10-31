@@ -19,7 +19,7 @@ flowchart LR
 
 1. **路径提取**：从文本提取 ID、标题、年份、季集等；不读取文件，不访问 TMDB。代码在 `internal/recognition`。
 2. **作品识别**：消费提取结果，查询 TMDB、判断候选、校验季集、形成可整理或待处理状态。代码在 `internal/matching/`。
-3. **整理执行**：根据已确认的作品与映射生成预览，检查冲突，执行复制／移动／硬链接、字幕和刮削产物。代码在 `planning/preview.go`、`organizer/jobs.go`、`organizer/batch.go` 和 `organizer`。
+3. **整理与刮削**：整理预览直接使用工作区快照，检查源文件与目标冲突，只执行视频／字幕复制、移动或硬链接；刮削另行查询 TMDB 并生成 NFO／图片。代码在 `planning/preview.go`、`organizer/jobs.go`、`organizer/batch.go`、`organizer/fast.go` 和 `organizer`。
 
 这三个环节的边界需要保持。比如“某个标题对应哪个 TMDB 作品”属于作品识别，“S02E03 提取为季 2、集 3”属于路径提取，“最终保存在哪个目录”属于命名与整理。
 
@@ -43,7 +43,7 @@ backend/
     infra/tmdb/               TMDB 请求、响应转换和缓存端口
     infra/sqlite/             SQL、事务和持久化
     infra/fsops/              授权文件操作
-    infra/scanner/            文件遍历和媒体探测
+    infra/scanner/            文件遍历
     rules/metadata/trace/     命名、NFO 与事件等现有工具能力
     auth/webui/               认证与前端资源接入
 frontend/src/
@@ -286,7 +286,7 @@ AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognition
   → 批量修正：目标季度与集数偏移输入框（原始识别基准，不累加）；当前映射与修正后编号旁显示相对原始识别的偏移量徽章
   → 独立勾选、预览并确认后保存，由服务端校验；不自动执行整理
 预览 → POST /batches/preview → buildPreview（按作品）
-  → 校验源路径和文件身份、读取设置与 TMDB 元数据
+  → 校验源路径和工作区版本、读取已确认的作品详情与季集快照（不请求 TMDB）
   → rules.Target / ShowRoot 渲染分类与命名
   → 整理仅生成视频／字幕操作并登记目标视频映射；独立刮削预览生成 NFO／图片操作
   → 校验冲突、磁盘需求等 → storePlan
@@ -294,9 +294,9 @@ AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognition
   → organizer.Engine.Run，逐步持久化操作状态
 ```
 
-`buildPreview` 是手动与批量共用的规划入口。前端只提交作品、映射和模式，不能提交可信文件操作指令。预览在内存中短期保存（15 分钟），包含配置版本及服务端生成的 ops；服务重启后须重新预览。
+`buildPreview` 是单项与批量共用的规划入口。前端提交工作区 ID、修订号、文件路径和模式，不能提交作品详情或可信文件操作指令。预览在内存中短期保存（15 分钟），包含配置版本及服务端生成的 ops；服务重启后须重新预览。
 
-`organizer` 将整理的视频／字幕和独立刮削的 NFO／图片分开记录，通过 `fsops` 完成受限目录内的读写、暂存与发布。操作记录保留身份、哈希、暂存路径及进度，供恢复和撤销使用；不要绕开这层直接移动媒体。覆盖没有备份，撤销只能删除仍属本次操作的产物，不能恢复旧内容。
+`organizer` 将整理的视频／字幕和独立刮削的 NFO／图片分开记录，通过 `fsops` 完成受限目录内的读写、暂存与发布。视频／字幕采用无全文件哈希的快速路径；异常中断若状态不明，保留现场待人工确认。整理撤销只按路径处理，不核对内容或身份，可能误移／误删同路径外部文件；刮削仍保持内容与身份校验。覆盖没有备份，不能恢复旧内容。
 
 ## 10. 多作品批次与执行互斥
 

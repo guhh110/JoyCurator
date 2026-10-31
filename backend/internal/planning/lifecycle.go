@@ -29,17 +29,17 @@ func (a *Service) Edit(ctx context.Context, id string, input PreviewRequest) (*P
 	if len(old.Groups) > 0 {
 		return nil, errors.New("批量计划请修改工作区后重新预览")
 	}
-	plan, err := a.buildPreview(ctx, input)
+	plan, err := a.Preview(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.plans[id] != old || time.Now().After(old.Expires) {
+		delete(a.plans, plan.ID)
 		return nil, errors.New("预览已变化，请重新预览")
 	}
 	delete(a.plans, id)
-	a.storePlan(plan)
 	return plan, nil
 }
 

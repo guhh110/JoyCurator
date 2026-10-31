@@ -23,7 +23,3 @@ type Ownership interface {
 type Verifier interface {
 	Check(context.Context, string, string, string) error
 }
-
-type Media interface {
-	Prepare(context.Context, model.Settings, string, int) (*matching.Resolved, error)
-}

@@ -184,7 +184,7 @@ const {
                   </p>
                   <p class="rules-help">
                     目录模板相对于目标目录，<code>{category}</code>
-                    由右侧分类规则生成。
+                    由右侧分类规则生成。清晰度和编码仅从源文件名标签提取，不检测实际媒体流；自定义模板引用缺失字段时预览会提示。
                   </p>
                 </section>
                 <section

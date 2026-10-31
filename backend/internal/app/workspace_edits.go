@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"slices"
-	"strings"
 
 	"joycurator/internal/matching"
 	"joycurator/internal/organizer"
@@ -144,15 +144,9 @@ func (a *WorkspaceService) FinishRun(run organizer.Run) {
 func sourceOwner(file string, roots []string) string {
 	owner := ""
 	for _, root := range roots {
-		base := strings.TrimRight(root, "/")
-		if base == "" {
-			base = "/"
-		}
-		prefix := base + "/"
-		if base == "/" {
-			prefix = "/"
-		}
-		if (file == base || strings.HasPrefix(file, prefix)) && len(base) > len(owner) {
+		base := filepath.Clean(root)
+		rel, err := filepath.Rel(base, file)
+		if err == nil && (rel == "." || filepath.IsLocal(rel)) && len(base) > len(owner) {
 			owner = base
 		}
 	}
@@ -178,16 +172,9 @@ func (a *WorkspaceService) RemoveSource(id, path string, revision int) (matching
 	if task.Revision != revision {
 		return task, errors.New("识别结果已更新，请重新加载")
 	}
-	target := strings.TrimRight(path, "/")
-	if target == "" {
-		target = "/"
-	}
+	target := filepath.Clean(path)
 	index := slices.IndexFunc(task.Paths, func(p string) bool {
-		base := strings.TrimRight(p, "/")
-		if base == "" {
-			base = "/"
-		}
-		return base == target
+		return filepath.Clean(p) == target
 	})
 	if index < 0 {
 		return task, errors.New("来源不在当前识别任务中")

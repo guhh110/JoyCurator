@@ -48,6 +48,28 @@ func TestTemplatesAndCategories(t *testing.T) {
 	}
 }
 
+func TestFilenameQualityLabels(t *testing.T) {
+	s := model.DefaultSettings()
+	s.TargetRoot = "/target"
+	f := model.Source{Entry: &model.Entry{Type: "movie", TMDBID: 7, Title: "Film", Year: 2024}}
+	for _, tc := range []struct{ name, expected string }{
+		{"Film.4K.x265.mkv", "2160p.mkv"},
+		{"Film.FHD.h264.mkv", "1080p.mkv"},
+		{"Film.mkv", "Film (2024).mkv"},
+	} {
+		f.Path = "/source/" + tc.name
+		path, err := Target(f, s)
+		if err != nil || !strings.HasSuffix(path, tc.expected) {
+			t.Fatalf("%s: %s %v", tc.name, path, err)
+		}
+	}
+	s.Rules.MovieFile = "{title} - {codec}.{ext}"
+	f.Path = "/source/Film.mkv"
+	if _, err := Target(f, s); err == nil {
+		t.Fatal("missing custom codec accepted")
+	}
+}
+
 func TestNestedCategoryPaths(t *testing.T) {
 	settings := model.DefaultSettings()
 	settings.TargetRoot = "/target"

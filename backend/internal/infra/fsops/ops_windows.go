@@ -130,6 +130,12 @@ func (f *FS) Publish(source, target string) error {
 func (f *FS) Replace(source, target, hold, identity string, size, mtime int64, stagedIdentity string) error {
 	return errors.New("Windows 暂不支持替换媒体文件")
 }
+func (f *FS) RenameOwned(source, target, identity string) error {
+	return errors.New("Windows 暂不支持文件整理")
+}
+func (f *FS) OverwriteFast(source, target, hold, identity string, size, mtime int64, stagedIdentity string) error {
+	return errors.New("Windows 暂不支持替换媒体文件")
+}
 
 func checkTargetDir(dir *os.File) (int64, uint64, error) {
 	h := windows.Handle(dir.Fd())

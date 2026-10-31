@@ -14,7 +14,6 @@ function file(
     mtime: '1234567890123456789',
     season: -1,
     episodes: [],
-    probe: { resolution: '', codec: '' },
     metadata: {
       releaseTag: null,
       title: '片名',

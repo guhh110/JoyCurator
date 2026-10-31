@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"joycurator/internal/model"
 	"joycurator/internal/planning"
 )
 
@@ -44,7 +43,7 @@ func TestSourceBoundaryAndNestedTargetExclusion(t *testing.T) {
 			t.Fatal("source boundary bypassed", path)
 		}
 	}
-	if _, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{{Path: outside}}}); err == nil {
+	if _, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{RecognitionID: "missing", Revision: 1, Paths: []string{outside}, Mode: "copy", DuplicatePolicy: "error"}); err == nil {
 		t.Fatal("preview accepted file outside source")
 	}
 	s, _ := a.dependencies.Config.Load()
@@ -68,7 +67,9 @@ func TestSourceBoundaryAndNestedTargetExclusion(t *testing.T) {
 		t.Fatal("identical source/target accepted")
 	}
 	alias := filepath.Join(s.SourceRoot, "target-alias")
-	if runtime.GOOS == "windows" { t.Skip("Windows symlink privilege unavailable") }
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows symlink privilege unavailable")
+	}
 	if err := os.Symlink(s.SourceRoot, alias); err != nil {
 		t.Fatal(err)
 	}

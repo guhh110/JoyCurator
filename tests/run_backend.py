@@ -39,9 +39,11 @@ def main():
         'GOCACHE': ROOT / 'local/cache/go-build',
         'GOTMPDIR': temporary,
         'TMPDIR': temporary,
+        'TMP': temporary,
+        'TEMP': temporary,
     }
     for name, path in defaults.items():
-        environment.setdefault(name, str(path))
+        environment[name] = str(path)
     # macOS commonly aliases /var to /private/var. Tests compare configured
     # directories with canonical filesystem paths, so use one spelling here.
     environment['TMPDIR'] = str(Path(environment['TMPDIR']).resolve())

@@ -54,7 +54,7 @@ func (a *FileService) Scan(ctx context.Context, paths []string) ([]ScannedFile, 
 		if extracted.Metadata.Season != nil {
 			season = *extracted.Metadata.Season
 		}
-		items = append(items, ScannedFile{File: model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: season, Episodes: extracted.Metadata.Episodes, Probe: scanner.Probe(ctx, a.access, path)}, Metadata: extracted.Metadata})
+		items = append(items, ScannedFile{File: model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: season, Episodes: extracted.Metadata.Episodes}, Metadata: extracted.Metadata})
 		return nil
 	})
 	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })

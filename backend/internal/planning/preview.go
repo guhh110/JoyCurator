@@ -3,61 +3,93 @@ package planning
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"joycurator/internal/infra/fsops"
-	"joycurator/internal/infra/scanner"
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
 	"joycurator/internal/rules"
 )
 
 func (a *Service) Preview(ctx context.Context, in PreviewRequest) (*Plan, error) {
-	plan, err := a.buildPreview(ctx, in)
+	task, err := a.workspaces.Read(in.RecognitionID)
 	if err != nil {
 		return nil, err
 	}
+	if task.State == "running" || task.Revision != in.Revision {
+		return nil, errors.New("识别结果已变化，请保存并重新预览")
+	}
+	if len(in.Paths) == 0 || len(in.Paths) > 1000 {
+		return nil, errors.New("每次整理 1–1000 个文件")
+	}
+	selected := make(map[string]bool, len(in.Paths))
+	for _, path := range in.Paths {
+		if selected[path] {
+			return nil, errors.New("文件重复")
+		}
+		selected[path] = true
+	}
+	items := make([]matching.Item, 0, len(in.Paths))
+	for _, item := range task.Items {
+		if !selected[item.Path] {
+			continue
+		}
+		if item.Removed || item.State != "ready" || item.Entry == nil {
+			return nil, errors.New("选择中包含待确认文件")
+		}
+		items = append(items, item)
+		delete(selected, item.Path)
+	}
+	if len(selected) != 0 {
+		return nil, errors.New("选择包含不属于此工作区的文件")
+	}
+	for _, item := range items[1:] {
+		if matching.EntryGroup(*item.Entry) != matching.EntryGroup(*items[0].Entry) {
+			return nil, errors.New("单项预览只能选择一部作品")
+		}
+	}
+	plan, err := a.buildPreview(ctx, items, in.Mode, in.DuplicatePolicy)
+	if err != nil {
+		return nil, err
+	}
+	plan.RecognitionID, plan.Revision = task.ID, task.Revision
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.storePlan(plan)
 	return plan, nil
 }
-func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, error) {
-	if len(in.Files) == 0 || len(in.Files) > 1000 {
+func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode, policy string) (*Plan, error) {
+	if len(items) == 0 || len(items) > 1000 {
 		return nil, errors.New("每次整理 1–1000 个文件")
 	}
-	if in.Mode != "copy" && in.Mode != "move" && in.Mode != "hardlink" {
+	if mode != "copy" && mode != "move" && mode != "hardlink" {
 		return nil, errors.New("整理方式无效")
 	}
-	if in.DuplicatePolicy != "error" && in.DuplicatePolicy != "skip" && in.DuplicatePolicy != "overwrite" {
+	if policy != "error" && policy != "skip" && policy != "overwrite" {
 		return nil, errors.New("重复处理方式无效")
 	}
-	if in.Type != "movie" && in.Type != "tv" || in.TMDBID <= 0 {
+	entry := *items[0].Entry
+	if entry.Type != "movie" && entry.Type != "tv" || entry.TMDBID <= 0 {
 		return nil, errors.New("请先选择作品")
 	}
 	s, err := a.settings.Load()
 	if err != nil {
 		return nil, err
 	}
-	for _, file := range in.Files {
-		if !a.sources.SourceAllowed(file.Path, s) {
+	for _, item := range items {
+		if item.State != "ready" || item.Removed || item.Entry == nil || matching.EntryGroup(*item.Entry) != matching.EntryGroup(entry) || !a.sources.SourceAllowed(item.Path, s) {
 			return nil, errors.New("预览包含源目录之外或目标目录内的文件，请重新添加")
 		}
 	}
-	resolved, err := a.media.Prepare(ctx, s, in.Type, in.TMDBID)
-	if err != nil {
-		return nil, err
-	}
-	entry := resolved.Entry
-	plan := &Plan{ID: model.Key(), Title: entry.Title, Type: in.Type, TMDBID: in.TMDBID, Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(15 * time.Minute), Purpose: "organize"}
+	plan := &Plan{ID: model.Key(), Title: entry.Title, Type: entry.Type, TMDBID: entry.TMDBID, Mode: mode, DuplicatePolicy: policy, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(15 * time.Minute), Purpose: "organize"}
 	seen := map[string]model.Operation{}
 	free := map[uint64]int64{}
 	needed := map[uint64]int64{}
 	files := map[string]bool{}
+	subtitles := map[string][]os.DirEntry{}
 	add := func(row *Row, op model.Operation) {
 		issue := func(msg string) { row.Issues = append(row.Issues, msg); plan.Issues = append(plan.Issues, msg) }
 		targetKey := strings.ToLower(op.Target)
@@ -71,7 +103,7 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 				issue("目标不是普通文件，不能跳过或覆盖：" + op.Target)
 				return
 			}
-			switch in.DuplicatePolicy {
+			switch policy {
 			case "skip":
 				if op.Kind == "video" {
 					row.Action = "skip"
@@ -111,11 +143,11 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 				return
 			}
 			same := a.access.Device(info) == dev
-			if in.Mode == "hardlink" && !same {
+			if mode == "hardlink" && !same {
 				issue("硬链接不能跨磁盘：" + filepath.Base(op.Source))
 				return
 			}
-			if in.Mode == "hardlink" || in.Mode == "move" && same {
+			if mode == "hardlink" || mode == "move" && same {
 				need = 0
 			}
 		}
@@ -127,7 +159,11 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 			row.Artifacts = append(row.Artifacts, filepath.Base(op.Target))
 		}
 	}
-	for _, f := range in.Files {
+	for _, item := range items {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		f := item.File
 		if files[f.Path] {
 			continue
 		}
@@ -140,27 +176,14 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 			plan.Rows = append(plan.Rows, row)
 			continue
 		}
-		if in.Type == "tv" {
+		if entry.Type == "tv" {
 			if !matching.EpisodeInputValid(f.Season, f.Episodes) {
 				fail("季集无效：" + filepath.Base(f.Path))
 				plan.Rows = append(plan.Rows, row)
 				continue
 			}
-			_, checks, err := resolved.CheckEpisodes(ctx, f.Season, f.Episodes)
-			if err != nil {
-				return nil, err
-			}
-			for _, check := range checks {
-				if !check.NonNegative || !check.Exists || check.Duplicate {
-					fail(fmt.Sprintf("第 %d 季没有有效的第 %d 集", f.Season, check.Number))
-				}
-			}
 		}
-		extracted, parseErr := a.extract.Parse(ctx, f.Path, s.SourceRoot)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		src := model.Source{Path: f.Path, Metadata: extracted.Metadata, Probe: scanner.Probe(ctx, a.access, f.Path), Entry: &entry, Season: f.Season, Episodes: f.Episodes}
+		src := model.Source{Path: f.Path, Metadata: item.Metadata, Entry: item.Entry, Season: f.Season, Episodes: f.Episodes}
 		target, e := rules.Target(src, s)
 		if e != nil {
 			fail(e.Error())
@@ -168,8 +191,8 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 			continue
 		}
 		row.Target = target
-		mapping := model.MediaMapping{Path: target, Source: f.Path, Type: in.Type, TMDBID: in.TMDBID, Season: f.Season, Episodes: f.Episodes, State: "pending"}
-		add(&row, model.Operation{Kind: "video", Mode: in.Mode, Source: f.Path, Target: target, Size: f.Size, MTime: f.MTime})
+		mapping := model.MediaMapping{Path: target, Source: f.Path, Type: entry.Type, TMDBID: entry.TMDBID, Season: f.Season, Episodes: f.Episodes, State: "pending"}
+		add(&row, model.Operation{Kind: "video", Mode: mode, Source: f.Path, Target: target, Size: f.Size, MTime: f.MTime})
 		if row.Action == "skip" {
 			if existing, err := a.access.Stat(target); err == nil {
 				mapping.Identity, mapping.Size, mapping.MTime = fsops.Identity(existing), existing.Size(), existing.ModTime().UnixNano()
@@ -180,20 +203,25 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 		}
 		plan.Mappings = append(plan.Mappings, mapping)
 		// Associate only subtitles with the exact video stem plus optional language/flags.
-		root, rel, e := a.access.Root(filepath.Dir(f.Path))
-		if e != nil {
-			return nil, e
-		}
-		entries, e := root.Open(rel)
-		if e != nil {
+		dir := filepath.Dir(f.Path)
+		children, ok := subtitles[dir]
+		if !ok {
+			root, rel, e := a.access.Root(dir)
+			if e != nil {
+				return nil, e
+			}
+			entries, openErr := root.Open(rel)
+			if openErr != nil {
+				root.Close()
+				return nil, openErr
+			}
+			children, e = entries.ReadDir(-1)
+			entries.Close()
 			root.Close()
-			return nil, e
-		}
-		children, e := entries.ReadDir(-1)
-		entries.Close()
-		root.Close()
-		if e != nil {
-			return nil, e
+			if e != nil {
+				return nil, e
+			}
+			subtitles[dir] = children
 		}
 		stem := strings.TrimSuffix(filepath.Base(f.Path), filepath.Ext(f.Path))
 		targetStem := strings.TrimSuffix(target, filepath.Ext(target))
@@ -221,7 +249,7 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 					continue
 				}
 			}
-			add(&row, model.Operation{Kind: "subtitle", Mode: in.Mode, Source: path, Target: targetStem + strings.TrimPrefix(base, stem) + ext, Size: stat.Size(), MTime: stat.ModTime().UnixNano()})
+			add(&row, model.Operation{Kind: "subtitle", Mode: mode, Source: path, Target: targetStem + strings.TrimPrefix(base, stem) + ext, Size: stat.Size(), MTime: stat.ModTime().UnixNano()})
 		}
 		plan.Rows = append(plan.Rows, row)
 	}

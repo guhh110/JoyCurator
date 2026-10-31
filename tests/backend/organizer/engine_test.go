@@ -2,10 +2,10 @@ package organizer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"joycurator/internal/infra/fsops"
@@ -14,6 +14,9 @@ import (
 
 func fixture(t *testing.T, mode string) (*Engine, *model.Operation, []byte) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows execution unsupported")
+	}
 	dir := t.TempDir()
 	source := filepath.Join(dir, "source.mkv")
 	body := []byte("media bytes for verification")
@@ -89,34 +92,29 @@ func TestNoOverwriteAndExternalChange(t *testing.T) {
 	if err := os.WriteFile(op.Target, []byte("external change"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Undo(context.Background(), op, func() error { return nil }); err == nil {
-		t.Fatal("undo removed modified file")
+	if err := e.Undo(context.Background(), op, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(op.Target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("path-level undo did not remove replacement")
 	}
 }
-func TestRecoveryAfterPublishBeforeJournal(t *testing.T) {
+func TestInterruptedPublicationNeedsManualReview(t *testing.T) {
 	e, op, _ := fixture(t, "move")
 	crash := errors.New("simulated crash")
-	var durable []byte
 	if err := e.Run(context.Background(), op, func() error {
 		if op.Status == "published" {
 			return crash
 		}
-		durable, _ = json.Marshal(op)
 		return nil
 	}); !errors.Is(err, crash) {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(durable, op); err != nil {
-		t.Fatal(err)
-	}
-	if err := e.Run(context.Background(), op, func() error { return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if op.Status != "completed" {
-		t.Fatal(op.Status)
+	if err := e.Run(context.Background(), op, func() error { return nil }); !errors.Is(err, errManualReview) {
+		t.Fatal("unexpected recovery", err)
 	}
 	if _, err := os.Stat(op.Source); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("source not removed after recovery")
+		t.Fatal("direct rename did not remove source")
 	}
 }
 func TestAuthorizedRoots(t *testing.T) {
@@ -131,6 +129,27 @@ func TestAuthorizedRoots(t *testing.T) {
 	}
 	if _, err := os.Stat(outside); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("wrote outside root")
+	}
+}
+
+func TestFastPathRejectsSymlinkTarget(t *testing.T) {
+	e, op, _ := fixture(t, "copy")
+	if err := os.MkdirAll(filepath.Dir(op.Target), 0755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(filepath.Dir(op.Source), "other.mkv")
+	if err := os.WriteFile(outside, []byte("unchanged"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, op.Target); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Run(context.Background(), op, func() error { return nil }); err == nil {
+		t.Fatal("symlink target accepted")
+	}
+	data, err := os.ReadFile(outside)
+	if err != nil || string(data) != "unchanged" {
+		t.Fatal("symlink destination changed", err)
 	}
 }
 
@@ -149,26 +168,21 @@ func stopAfterPublish(t *testing.T, e *Engine, op *model.Operation) {
 	}
 }
 
-func TestSameDeviceMoveUsesLinkStaging(t *testing.T) {
+func TestSameDeviceMoveRenames(t *testing.T) {
 	e, op, _ := fixture(t, "move")
 	stopAfterPublish(t, e, op)
-	source, err := os.Stat(op.Source)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(op.Source); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("same-device move retained source")
 	}
-	target, err := os.Stat(op.Target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !os.SameFile(source, target) {
-		t.Fatal("same-device move did not stage through a link")
+	if op.Temp != "" {
+		t.Fatal("same-device move created a temporary copy")
 	}
 }
 
 func TestCrossDeviceMoveCopiesBeforeRemovingSource(t *testing.T) {
 	e, op, body := fixture(t, "move")
 	// Pretend the target lives on another filesystem.
-	e.FS.DeviceOf = func(os.FileInfo) uint64 { return 1 }
+	e.FS.DeviceOf = func(os.FileInfo) uint64 { return ^uint64(0) }
 	stopAfterPublish(t, e, op)
 	source, err := os.Stat(op.Source)
 	if err != nil {
@@ -181,14 +195,80 @@ func TestCrossDeviceMoveCopiesBeforeRemovingSource(t *testing.T) {
 	if os.SameFile(source, target) {
 		t.Fatal("cross-device move staged through a link instead of copying")
 	}
-	if err = e.Run(context.Background(), op, func() error { return nil }); err != nil {
-		t.Fatal(err)
+	if err = e.Run(context.Background(), op, func() error { return nil }); !errors.Is(err, errManualReview) {
+		t.Fatal("unexpected automatic recovery", err)
 	}
-	if _, err = os.Stat(op.Source); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("source kept after cross-device move")
+	if _, err = os.Stat(op.Source); err != nil {
+		t.Fatal("source removed before publication was journaled", err)
 	}
 	got, err := os.ReadFile(op.Target)
 	if err != nil || string(got) != string(body) {
 		t.Fatal("target content wrong", err)
+	}
+}
+
+func TestCrossDeviceMoveAndPathUndo(t *testing.T) {
+	e, op, body := fixture(t, "move")
+	e.FS.DeviceOf = func(os.FileInfo) uint64 { return ^uint64(0) }
+	save := func() error { return nil }
+	if err := e.Run(context.Background(), op, save); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(op.Source); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("source remained after cross-device move")
+	}
+	if err := e.Undo(context.Background(), op, save); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(op.Source)
+	if err != nil || string(got) != string(body) {
+		t.Fatal("cross-device undo did not restore source", err)
+	}
+	if _, err := os.Stat(op.Target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("cross-device undo retained target")
+	}
+}
+
+func TestOverwriteAndCancel(t *testing.T) {
+	e, op, body := fixture(t, "copy")
+	if err := os.MkdirAll(filepath.Dir(op.Target), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(op.Target, []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := os.Stat(op.Target)
+	op.Replace, op.ReplaceIdentity, op.ReplaceSize, op.ReplaceMTime = true, fsops.Identity(old), old.Size(), old.ModTime().UnixNano()
+	if err := e.Run(context.Background(), op, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(op.Target)
+	if err != nil || string(got) != string(body) {
+		t.Fatal("overwrite failed", err)
+	}
+	if op.ReplaceHold != "" {
+		t.Fatal("old file hold not cleaned")
+	}
+	if err := e.Undo(context.Background(), op, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(op.Target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("old file unexpectedly restored")
+	}
+
+	e, op, _ = fixture(t, "copy")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err = e.Run(ctx, op, func() error {
+		if op.Status == "preparing" {
+			cancel()
+		}
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) || op.Status != "pending" {
+		t.Fatal("cancel did not clean owned temporary file", err, op.Status)
+	}
+	if _, err := os.Stat(op.Target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("cancel published target")
 	}
 }

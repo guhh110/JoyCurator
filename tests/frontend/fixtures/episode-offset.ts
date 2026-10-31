@@ -11,8 +11,7 @@ const source = '/media/source/inbox/4k'
 const posterPath = '/iDdFfZB5sexPhDOvacEhWWvgxel.jpg'
 const numbers = new URLSearchParams(location.search).has('many') ? Array.from({ length: 103 }, (_, i) => i + 1) : [1, 2, 4]
 const items: RecognitionItem[] = numbers.map(number => ({
-  path: `${source}/${number}.mp4`, size: 1024, mtime: '1', group: 'tv:1', season: 1, episodes: [number + 9],
-  probe: { resolution: '', codec: '' }, metadata: { title: '示例剧集', year: 2024, season: 1, episodes: [number], mediaType: 'tv', tmdbId: 1, releaseTag: null },
+  path: `${source}/${number}.mp4`, size: 1024, mtime: '1', group: 'tv:1', season: 1, episodes: [number + 9], metadata: { title: '示例剧集', year: 2024, season: 1, episodes: [number], mediaType: 'tv', tmdbId: 1, releaseTag: null },
   entry: { tmdbId: 1, type: 'tv', title: '老友记', originalTitle: '', year: 1994, overview: '', posterPath },
   candidates: [], state: 'ready', reason: '', selected: false, removed: false,
 }))

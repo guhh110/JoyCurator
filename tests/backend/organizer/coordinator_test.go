@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -186,7 +187,24 @@ func awaitIdle(t *testing.T, s *Service) {
 	t.Fatal("execution remained busy")
 }
 
+func TestUnknownFileStateIsNotRetried(t *testing.T) {
+	s, store, _ := executionFixture(t, nil)
+	r := Run{ID: "uncertain", Purpose: "organize", State: "running", Ops: []model.Work{
+		{Operation: model.Operation{Kind: "video", Status: "published", Target: "unknown"}, Owner: "first"},
+		{Operation: model.Operation{Kind: "video", Status: "pending", Target: "safe"}, Owner: "second"},
+	}}
+	s.coordinator.wg.Add(1)
+	s.work(context.Background(), func() {}, r)
+	got, err := store.Run(r.ID)
+	if err != nil || got.State != "failed" || got.Ops[0].Status != "manual_review" || got.Ops[1].Status != "completed" {
+		t.Fatal("uncertain file was retried or safe file was blocked", got, err)
+	}
+}
+
 func TestExecutionCompetitionDoesNotWriteExtraRecord(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows execution unsupported")
+	}
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	s, store, _ := executionFixture(t, func(ctx context.Context, op *model.Operation, save func() error) error {
@@ -215,6 +233,9 @@ func TestExecutionCompetitionDoesNotWriteExtraRecord(t *testing.T) {
 }
 
 func TestBatchFailureContinuesAndIndependentRetryUndo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows execution unsupported")
+	}
 	calls := 0
 	s, store, _ := executionFixture(t, func(_ context.Context, op *model.Operation, save func() error) error {
 		calls++
@@ -258,6 +279,9 @@ func TestBatchFailureContinuesAndIndependentRetryUndo(t *testing.T) {
 }
 
 func TestBatchCancelStopsCurrentAndPending(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows execution unsupported")
+	}
 	entered := make(chan struct{})
 	var once sync.Once
 	s, store, _ := executionFixture(t, func(ctx context.Context, _ *model.Operation, _ func() error) error {
@@ -286,6 +310,9 @@ func TestBatchCancelStopsCurrentAndPending(t *testing.T) {
 }
 
 func TestQueueRemainsReservedBetweenWorks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows execution unsupported")
+	}
 	entered, release := make(chan struct{}), make(chan struct{})
 	checks := 0
 	s, _, plans := executionFixture(t, nil)
@@ -316,6 +343,9 @@ func TestQueueRemainsReservedBetweenWorks(t *testing.T) {
 }
 
 func TestCloseCancelsAndWaitsForWorkers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows execution unsupported")
+	}
 	entered, observed, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	s, store, _ := executionFixture(t, func(ctx context.Context, _ *model.Operation, _ func() error) error {

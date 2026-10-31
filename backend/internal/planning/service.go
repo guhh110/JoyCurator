@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"joycurator/internal/infra/fsops"
-	"joycurator/internal/recognition"
 )
 
 type Service struct {
@@ -14,8 +13,6 @@ type Service struct {
 	settings   Settings
 	access     *fsops.FS
 	sources    Sources
-	extract    *recognition.Service
-	media      Media
 	workspaces Workspaces
 	ownership  Ownership
 	verifier   Verifier
@@ -23,19 +20,17 @@ type Service struct {
 }
 
 type Dependencies struct {
-	Settings    Settings
-	Access      *fsops.FS
-	Sources     Sources
-	Recognition *recognition.Service
-	Matching    Media
-	Workspaces  Workspaces
-	Ownership   Ownership
-	Verifier    Verifier
-	Submit      func(string, bool) (any, error)
+	Settings   Settings
+	Access     *fsops.FS
+	Sources    Sources
+	Workspaces Workspaces
+	Ownership  Ownership
+	Verifier   Verifier
+	Submit     func(string, bool) (any, error)
 }
 
 func New(d Dependencies) *Service {
-	return &Service{plans: map[string]*Plan{}, settings: d.Settings, access: d.Access, sources: d.Sources, extract: d.Recognition, media: d.Matching, workspaces: d.Workspaces, ownership: d.Ownership, verifier: d.Verifier, submit: d.Submit}
+	return &Service{plans: map[string]*Plan{}, settings: d.Settings, access: d.Access, sources: d.Sources, workspaces: d.Workspaces, ownership: d.Ownership, verifier: d.Verifier, submit: d.Submit}
 }
 func (a *Service) Get(id string) *Plan {
 	a.mu.Lock()

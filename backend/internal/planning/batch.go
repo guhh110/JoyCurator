@@ -19,7 +19,7 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 	if task.State == "running" || task.Revision != in.Revision {
 		return nil, errors.New("识别结果已变化，请保存并重新预览")
 	}
-	requests := []PreviewRequest{}
+	requests := [][]matching.Item{}
 	indexes := map[string]int{}
 	count := 0
 	for _, item := range task.Items {
@@ -35,9 +35,9 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 		if !ok {
 			index = len(requests)
 			indexes[key] = index
-			requests = append(requests, PreviewRequest{Type: item.Entry.Type, TMDBID: item.Entry.TMDBID, Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy})
+			requests = append(requests, []matching.Item{})
 		}
-		requests[index].Files = append(requests[index].Files, item.File)
+		requests[index] = append(requests[index], item)
 	}
 	if count < 1 || count > 1000 {
 		return nil, errors.New("每次整理 1–1000 个视频")
@@ -45,7 +45,7 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 	plan := &Plan{ID: model.Key(), Title: fmt.Sprintf("自动整理 · %d 部作品", len(requests)), Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy, Rows: []Row{}, Issues: []string{}, Groups: []*Plan{}, Expires: time.Now().Add(15 * time.Minute), RecognitionID: task.ID, Revision: task.Revision}
 	targets := map[string]bool{}
 	for _, request := range requests {
-		group, err := a.buildPreview(ctx, request)
+		group, err := a.buildPreview(ctx, request, in.Mode, in.DuplicatePolicy)
 		if err != nil {
 			return nil, err
 		}

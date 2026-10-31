@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"joycurator/internal/matching"
 	"joycurator/internal/model"
 	"joycurator/internal/organizer"
 	"joycurator/internal/planning"
@@ -60,6 +61,28 @@ func mediaFile(t *testing.T, a *App, root, name string) model.File {
 	}
 	return files[0].File
 }
+func previewRequest(t *testing.T, a *App, kind string, id int, mode, policy string, files ...model.File) planning.PreviewRequest {
+	t.Helper()
+	entry := &model.Entry{Type: kind, TMDBID: id, Title: "测试作品", OriginalTitle: "测试作品", Year: 2024}
+	if kind == "tv" {
+		entry.Title, entry.Year = "山海旅人", 2023
+	}
+	if kind == "movie" {
+		entry.Title = "长夜旅途"
+	}
+	task := matching.Workspace{ID: model.Key(), State: "completed", Items: make([]matching.Item, 0, len(files))}
+	for _, file := range files {
+		task.Items = append(task.Items, matching.Item{File: file, Entry: entry, State: "ready", Selected: true})
+	}
+	if err := a.store.SaveWorkspace(&task); err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, file.Path)
+	}
+	return planning.PreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Paths: paths, Mode: mode, DuplicatePolicy: policy}
+}
 func done(t *testing.T, a *App, r organizer.Run) organizer.Run {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -98,11 +121,13 @@ func executePlan(t *testing.T, a *App, p *planning.Plan) organizer.Run {
 	return r
 }
 func TestTVPreviewExecuteUndoWithSharedArtifacts(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows organizer execution unsupported")
+	}
 	a, root := fixture(t)
 	f1 := mediaFile(t, a, root, "山海旅人.S01E01.mkv")
 	f2 := mediaFile(t, a, root, "山海旅人.S01E02.mkv")
-	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{f1, f2}})
+	p, err := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", f1, f2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,13 +160,15 @@ func TestTVPreviewExecuteUndoWithSharedArtifacts(t *testing.T) {
 	}
 }
 func TestSeparateOrganizeRunsOnlyRegisterVideoMappings(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows organizer execution unsupported")
+	}
 	a, root := fixture(t)
 	f1 := mediaFile(t, a, root, "Show.S01E01.mkv")
 	f2 := mediaFile(t, a, root, "Show.S01E02.mkv")
-	p, _ := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{f1}})
+	p, _ := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", f1))
 	r1 := executePlan(t, a, p)
-	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{f2}})
+	p, err := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", f2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +208,7 @@ func TestSeparateOrganizeRunsOnlyRegisterVideoMappings(t *testing.T) {
 func TestStalePlanAndSourceChangesRejected(t *testing.T) {
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
-	in := planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}}
+	in := previewRequest(t, a, "movie", 1, "copy", "error", f)
 	p, err := a.dependencies.Planning.Preview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
@@ -206,11 +233,13 @@ func TestStalePlanAndSourceChangesRejected(t *testing.T) {
 		t.Fatal("unknown preview accepted")
 	}
 }
-func TestNoOverwriteAndModifiedTargetStopsUndo(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
+func TestNoOverwriteAndPathLevelUndo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows organizer execution unsupported")
+	}
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
-	in := planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}}
+	in := previewRequest(t, a, "movie", 1, "copy", "error", f)
 	p, _ := a.dependencies.Planning.Preview(context.Background(), in)
 	r := executePlan(t, a, p)
 	p, err := a.dependencies.Planning.Preview(context.Background(), in)
@@ -233,21 +262,22 @@ func TestNoOverwriteAndModifiedTargetStopsUndo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if done(t, a, u).State != "failed" {
-		t.Fatal("modified target removed")
+	if done(t, a, u).State != "undone" {
+		t.Fatal("path-level undo failed")
 	}
-	content, _ := os.ReadFile(target)
-	if string(content) != "user-modified" {
-		t.Fatal("modified target lost")
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatal("path-level undo retained modified target")
 	}
 }
 func TestMoveAndHardlink(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows organizer execution unsupported")
+	}
 	for _, mode := range []string{"move", "hardlink"} {
 		t.Run(mode, func(t *testing.T) {
 			a, root := fixture(t)
 			f := mediaFile(t, a, root, "电影.2024.mkv")
-			p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: mode, Files: []model.File{f}})
+			p, err := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "movie", 1, mode, "error", f))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -335,10 +365,12 @@ func TestScanExcludesTargetsSymlinksAndPreservesUnknownSeason(t *testing.T) {
 }
 
 func TestInterruptedRunCanResumeAfterRestart(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("Windows organizer execution unsupported") }
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows organizer execution unsupported")
+	}
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
-	p, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "movie", TMDBID: 1, Mode: "copy", Files: []model.File{f}})
+	p, err := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "movie", 1, "copy", "error", f))
 	if err != nil {
 		t.Fatal(err)
 	}

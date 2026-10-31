@@ -4,7 +4,6 @@ import (
 	"context"
 	"joycurator/internal/infra/fsops"
 	"joycurator/internal/model"
-	"joycurator/internal/planning"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,7 +13,7 @@ import (
 func TestOrganizationPreviewExcludesScrapeArtifacts(t *testing.T) {
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "Show.S01E01.mkv")
-	plan, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{DuplicatePolicy: "error", Type: "tv", TMDBID: 2, Mode: "copy", Files: []model.File{file}})
+	plan, err := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", file))
 	if err != nil || len(plan.Issues) != 0 || len(plan.Ops) != 1 || plan.Ops[0].Kind != "video" {
 		t.Fatalf("organization preview: %+v %v", plan, err)
 	}

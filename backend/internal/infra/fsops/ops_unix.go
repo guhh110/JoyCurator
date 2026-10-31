@@ -8,11 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
 
 func fmtIdentity(stat *unix.Stat_t) string { return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino) }
+
+func fastStatMatches(stat *unix.Stat_t, identity string, size, mtime int64) bool {
+	return stat.Mode&unix.S_IFMT == unix.S_IFREG && fmtIdentity(stat) == identity && stat.Size == size &&
+		time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UnixNano() == mtime
+}
 
 func randomSuffix() string {
 	var bytes [8]byte
@@ -49,6 +55,84 @@ func (f *FS) Remove(name string) error {
 		return err
 	}
 	return p.Sync()
+}
+
+// RenameOwned keeps publication anchored to verified parent directories.
+// OverwriteFast never follows a target symlink and preserves the previous
+// target in a journaled hold path until the caller removes it.
+func (f *FS) RenameOwned(source, target, identity string) error {
+	s, src, err := f.parent(source)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	var current unix.Stat_t
+	if err = unix.Fstatat(int(s.Fd()), src, &current, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return err
+	}
+	if current.Mode&unix.S_IFMT != unix.S_IFREG || identity == "" || fmtIdentity(&current) != identity {
+		return errors.New("来源文件已变化")
+	}
+	d, dst, err := f.parent(target)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	if err = renameExclusive(int(s.Fd()), src, int(d.Fd()), dst); err != nil {
+		return err
+	}
+	return d.Sync()
+}
+
+func (f *FS) OverwriteFast(source, target, hold, identity string, size, mtime int64, stagedIdentity string) error {
+	s, src, err := f.parent(source)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	var staged unix.Stat_t
+	if err = unix.Fstatat(int(s.Fd()), src, &staged, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return err
+	}
+	if staged.Mode&unix.S_IFMT != unix.S_IFREG || stagedIdentity == "" || fmtIdentity(&staged) != stagedIdentity {
+		return errors.New("来源文件已变化")
+	}
+	d, dst, err := f.parent(target)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	h, held, err := f.parent(hold)
+	if err != nil {
+		return err
+	}
+	defer h.Close()
+	var current unix.Stat_t
+	if err = unix.Fstatat(int(d.Fd()), dst, &current, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return err
+	}
+	if !fastStatMatches(&current, identity, size, mtime) {
+		return errors.New("待覆盖文件已变化，请重新预览")
+	}
+	if err = renameExclusive(int(d.Fd()), dst, int(h.Fd()), held); err != nil {
+		return err
+	}
+	if err = unix.Fstatat(int(h.Fd()), held, &current, unix.AT_SYMLINK_NOFOLLOW); err != nil || !fastStatMatches(&current, identity, size, mtime) {
+		return errors.Join(errors.New("待覆盖文件在隔离期间发生变化，请人工检查暂存路径"), err)
+	}
+	if err = unix.Fstatat(int(s.Fd()), src, &staged, unix.AT_SYMLINK_NOFOLLOW); err != nil || staged.Mode&unix.S_IFMT != unix.S_IFREG || fmtIdentity(&staged) != stagedIdentity {
+		if rollback := renameExclusive(int(h.Fd()), held, int(d.Fd()), dst); rollback != nil {
+			return errors.Join(errors.New("来源变化，旧文件保留在暂存路径"), err, rollback)
+		}
+		return errors.New("来源文件已变化")
+	}
+	if err = renameExclusive(int(s.Fd()), src, int(d.Fd()), dst); err != nil {
+		if rollback := renameExclusive(int(h.Fd()), held, int(d.Fd()), dst); rollback != nil {
+			return errors.Join(err, rollback)
+		}
+		return err
+	}
+	return d.Sync()
 }
 
 // RemoveOwned isolates the path before checking its inode; it never unlinks a

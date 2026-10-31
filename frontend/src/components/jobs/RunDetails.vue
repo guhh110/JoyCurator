@@ -61,7 +61,11 @@ const detail = computed(() => detailQuery.data.value)
         </div></template
       ></QueryState
     ><template v-if="detail" #footer
-      ><span class="muted tiny">文件变化时会停止操作</span>
+      ><span class="muted tiny">{{
+        detail.purpose === 'organize'
+          ? '整理撤销只核对路径，不核对文件内容或身份'
+          : '文件变化时会停止操作'
+      }}</span>
       <div class="footer-buttons">
         <button
           v-if="
@@ -74,12 +78,24 @@ const detail = computed(() => detailQuery.data.value)
         >
           重试未完成项</button
         ><button
-          v-if="!['undone', 'running', 'queued'].includes(detail.state)"
+          v-if="
+            !['undone', 'running', 'queued'].includes(detail.state) &&
+            !(
+              detail.purpose === 'organize' &&
+              detail.ops?.some((op) =>
+                ['preparing', 'staged', 'published', 'cleanup', 'undoing', 'manual_review'].includes(op.status),
+              )
+            )
+          "
           class="button"
           :disabled="busy || running"
           @click="undoing = detail"
         >
-          <Undo2 :size="15" />{{ detail.undo ? '继续撤销' : `撤销本次${detail.purpose === 'scrape' ? '刮削' : '整理'}` }}
+          <Undo2 :size="15" />{{
+            detail.undo
+              ? '继续撤销'
+              : `撤销本次${detail.purpose === 'scrape' ? '刮削' : '整理'}`
+          }}
         </button>
       </div></template
     ></Modal
@@ -89,12 +105,15 @@ const detail = computed(() => detailQuery.data.value)
     :locked="busy"
     @close="undoing = null"
     ><p>将撤销「{{ undoing.title }}」的文件操作。</p>
+    <p v-if="undoing.purpose === 'organize'" class="notice error">
+      整理撤销只按记录路径操作，不校验文件身份或内容。同一路径若已被外部文件替换，撤销可能误移或误删它；状态不明的操作需先人工核对，不能自动撤销。
+    </p>
     <p class="muted">
       {{
         undoing.mode === 'move'
           ? '视频和字幕将恢复到原路径。原路径被占用时停止对应操作。'
           : '将移除本次创建的目标文件，来源文件保持原样。'
-      }}目标内容被修改时会停止，不会删除被替换的文件。
+      }}<template v-if="undoing.purpose === 'scrape'">目标内容被修改时会停止，不会删除被替换的文件。</template>
       覆盖过的旧文件没有备份，撤销不会恢复其旧内容。
     </p>
     <template #footer

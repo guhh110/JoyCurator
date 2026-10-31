@@ -28,7 +28,7 @@ async function fixture() {
   app.mount({})
   cleanup.push(() => { app.unmount(); client.clear() })
   const item: RecognitionItem = { path: '/source/a.mkv', group: 'tv:1', state: 'review', reason: '', selected: false, removed: false,
-    size: 1, mtime: '1', season: 1, episodes: [1], probe: { codec: '', resolution: '' },
+    size: 1, mtime: '1', season: 1, episodes: [1],
     metadata: { title: 'Show', year: null, season: 1, episodes: [1], tmdbId: 1, mediaType: 'tv', releaseTag: null },
     entry: { type: 'tv', tmdbId: 1, title: 'Show', originalTitle: '', year: 0, overview: '', posterPath: '' }, candidates: [] }
   state.task.value = { id: 'workspace', revision: 3, state: 'completed', paths: ['/source'], items: [item], completed: 1, total: 1, error: '', created: '' }

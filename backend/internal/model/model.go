@@ -84,19 +84,10 @@ type Entry struct {
 	BackdropPath  string   `json:"backdropPath"`
 }
 
-// Probe is what ffprobe reported about the file.
-type Probe struct {
-	Resolution string  `json:"resolution"`
-	Codec      string  `json:"codec"`
-	Duration   float64 `json:"duration"`
-	Warning    string  `json:"warning,omitempty"`
-}
-
 // Source contains the inputs used to render naming rules.
 type Source struct {
 	Path     string               `json:"path"`
 	Metadata recognition.Metadata `json:"metadata"`
-	Probe    Probe                `json:"probe"`
 	Entry    *Entry               `json:"entry,omitempty"`
 	Season   int                  `json:"season"`
 	Episodes []int                `json:"episodes"`
@@ -143,7 +134,6 @@ type File struct {
 	MTime    int64  `json:"mtime,string"`
 	Season   int    `json:"season"`
 	Episodes []int  `json:"episodes"`
-	Probe    Probe  `json:"probe"`
 }
 
 func Key() string {
