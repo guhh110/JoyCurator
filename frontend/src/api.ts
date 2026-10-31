@@ -102,6 +102,19 @@ export interface MediaMapping {
   episodes: number[]
   state: 'pending' | 'completed' | 'failed' | 'unavailable'
 }
+export interface ScrapeWork {
+  type: 'movie' | 'tv'
+  tmdbId: number
+  representative: string
+  total: number
+  pending: number
+  failed: number
+  completed: number
+}
+export interface ScrapeWorkPage {
+  items: ScrapeWork[]
+  nextCursor: string
+}
 export interface ScrapePreview {
   id: string
   title: string

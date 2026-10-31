@@ -7,8 +7,16 @@ import (
 )
 
 func scrapeRoutes(a Dependencies, add func(string, endpoint)) {
-	add("GET /api/scrape/queue", func(w http.ResponseWriter, r *http.Request) error {
-		v, e := a.Organizer.ScrapeQueue()
+	add("GET /api/scrape/works", func(w http.ResponseWriter, r *http.Request) error {
+		v, e := a.Organizer.ScrapeWorks(r.URL.Query().Get("q"), r.URL.Query().Get("cursor"))
+		return respond(w, v, e)
+	})
+	add("GET /api/scrape/works/{kind}/{id}", func(w http.ResponseWriter, r *http.Request) error {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil {
+			return err
+		}
+		v, e := a.Organizer.ScrapeWork(r.PathValue("kind"), id)
 		return respond(w, v, e)
 	})
 	add("POST /api/scrape/preview", func(w http.ResponseWriter, r *http.Request) error {

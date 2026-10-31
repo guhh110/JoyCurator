@@ -39,14 +39,7 @@ func (a *Service) validateSkipped(mappings []model.MediaMapping, ops []model.Wor
 	return nil
 }
 
-func (a *Service) scrapeQueue() ([]model.MediaMapping, error) {
-	if a.mappings == nil {
-		return nil, errors.New("刮削工作区未配置")
-	}
-	items, err := a.mappings.Mappings()
-	if err != nil {
-		return nil, err
-	}
+func (a *Service) checkScrapeAvailability(items []model.MediaMapping) ([]model.MediaMapping, error) {
 	s, err := a.settings.Load()
 	if err != nil {
 		return nil, err
@@ -72,23 +65,30 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 	if err != nil {
 		return ScrapePlan{}, err
 	}
-	available, err := a.scrapeQueue()
-	if err != nil {
-		return ScrapePlan{}, err
-	}
-	known := make(map[string]model.MediaMapping, len(available))
-	for _, item := range available {
-		known[item.Path] = item
-	}
 	items := make([]model.MediaMapping, 0, len(selected))
 	seenPaths := map[string]bool{}
 	for _, path := range selected {
-		item, exists := known[path]
-		if !exists || item.State == "unavailable" || seenPaths[path] {
+		if err := ctx.Err(); err != nil {
+			return ScrapePlan{}, err
+		}
+		item, err := a.mappings.Mapping(path)
+		if err != nil {
+			return ScrapePlan{}, err
+		}
+		if item == nil || seenPaths[path] {
 			return ScrapePlan{}, errors.New("目标视频不可用或未登记：" + path)
 		}
 		seenPaths[path] = true
-		items = append(items, item)
+		items = append(items, *item)
+	}
+	items, err = a.checkScrapeAvailability(items)
+	if err != nil {
+		return ScrapePlan{}, err
+	}
+	for _, item := range items {
+		if item.State == "unavailable" {
+			return ScrapePlan{}, errors.New("目标视频不可用或未登记：" + item.Path)
+		}
 	}
 	kind, id := items[0].Type, items[0].TMDBID
 	for _, item := range items {
@@ -373,17 +373,12 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 			return Run{}, errors.New("目标视频已变化，请重新预览")
 		}
 	}
-	currentMappings, e := a.mappings.Mappings()
-	if e != nil {
-		return Run{}, e
-	}
-	byPath := make(map[string]model.MediaMapping, len(currentMappings))
-	for _, mapping := range currentMappings {
-		byPath[mapping.Path] = mapping
-	}
 	for _, mapping := range p.mappings {
-		current, ok := byPath[mapping.Path]
-		if !ok || current.RunID != mapping.RunID || current.Identity != mapping.Identity || current.TMDBID != mapping.TMDBID || current.Type != mapping.Type || current.Season != mapping.Season || !slices.Equal(current.Episodes, mapping.Episodes) {
+		current, lookupErr := a.mappings.Mapping(mapping.Path)
+		if lookupErr != nil {
+			return Run{}, lookupErr
+		}
+		if current == nil || current.RunID != mapping.RunID || current.Identity != mapping.Identity || current.TMDBID != mapping.TMDBID || current.Type != mapping.Type || current.Season != mapping.Season || !slices.Equal(current.Episodes, mapping.Episodes) {
 			return Run{}, errors.New("刮削映射已变化，请重新预览")
 		}
 	}

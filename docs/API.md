@@ -21,6 +21,10 @@
 | `GET /episodes?id=&season=` | 指定季的集列表，季号 0 为特别篇 |
 | `POST /preview` | `{recognitionId,revision,paths,mode,duplicatePolicy}`，仅预览同一工作区内已确认的一部作品；不接受任意 TMDB ID/文件组合，不请求 TMDB；重复策略必填 `error/skip/overwrite` |
 | `POST /execute` | `{id}`，执行已确认的预览，返回任务 |
+| `GET /scrape/works?q=&cursor=` | 刮削作品概览，按类型和 TMDB ID 稳定排序，每次最多 50 部；返回 `{items:[{type,tmdbId,representative,total,pending,failed,completed}],nextCursor}`。搜索匹配目标路径或 TMDB ID；不逐个检查视频是否可用 |
+| `GET /scrape/works/{kind}/{id}` | 指定电影或剧集的全部已登记目标视频及实时可用状态，返回 `MediaMapping[]`；不扫描旧媒体 |
+| `POST /scrape/preview` | `{paths}`，仅接受已登记且可用的同一作品，单次 1–1000 个目标视频，返回产物、空间与冲突 |
+| `POST /scrape/execute` | `{id}`，确认刮削预览；提交时复核所选映射与文件 |
 | `GET /recognitions` | 最近的识别工作区，无记录时返回 `null` |
 | `POST /recognitions` | `{paths,id?}`，创建异步识别任务；提供 `id` 时补充现有工作区并保留修正 |
 | `GET /extraction/rules` | 当前链、默认链、完整脚本模板目录、目标及来源枚举 |

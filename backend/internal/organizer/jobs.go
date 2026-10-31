@@ -96,17 +96,12 @@ func (a *Service) Resume(id string, undo bool) (Run, error) {
 		if settings.Version != r.Version {
 			return r, errors.New("设置已变化，请重新预览")
 		}
-		currentMappings, e := a.mappings.Mappings()
-		if e != nil {
-			return r, e
-		}
-		currentByPath := make(map[string]model.MediaMapping, len(currentMappings))
-		for _, item := range currentMappings {
-			currentByPath[item.Path] = item
-		}
 		for _, item := range r.Mappings {
-			current, ok := currentByPath[item.Path]
-			if !ok || current.RunID != item.RunID || current.Identity != item.Identity || current.TMDBID != item.TMDBID {
+			current, lookupErr := a.mappings.Mapping(item.Path)
+			if lookupErr != nil {
+				return r, lookupErr
+			}
+			if current == nil || current.RunID != item.RunID || current.Identity != item.Identity || current.TMDBID != item.TMDBID {
 				return r, errors.New("刮削映射已变化，不能重试")
 			}
 			info, statErr := a.access.Stat(item.Path)

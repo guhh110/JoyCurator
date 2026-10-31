@@ -42,7 +42,7 @@ describe('EliText ellipsis direction', () => {
       'pages/AutomaticRecognitionPage.vue', 'pages/SettingsPage.vue', 'components/jobs/RunDetails.vue',
       'features/automatic/EpisodeOffsetDialog.vue', 'features/extraction/ExtractionHistory.vue',
       'features/extraction/ExtractionHistoryDetail.vue', 'features/extraction/RuleExamples.vue',
-      'features/extraction/ExtractionResult.vue',
+      'features/extraction/ExtractionResult.vue', 'pages/ScrapePage.vue',
     ]
     for (const path of paths) {
       const source = readFileSync(new URL(`../../../frontend/src/${path}`, import.meta.url), 'utf8')

@@ -14,6 +14,9 @@ type Service struct {
 	scrapePlans map[string]scrapePreview
 	mappings    interface {
 		Mappings() ([]model.MediaMapping, error)
+		ScrapeWorks(string, string) (ScrapeWorkPage, error)
+		ScrapeWorkMappings(string, int) ([]model.MediaMapping, error)
+		Mapping(string) (*model.MediaMapping, error)
 		SaveMapping(model.MediaMapping) error
 	}
 	access      TargetAccess
@@ -34,8 +37,13 @@ func New(c *Coordinator, store Store, settings Settings, plans Plans, sources So
 
 func (a *Service) SetMappings(m interface {
 	Mappings() ([]model.MediaMapping, error)
+	ScrapeWorks(string, string) (ScrapeWorkPage, error)
+	ScrapeWorkMappings(string, int) ([]model.MediaMapping, error)
+	Mapping(string) (*model.MediaMapping, error)
 	SaveMapping(model.MediaMapping) error
-})                                                     { a.mappings = m }
+}) {
+	a.mappings = m
+}
 func (a *Service) SetTargetAccess(access TargetAccess) { a.access = access }
 
 func (a *Service) ScrapeRecords(page int) (map[string]any, error) {
@@ -80,8 +88,29 @@ func (a *Service) OrganizeCancel(id string) error {
 	return a.Cancel(id)
 }
 
-func (a *Service) ScrapeQueue() ([]model.MediaMapping, error) {
-	return a.scrapeQueue()
+type ScrapeWork struct {
+	Type           string `json:"type"`
+	TMDBID         int    `json:"tmdbId"`
+	Representative string `json:"representative"`
+	Total          int    `json:"total"`
+	Pending        int    `json:"pending"`
+	Failed         int    `json:"failed"`
+	Completed      int    `json:"completed"`
+}
+type ScrapeWorkPage struct {
+	Items      []ScrapeWork `json:"items"`
+	NextCursor string       `json:"nextCursor"`
+}
+
+func (a *Service) ScrapeWorks(search, cursor string) (ScrapeWorkPage, error) {
+	return a.mappings.ScrapeWorks(search, cursor)
+}
+func (a *Service) ScrapeWork(kind string, id int) ([]model.MediaMapping, error) {
+	items, err := a.mappings.ScrapeWorkMappings(kind, id)
+	if err != nil {
+		return nil, err
+	}
+	return a.checkScrapeAvailability(items)
 }
 
 type scrapePreview struct {

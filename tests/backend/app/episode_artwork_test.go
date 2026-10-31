@@ -156,7 +156,7 @@ func TestMovieScrapePreviewKeepsOnlyStandardArtwork(t *testing.T) {
 	}
 }
 
-func TestScrapeQueueUnavailableAndSameEpisodeVersions(t *testing.T) {
+func TestScrapeWorkUnavailableAndSameEpisodeVersions(t *testing.T) {
 	a, root := fixture(t)
 	seed := func(key, value string) {
 		t.Helper()
@@ -189,7 +189,7 @@ func TestScrapeQueueUnavailableAndSameEpisodeVersions(t *testing.T) {
 	if err := os.Remove(paths[2]); err != nil {
 		t.Fatal(err)
 	}
-	queue, err := a.dependencies.Organizer.ScrapeQueue()
+	queue, err := a.dependencies.Organizer.ScrapeWork("tv", 2)
 	if err != nil || len(queue) != 3 || queue[0].State != "unavailable" || queue[0].Path != paths[2] {
 		t.Fatalf("missing video mapping disappeared: %+v %v", queue, err)
 	}
