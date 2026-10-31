@@ -1,3 +1,5 @@
+//go:build linux || darwin
+
 package fsops
 
 func (f *FS) Publish(source, target string) error {

@@ -119,6 +119,9 @@ func (noCatalog) Detail(context.Context, string, int) (model.Entry, error) {
 	return model.Entry{}, nil
 }
 func (noCatalog) Seasons(context.Context, int) ([]model.Season, error) { return nil, nil }
+func (noCatalog) SeasonDetail(context.Context, int, int) (model.Season, []model.Episode, error) {
+	return model.Season{}, nil, nil
+}
 func (noCatalog) SeasonEpisodes(context.Context, int, int) ([]model.Episode, error) {
 	return nil, nil
 }

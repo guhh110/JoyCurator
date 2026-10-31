@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"joycurator/internal/infra/fsops"
 	"joycurator/internal/model"
@@ -64,6 +65,11 @@ func (e *Engine) Check(ctx context.Context, path, identity, checksum string) err
 	return nil
 }
 func (e *Engine) Run(ctx context.Context, op *model.Operation, save func() error) error {
+	// Windows FileInfo does not provide a stable file ID for recovery checks.
+	// Fail before creating or moving files rather than writing unowned temp files.
+	if runtime.GOOS == "windows" {
+		return errors.New("Windows 暂不支持安全地执行文件整理")
+	}
 	if op.Backup != nil {
 		if err := e.Run(ctx, op.Backup, save); err != nil {
 			return fmt.Errorf("备份已有文件失败：%w", err)
@@ -81,7 +87,7 @@ func (e *Engine) run(ctx context.Context, op *model.Operation, save func() error
 	}
 	if op.Status == "completed" {
 		if op.Temp != "" {
-			if info, err := e.FS.Stat(op.Temp); err == nil && fsops.Identity(info) == op.Identity {
+			if info, err := e.FS.Stat(op.Temp); err == nil && op.Identity != "" && fsops.Identity(info) == op.Identity {
 				if err = e.FS.Remove(op.Temp); err != nil {
 					return err
 				}
@@ -293,7 +299,7 @@ func (e *Engine) run(ctx context.Context, op *model.Operation, save func() error
 		}
 	}
 	if op.Status == "completed" && op.Temp != "" {
-		if info, err := e.FS.Stat(op.Temp); err == nil && fsops.Identity(info) == op.Identity {
+		if info, err := e.FS.Stat(op.Temp); err == nil && op.Identity != "" && fsops.Identity(info) == op.Identity {
 			if err = e.FS.Remove(op.Temp); err != nil {
 				return err
 			}
@@ -305,6 +311,9 @@ func (e *Engine) run(ctx context.Context, op *model.Operation, save func() error
 }
 
 func (e *Engine) Undo(ctx context.Context, op *model.Operation, save func() error) error {
+	if runtime.GOOS == "windows" {
+		return errors.New("Windows 暂不支持安全地撤销文件整理")
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -332,7 +341,7 @@ func (e *Engine) undo(ctx context.Context, op *model.Operation, save func() erro
 	}
 	if op.Status == "preparing" || op.Status == "staged" {
 		// A staged operation may have published just before a crash.
-		if info, err := e.FS.Stat(op.Target); err == nil && fsops.Identity(info) == op.Identity {
+		if info, err := e.FS.Stat(op.Target); err == nil && op.Identity != "" && fsops.Identity(info) == op.Identity {
 			op.Status = "published"
 			if err = save(); err != nil {
 				return err
@@ -412,7 +421,7 @@ func (e *Engine) undo(ctx context.Context, op *model.Operation, save func() erro
 		return err
 	}
 	if op.Temp != "" {
-		if info, err := e.FS.Stat(op.Temp); err == nil && fsops.Identity(info) == op.Identity {
+		if info, err := e.FS.Stat(op.Temp); err == nil && op.Identity != "" && fsops.Identity(info) == op.Identity {
 			if err = e.FS.Remove(op.Temp); err != nil {
 				return err
 			}

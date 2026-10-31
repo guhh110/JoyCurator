@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"joycurator/internal/model"
 )
 
 type transportFunc func(*http.Request) (*http.Response, error)
@@ -106,4 +108,75 @@ func (c *testCache) LoadCache(context.Context, string, int64) ([]byte, error) { 
 func (c *testCache) SaveCache(_ context.Context, _ string, b []byte, _ int64) error {
 	c.data = append([]byte(nil), b...)
 	return nil
+}
+
+// TestSeasonDetailAndEpisodesShareResponse checks that both API methods decode
+// the same season response, including the season's own TMDB ID and artwork.
+func TestSeasonDetailAndEpisodesShareResponse(t *testing.T) {
+	cache := &testCache{}
+	client, _ := New(cache, "token", "", "zh-CN")
+	calls := 0
+	client.HTTP = &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.URL.Path != "/3/tv/42/season/2" || r.URL.Query().Get("language") != "zh-CN" {
+			t.Fatalf("unexpected TMDB request: %s", r.URL)
+		}
+		return response(200, `{"id":902,"season_number":2,"name":"第二季","overview":"季简介","air_date":"2024-05-01","poster_path":"/season.jpg","episodes":[{"episode_number":1,"name":"第一集","air_date":"2024-05-02","overview":"首集简介","still_path":"/episode.jpg"},{"episode_number":2,"name":"第二集","air_date":"2024-05-09","overview":"次集简介","still_path":null}]}`), nil
+	})}
+	season, episodes, err := client.SeasonDetail(context.Background(), 42, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if season.TMDBID != 902 || season.Number != 2 || season.Name != "第二季" || season.Overview != "季简介" || season.Date != "2024-05-01" || season.PosterPath != "/season.jpg" || season.Count != 2 {
+		t.Fatalf("season metadata: %+v", season)
+	}
+	if len(episodes) != 2 || episodes[0].Season != 2 || episodes[0].Number != 1 || episodes[0].Name != "第一集" || episodes[0].Overview != "首集简介" || episodes[0].AirDate != "2024-05-02" || episodes[0].Still != "/episode.jpg" || episodes[1].Number != 2 || episodes[1].Still != "" {
+		t.Fatalf("episode metadata: %+v", episodes)
+	}
+	fromDelegate, err := client.SeasonEpisodes(context.Background(), 42, 2)
+	if err != nil || len(fromDelegate) != 2 || fromDelegate[0] != episodes[0] || fromDelegate[1] != episodes[1] || calls != 1 {
+		t.Fatalf("delegate episodes %+v, calls %d, error %v", fromDelegate, calls, err)
+	}
+}
+
+func TestSeasonDetailSeasonNumber(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		wantError  bool
+	}{
+		{"missing season number", `{"id":902,"episodes":[{"episode_number":1}]}`, false},
+		{"special season zero", `{"id":900,"season_number":0,"episodes":[{"episode_number":1}]}`, true},
+		{"mismatched season number", `{"id":903,"season_number":3,"episodes":[{"episode_number":1}]}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _ := New(nil, "token", "", "zh-CN")
+			client.HTTP = &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+				return response(200, tc.body), nil
+			})}
+			season, episodes, err := client.SeasonDetail(context.Background(), 42, 2)
+			if tc.wantError {
+				if err == nil || len(episodes) != 0 || season != (model.Season{}) {
+					t.Fatalf("expected mismatched season error; season %+v episodes %+v err %v", season, episodes, err)
+				}
+				return
+			}
+			if err != nil || season.Number != 2 || season.TMDBID != 902 || len(episodes) != 1 {
+				t.Fatalf("season %+v episodes %+v err %v", season, episodes, err)
+			}
+		})
+	}
+}
+
+func TestSeasonsIncludeMetadataAndSort(t *testing.T) {
+	client, _ := New(nil, "token", "", "en-US")
+	client.HTTP = &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/3/tv/42" {
+			t.Fatalf("unexpected TMDB request: %s", r.URL)
+		}
+		return response(200, `{"seasons":[{"id":902,"season_number":2,"name":"第二季","overview":"简介","air_date":"2024-05-01","poster_path":"/season.jpg","episode_count":8},{"id":901,"season_number":1,"name":"第一季","episode_count":4}]}`), nil
+	})}
+	seasons, err := client.Seasons(context.Background(), 42)
+	if err != nil || len(seasons) != 2 || seasons[0].TMDBID != 901 || seasons[0].Number != 1 || seasons[0].Count != 4 || seasons[1].TMDBID != 902 || seasons[1].Number != 2 || seasons[1].Name != "第二季" || seasons[1].Overview != "简介" || seasons[1].Date != "2024-05-01" || seasons[1].PosterPath != "/season.jpg" || seasons[1].Count != 8 {
+		t.Fatalf("seasons %+v, error %v", seasons, err)
+	}
 }

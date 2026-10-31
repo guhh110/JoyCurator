@@ -105,7 +105,7 @@ func TestTVPreviewExecuteUndoWithSharedArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.Rows) != 2 || len(p.Ops) != 5 {
+	if len(p.Rows) != 2 || len(p.Ops) != 6 {
 		t.Fatalf("preview: %+v", p)
 	}
 	r := executePlan(t, a, p)

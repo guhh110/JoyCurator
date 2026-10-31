@@ -342,13 +342,13 @@ const {
             <template v-else
               ><h2>补全收藏的每一个细节</h2>
               <p class="muted">
-                所有关联产物都会列入预览。已有 NFO、海报和背景图会保留。
+                所有关联产物都会列入预览。已有 NFO、海报、背景图及季集封面会保留。
               </p>
               <label class="output-choice"
                 ><span
                   ><strong>生成 NFO 元数据</strong
                   ><small
-                    >影片、剧集及单集的信息文件，供媒体库读取。</small
+                    >影片、剧集、季及单集的信息文件，供媒体库读取。</small
                   ></span
                 ><input
                   v-model="settings.nfo"
@@ -356,8 +356,8 @@ const {
                   role="switch" /></label
               ><label class="output-choice"
                 ><span
-                  ><strong>下载海报与背景图</strong
-                  ><small>从 TMDB 下载 poster.jpg、fanart.jpg。</small></span
+                  ><strong>下载媒体图片</strong
+                  ><small>从 TMDB 下载海报、背景图、季海报，以及单集视频同名的 .jpg 封面。</small></span
                 ><input v-model="settings.images" type="checkbox" role="switch"
               /></label>
               <div class="tip">

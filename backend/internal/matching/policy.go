@@ -124,20 +124,21 @@ func SeasonExists(number int, seasons []model.Season) bool {
 type EpisodeCheck struct {
 	Number                         int
 	Exists, Duplicate, NonNegative bool
+	Still                          string
 }
 
 func CheckEpisodes(numbers []int, episodes []model.Episode) []EpisodeCheck {
 	seen := map[int]bool{}
 	checks := make([]EpisodeCheck, 0, len(numbers))
 	for _, number := range numbers {
-		exists := false
+		exists, still := false, ""
 		for _, episode := range episodes {
 			if episode.Number == number {
-				exists = true
+				exists, still = true, episode.Still
 				break
 			}
 		}
-		checks = append(checks, EpisodeCheck{Number: number, Exists: exists, Duplicate: seen[number], NonNegative: number >= 0})
+		checks = append(checks, EpisodeCheck{Number: number, Exists: exists, Duplicate: seen[number], NonNegative: number >= 0, Still: still})
 		seen[number] = true
 	}
 	return checks

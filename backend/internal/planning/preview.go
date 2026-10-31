@@ -157,22 +157,27 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 			plan.Rows = append(plan.Rows, row)
 			continue
 		}
+		still := ""
+		seasonInfo := model.Season{}
 		if in.Type == "tv" {
 			if !matching.EpisodeInputValid(f.Season, f.Episodes) {
 				fail("季集无效：" + filepath.Base(f.Path))
 				plan.Rows = append(plan.Rows, row)
 				continue
 			}
-			checks, err := resolved.CheckEpisodes(ctx, f.Season, f.Episodes)
+			details, checks, err := resolved.CheckEpisodes(ctx, f.Season, f.Episodes)
 			if err != nil {
 				return nil, err
 			}
+			seasonInfo = details
 			for _, check := range checks {
 				if !check.NonNegative || !check.Exists || check.Duplicate {
 					fail(fmt.Sprintf("第 %d 季没有有效的第 %d 集", f.Season, check.Number))
+				} else if still == "" {
+					// A merged file has one thumbnail: prefer the first episode with a still.
+					still = check.Still
 				}
 			}
-
 		}
 		extracted, parseErr := a.extract.Parse(ctx, f.Path, s.SourceRoot)
 		if parseErr != nil {
@@ -248,6 +253,14 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 				add(&row, model.Operation{Kind: "nfo", Mode: "copy", Target: targetStem + ".nfo", Content: body})
 			}
 		}
+		if entry.Type == "tv" && s.NFO {
+			body, err := metadata.SeasonNFO(entry, seasonInfo)
+			if err != nil {
+				fail(err.Error())
+			} else {
+				add(&row, model.Operation{Kind: "nfo", Mode: "copy", Target: filepath.Join(filepath.Dir(target), "season.nfo"), Content: body})
+			}
+		}
 		dir := filepath.Dir(target)
 		if entry.Type == "tv" {
 			dir, e = rules.ShowRoot(src, s)
@@ -262,10 +275,21 @@ func (a *Service) buildPreview(ctx context.Context, in PreviewRequest) (*Plan, e
 				}
 			}
 		}
-		if s.Images && dir != "" {
-			for name, path := range map[string]string{"poster.jpg": entry.PosterPath, "fanart.jpg": entry.BackdropPath} {
-				if path != "" {
-					add(&row, model.Operation{Kind: "image", Mode: "copy", Target: filepath.Join(dir, name), URL: path})
+		if s.Images {
+			if entry.Type == "tv" {
+				if still != "" {
+					add(&row, model.Operation{Kind: "image", Mode: "copy", Target: targetStem + ".jpg", URL: still})
+				}
+				if seasonInfo.PosterPath != "" {
+					name := fmt.Sprintf("season%02d-poster.jpg", f.Season)
+					add(&row, model.Operation{Kind: "image", Mode: "copy", Target: filepath.Join(filepath.Dir(target), name), URL: seasonInfo.PosterPath})
+				}
+			}
+			if dir != "" {
+				for name, path := range map[string]string{"poster.jpg": entry.PosterPath, "fanart.jpg": entry.BackdropPath} {
+					if path != "" {
+						add(&row, model.Operation{Kind: "image", Mode: "copy", Target: filepath.Join(dir, name), URL: path})
+					}
 				}
 			}
 		}

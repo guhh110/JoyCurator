@@ -71,6 +71,22 @@ func ShowNFO(item model.Entry) ([]byte, error) {
 	return encode(d)
 }
 
+// SeasonNFO renders metadata for the season directory without replacing the
+// series-wide tvshow.nfo or any per-episode NFO.
+func SeasonNFO(show model.Entry, season model.Season) ([]byte, error) {
+	title := season.Name
+	if title == "" {
+		title = fmt.Sprintf("Season %02d", season.Number)
+	}
+	number := season.Number
+	d := document{Title: title, ShowTitle: show.Title, Plot: season.Overview, Premiered: season.Date, Season: &number}
+	d.XMLName.Local = "season"
+	if season.TMDBID > 0 {
+		d.ID = &uniqueID{Type: "tmdb", Default: "true", Value: season.TMDBID}
+	}
+	return encode(d)
+}
+
 // EpisodeNFO renders one episodedetails block per episode number. A file that
 // holds several episodes (a merged release) yields several blocks.
 func EpisodeNFO(item model.Entry, season int, episodes []int) ([]byte, error) {

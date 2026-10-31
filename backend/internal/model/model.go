@@ -150,9 +150,13 @@ func Key() string {
 
 // Season is one season entry of a show.
 type Season struct {
-	Number int    `json:"number"`
-	Name   string `json:"name"`
-	Count  int    `json:"count"`
+	TMDBID     int    `json:"tmdbId"`
+	Number     int    `json:"number"`
+	Name       string `json:"name"`
+	Count      int    `json:"count"`
+	Overview   string `json:"overview"`
+	Date       string `json:"date"`
+	PosterPath string `json:"posterPath"`
 }
 
 // Episode is one episode of a season.

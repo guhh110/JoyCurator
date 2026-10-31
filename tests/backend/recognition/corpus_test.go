@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -52,7 +53,7 @@ func readPathSamples(data []byte) ([]pathSample, error) {
 			return nil, fmt.Errorf("duplicate sample: %s", sample.ID)
 		}
 		ids[sample.ID], inputs[input] = true, true
-		if !filepath.IsAbs(sample.Path) || !filepath.IsAbs(sample.Root) {
+		if !(path.IsAbs(sample.Path) || filepath.IsAbs(sample.Path)) || !(path.IsAbs(sample.Root) || filepath.IsAbs(sample.Root)) {
 			return nil, fmt.Errorf("sample %s requires absolute path and explicit root", sample.ID)
 		}
 		if len(sample.Expected) != len(r.Targets()) || sample.Errors == nil {

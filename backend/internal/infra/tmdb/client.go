@@ -330,9 +330,13 @@ func (c *Client) Image(ctx context.Context, path string) ([]byte, error) {
 func (c *Client) Seasons(ctx context.Context, id int) ([]model.Season, error) {
 	var raw struct {
 		Seasons []struct {
+			ID           int    `json:"id"`
 			SeasonNumber int    `json:"season_number"`
 			Name         string `json:"name"`
 			EpisodeCount int    `json:"episode_count"`
+			Overview     string `json:"overview"`
+			AirDate      string `json:"air_date"`
+			PosterPath   string `json:"poster_path"`
 		} `json:"seasons"`
 	}
 	if err := c.Get(ctx, fmt.Sprintf("/tv/%d", id), nil, &raw); err != nil {
@@ -340,16 +344,22 @@ func (c *Client) Seasons(ctx context.Context, id int) ([]model.Season, error) {
 	}
 	seasons := make([]model.Season, 0, len(raw.Seasons))
 	for _, item := range raw.Seasons {
-		seasons = append(seasons, model.Season{Number: item.SeasonNumber, Name: item.Name, Count: item.EpisodeCount})
+		seasons = append(seasons, model.Season{TMDBID: item.ID, Number: item.SeasonNumber, Name: item.Name, Count: item.EpisodeCount, Overview: item.Overview, Date: item.AirDate, PosterPath: item.PosterPath})
 	}
 	sort.Slice(seasons, func(i, j int) bool { return seasons[i].Number < seasons[j].Number })
 	return seasons, nil
 }
 
-// SeasonEpisodes lists the episodes of one season.
-func (c *Client) SeasonEpisodes(ctx context.Context, id, season int) ([]model.Episode, error) {
+// SeasonDetail reads the season metadata and episodes from the same TMDB response.
+func (c *Client) SeasonDetail(ctx context.Context, id, season int) (model.Season, []model.Episode, error) {
 	var raw struct {
-		Episodes []struct {
+		ID           int    `json:"id"`
+		SeasonNumber *int   `json:"season_number"`
+		Name         string `json:"name"`
+		Overview     string `json:"overview"`
+		AirDate      string `json:"air_date"`
+		PosterPath   string `json:"poster_path"`
+		Episodes     []struct {
 			EpisodeNumber int    `json:"episode_number"`
 			Name          string `json:"name"`
 			AirDate       string `json:"air_date"`
@@ -358,8 +368,12 @@ func (c *Client) SeasonEpisodes(ctx context.Context, id, season int) ([]model.Ep
 		} `json:"episodes"`
 	}
 	if err := c.Get(ctx, fmt.Sprintf("/tv/%d/season/%d", id, season), nil, &raw); err != nil {
-		return nil, err
+		return model.Season{}, nil, err
 	}
+	if raw.SeasonNumber != nil && *raw.SeasonNumber != season {
+		return model.Season{}, nil, errors.New("TMDB 返回的季号与请求不符")
+	}
+	result := model.Season{TMDBID: raw.ID, Number: season, Name: raw.Name, Count: len(raw.Episodes), Overview: raw.Overview, Date: raw.AirDate, PosterPath: raw.PosterPath}
 	episodes := make([]model.Episode, 0, len(raw.Episodes))
 	for _, item := range raw.Episodes {
 		episodes = append(episodes, model.Episode{
@@ -371,5 +385,11 @@ func (c *Client) SeasonEpisodes(ctx context.Context, id, season int) ([]model.Ep
 			Still:    item.StillPath,
 		})
 	}
-	return episodes, nil
+	return result, episodes, nil
+}
+
+// SeasonEpisodes lists the episodes of one season.
+func (c *Client) SeasonEpisodes(ctx context.Context, id, season int) ([]model.Episode, error) {
+	_, episodes, err := c.SeasonDetail(ctx, id, season)
+	return episodes, err
 }

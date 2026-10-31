@@ -10,6 +10,27 @@ import (
 	"joycurator/internal/model"
 )
 
+func TestSeasonNFOUsesSeasonMetadata(t *testing.T) {
+	show := model.Entry{TMDBID: 2, Type: "tv", Title: "剧集 & 特别篇"}
+	season := model.Season{TMDBID: 24, Number: 1, Name: "第一季", Overview: "本季 <简介>", Date: "2023-02-01"}
+	data, err := SeasonNFO(show, season)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		XMLName xml.Name `xml:"season"`
+		Title string `xml:"title"`
+		ShowTitle string `xml:"showtitle"`
+		Plot string `xml:"plot"`
+		Premiered string `xml:"premiered"`
+		Number int `xml:"season"`
+		ID struct { Type string `xml:"type,attr"`; Value int `xml:",chardata"` } `xml:"uniqueid"`
+	}
+	if err = xml.Unmarshal(data, &doc); err != nil || doc.XMLName.Local != "season" || doc.Title != season.Name || doc.ShowTitle != show.Title || doc.Plot != season.Overview || doc.Premiered != season.Date || doc.Number != season.Number || doc.ID.Type != "tmdb" || doc.ID.Value != season.TMDBID {
+		t.Fatalf("unexpected season NFO: %s, %v", data, err)
+	}
+}
+
 func TestMovieEscapingAndEpisodeBlocks(t *testing.T) {
 	item := model.Entry{TMDBID: 42, Type: "movie", Title: `A & B <Test>`, Date: "2020-01-01", Overview: `Plot < & >`}
 	data, err := MovieNFO(item)

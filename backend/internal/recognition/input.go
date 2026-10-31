@@ -2,8 +2,10 @@ package recognition
 
 import (
 	"errors"
+	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"unicode"
 )
@@ -11,34 +13,61 @@ import (
 var idRE = regexp.MustCompile(`(?i)tmdb[-= ]?(\d+)`)
 
 type pathInput struct {
-	path, root, filename string
-	directories          []string
+	path, root, relative, filename string
+	directories                    []string
 }
 
 func prepare(in Input) (pathInput, error) {
-	if len(in.Path) == 0 || len(in.Path) > 16384 || !strings.HasPrefix(in.Path, "/") || strings.IndexFunc(in.Path, unicode.IsControl) >= 0 {
-		return pathInput{}, errors.New("请输入以 / 开头的完整文件路径")
+	if len(in.Path) == 0 || len(in.Path) > 16384 || strings.IndexFunc(in.Path, unicode.IsControl) >= 0 {
+		return pathInput{}, errors.New("请输入完整的绝对文件路径")
 	}
-	path := filepath.Clean(in.Path)
-	if path == "/" || strings.HasSuffix(in.Path, "/") {
+
+	// The built-in examples are POSIX paths even when the server runs on Windows.
+	// Only drive/UNC paths use the host's Windows path semantics.
+	posix := strings.HasPrefix(in.Path, "/")
+	if !posix && (runtime.GOOS != "windows" || !filepath.IsAbs(in.Path)) {
+		return pathInput{}, errors.New("请输入完整的绝对文件路径")
+	}
+	clean, isAbs, dir, base, ext := path.Clean, path.IsAbs, path.Dir, path.Base, path.Ext
+	rootDefault := "/"
+	if !posix {
+		clean, isAbs, dir, base, ext = filepath.Clean, filepath.IsAbs, filepath.Dir, filepath.Base, filepath.Ext
+		rootDefault = filepath.VolumeName(in.Path) + string(filepath.Separator)
+	}
+	if strings.HasSuffix(in.Path, "/") || (!posix && strings.HasSuffix(in.Path, `\`)) {
+		return pathInput{}, errors.New("请输入文件路径，不能只提供目录")
+	}
+	file := clean(in.Path)
+	if file == rootDefault {
 		return pathInput{}, errors.New("请输入文件路径，不能只提供目录")
 	}
 	root := in.Root
 	if root == "" {
-		root = "/"
+		root = rootDefault
 	}
-	if !filepath.IsAbs(root) || strings.IndexFunc(root, unicode.IsControl) >= 0 {
+	if strings.IndexFunc(root, unicode.IsControl) >= 0 || !isAbs(root) || (posix != strings.HasPrefix(root, "/")) {
 		return pathInput{}, errors.New("解析边界必须是绝对目录路径")
 	}
-	root = filepath.Clean(root)
-	rel, err := filepath.Rel(root, path)
-	if err != nil || !filepath.IsLocal(rel) || root == path {
-		return pathInput{}, errors.New("解析边界必须是文件路径的父级目录")
+	root = clean(root)
+	var rel string
+	if posix {
+		prefix := strings.TrimSuffix(root, "/") + "/"
+		if !strings.HasPrefix(file, prefix) {
+			return pathInput{}, errors.New("解析边界必须是文件路径的父级目录")
+		}
+		rel = strings.TrimPrefix(file, prefix)
+	} else {
+		var err error
+		rel, err = filepath.Rel(root, file)
+		if err != nil || rel == "." || !filepath.IsLocal(rel) {
+			return pathInput{}, errors.New("解析边界必须是文件路径的父级目录")
+		}
+		rel = filepath.ToSlash(rel)
 	}
-	filename := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	p := pathInput{path: path, root: root, filename: filename, directories: []string{}}
-	for dir := filepath.Dir(path); dir != root && dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
-		p.directories = append(p.directories, filepath.Base(dir))
+	filename := strings.TrimSuffix(base(file), ext(file))
+	p := pathInput{path: file, root: root, relative: rel, filename: filename, directories: []string{}}
+	for parent := dir(file); parent != root && parent != dir(parent); parent = dir(parent) {
+		p.directories = append(p.directories, base(parent))
 	}
 	return p, nil
 }
@@ -55,8 +84,7 @@ func (p pathInput) sources(source Source) []string {
 	case Directories:
 		return p.directories
 	case RelativePath:
-		rel, _ := filepath.Rel(p.root, p.path)
-		return []string{rel}
+		return []string{p.relative}
 	case AbsolutePath:
 		return []string{p.path}
 	}
