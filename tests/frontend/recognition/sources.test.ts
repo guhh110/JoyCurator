@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { sourceFolder, sourceOf, sourceSummaries } from '../../../frontend/src/recognition'
-import type { RecognitionItem } from '../../../frontend/src/api'
+import type { RecognitionItem } from '../../../frontend/src/model'
 const item = (path: string, group: string, state: RecognitionItem['state'], removed = false) =>
   ({ path, group, state, removed }) as RecognitionItem
 describe('recognition sources', () => {

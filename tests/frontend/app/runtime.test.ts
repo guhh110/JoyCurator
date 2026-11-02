@@ -1,7 +1,7 @@
 import { createRenderer, h, nextTick } from 'vue'
 import { environmentManager, focusManager, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Batch } from '../../../frontend/src/api'
+import type { Batch, Run } from '../../../frontend/src/model'
 import { createRuntime } from '../../../frontend/src/app/runtime'
 import { createQueryClient } from '../../../frontend/src/app/query'
 
@@ -32,7 +32,8 @@ async function settle() {
 }
 async function fixture(initial: Batch | null) {
   let remote = initial
-  const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url === '/api/batches' ? remote : {})))
+  let remoteRun: Run | null = null
+  const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url === '/api/batches' ? remote : url.includes('/runs/') ? remoteRun : {})))
   vi.stubGlobal('fetch', fetch)
   const client = createQueryClient()
   let runtime!: ReturnType<typeof createRuntime>
@@ -41,7 +42,7 @@ async function fixture(initial: Batch | null) {
   app.mount({})
   cleanup.push(() => { app.unmount(); client.clear() })
   await settle()
-  return { runtime, setRemote: (value: Batch | null) => { remote = value },
+  return { runtime, fetch, setRun: (value: Run) => { remoteRun = value }, setRemote: (value: Batch | null) => { remote = value },
     requests: () => fetch.mock.calls.filter(([url]) => url === '/api/batches').length }
 }
 
@@ -88,5 +89,29 @@ describe('batch polling lifecycle', () => {
     await vi.advanceTimersByTimeAsync(1200)
     await settle()
     expect(requests()).toBe(4)
+  })
+})
+
+describe('shared active and detail task cache', () => {
+  it.each(['organize', 'scrape'] as const)('shares %s task requests and stops polling on completion', async purpose => {
+    const { runtime, fetch, setRun } = await fixture(null)
+    const run: Run = { id: 'one', purpose, title: 'Work', mode: 'copy', state: 'running', created: '', error: '', total: 1, completed: 0, undo: false,
+      ops: [{ kind: 'video', source: '/source', target: '/target', status: 'pending', error: '', owner: '/source' }] }
+    setRun(run)
+    runtime.startRun({ ...run, ops: undefined })
+    runtime.inspect(run)
+    await settle()
+    const path = purpose === 'scrape' ? '/api/scrape/runs/one' : '/api/runs/one'
+    const requests = () => fetch.mock.calls.filter(([url]) => url === path).length
+    expect(requests()).toBe(1)
+    expect(runtime.detailQuery.data.value?.ops).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1200); await settle()
+    expect(requests()).toBe(2)
+    setRun({ ...run, state: 'completed', completed: 1 })
+    await vi.advanceTimersByTimeAsync(1200); await settle()
+    expect(requests()).toBe(3)
+    expect(runtime.detailQuery.data.value?.state).toBe('completed')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(requests()).toBe(3)
   })
 })

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 
 	"joycurator/internal/infra/fsops"
-	"joycurator/internal/model"
 )
 
 var errManualReview = errors.New("文件操作中断或状态不明，请人工核对来源、目标和暂存文件")
@@ -31,7 +30,7 @@ func (e *Engine) fastLeaf(path string, identity string) (os.FileInfo, error) {
 	return info, nil
 }
 
-func (e *Engine) discardFastTemp(op *model.Operation, identity string, save func() error) error {
+func (e *Engine) discardFastTemp(op *Operation, identity string, save func() error) error {
 	if err := e.FS.RemoveOwned(op.Temp, identity); err != nil {
 		return err
 	}
@@ -39,7 +38,7 @@ func (e *Engine) discardFastTemp(op *model.Operation, identity string, save func
 	return save()
 }
 
-func (e *Engine) fastRun(ctx context.Context, op *model.Operation, save func() error) error {
+func (e *Engine) fastRun(ctx context.Context, op *Operation, save func() error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -214,7 +213,7 @@ func (e *Engine) fastRun(ctx context.Context, op *model.Operation, save func() e
 	return save()
 }
 
-func (e *Engine) fastUndo(ctx context.Context, op *model.Operation, save func() error) error {
+func (e *Engine) fastUndo(ctx context.Context, op *Operation, save func() error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -248,7 +247,7 @@ func (e *Engine) fastUndo(ctx context.Context, op *model.Operation, save func() 
 			if pathErr != nil {
 				return pathErr
 			}
-			op.Undo = &model.Operation{Target: op.Source, Temp: tempPath, Status: "preparing"}
+			op.Undo = &Operation{Target: op.Source, Temp: tempPath, Status: "preparing"}
 			op.Status = "undoing"
 			if err = save(); err != nil {
 				return err

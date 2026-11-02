@@ -6,8 +6,8 @@ import (
 	"joycurator/internal/model"
 )
 
-// Resolved is the confirmed work supplied to planning. All catalog requests and
-// episode comparisons remain in matching; planning only consumes their results.
+// Resolved is the confirmed work supplied to organizer. All catalog requests and
+// episode comparisons remain in matching; organizer only consumes their results.
 type Resolved struct {
 	Entry    model.Entry
 	provider Provider

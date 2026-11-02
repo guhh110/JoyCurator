@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RecognitionItem } from '../../../frontend/src/api'
+import type { RecognitionItem } from '../../../frontend/src/model'
 import { recognitionEdits, recognitionGroups, sortByEpisode } from '../../../frontend/src/recognition'
 function file(
   path: string,

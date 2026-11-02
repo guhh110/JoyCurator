@@ -44,3 +44,13 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 新增测试放入相应子目录，沿用 `*_test.go`、`*.test.ts`、`*_test.py` 命名；不要在业务源码旁新增测试文件。
 
 默认识别规则的分类路径样本库位于 [backend/recognition/testdata/](backend/recognition/testdata/README.md)：目前 97 条通过样本、3 条明确记录的待修复样本。每条都包含路径、解析边界、完整元数据期望及预期错误；不会自动覆盖用户已保存的规则。执行 `python3 tests/run_backend.py test -run 'TestRecognition(PathCorpus|KnownGaps|CorpusFormat)' -v ./internal/recognition` 查看样本级结果。
+
+架构约束按 recognition、matching、organizer 三模块检查。预览缓存、识别事务回滚、摘要读取、连接与限速共享及前端空闲停止轮询均有集中回归测试。
+
+固定性能样本：2000 文件规则提取和历史写入、1000 文件工作区预览、1000 条历史（每条 100 项操作）的列表和批次摘要查询。运行：
+
+```sh
+python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|BenchmarkWorkspace2000|BenchmarkRunHistory|BenchmarkPreview1000' -benchtime=1x ./internal/infra/sqlite ./internal/app
+```
+
+基准不访问公网，不操作已有用户数据，设置及样本创建不计入计时。结果与测量边界见 [性能记录](../docs/PERFORMANCE.md)。

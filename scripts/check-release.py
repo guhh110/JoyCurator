@@ -44,13 +44,19 @@ def inspect(path, name, private_paths=True):
     return problems
 
 
+def source_files(root):
+    tracked = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=root).decode().split('\0')
+    deleted = set(subprocess.check_output(['git', 'ls-files', '--deleted', '-z'], cwd=root).decode().split('\0'))
+    return sorted(set(tracked) - deleted - {''})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--assets', action='store_true', help='also check generated frontend')
     args = parser.parse_args()
-    tracked = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
+    sources = source_files(ROOT)
     errors = []
-    for name in filter(None, tracked):
+    for name in sources:
         errors.extend(inspect(ROOT / name, name))
     if args.assets:
         directory = ROOT / 'local/build/frontend'
@@ -69,7 +75,7 @@ def main():
         print(error, file=sys.stderr)
     if errors:
         return 1
-    print('Privacy check passed: tracked files' + (' and frontend assets' if args.assets else ''))
+    print('Privacy check passed: worktree source files' + (' and frontend assets' if args.assets else ''))
     return 0
 
 

@@ -34,6 +34,9 @@ func Open(dir string, initial model.Settings) (*Store, error) {
  CREATE TABLE IF NOT EXISTS config(id INTEGER PRIMARY KEY CHECK(id=1),value TEXT NOT NULL,token TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS tmdb_cache(key TEXT PRIMARY KEY,value BLOB NOT NULL,expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,value TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS runs_purpose ON runs(json_extract(value,'$.purpose'));
+ CREATE INDEX IF NOT EXISTS runs_batch ON runs(json_extract(value,'$.batchId'));
+ CREATE INDEX IF NOT EXISTS runs_state ON runs(json_extract(value,'$.state'));
  CREATE TABLE IF NOT EXISTS media_mappings(path TEXT PRIMARY KEY,value TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS media_mappings_work ON media_mappings(json_extract(value,'$.type'),json_extract(value,'$.tmdbId'));
  CREATE TABLE IF NOT EXISTS recognitions(id TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -41,6 +44,7 @@ CREATE TABLE IF NOT EXISTS extraction_rules(id INTEGER PRIMARY KEY CHECK(id=1),v
  CREATE TABLE IF NOT EXISTS extraction_traces(id TEXT PRIMARY KEY,path TEXT NOT NULL,root TEXT NOT NULL,workspace_id TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,finished_at TEXT NOT NULL DEFAULT '',metadata TEXT NOT NULL DEFAULT '{}',error TEXT NOT NULL DEFAULT '');
  CREATE TABLE IF NOT EXISTS extraction_steps(trace_id TEXT NOT NULL REFERENCES extraction_traces(id) ON DELETE CASCADE,position INTEGER NOT NULL,value TEXT NOT NULL,PRIMARY KEY(trace_id,position));
  CREATE INDEX IF NOT EXISTS extraction_trace_workspace ON extraction_traces(workspace_id);
+ CREATE INDEX IF NOT EXISTS extraction_trace_path ON extraction_traces(path);
  UPDATE extraction_traces SET status='interrupted',error='服务中断，保留已完成步骤' WHERE status='running';`); err != nil {
 		return fail(err)
 	}
@@ -57,7 +61,7 @@ CREATE TABLE IF NOT EXISTS extraction_rules(id INTEGER PRIMARY KEY CHECK(id=1),v
 	if _, err = a.LoadSettings(); err != nil {
 		return fail(err)
 	}
-	runs, err := a.AllRuns()
+	runs, err := a.UnfinishedRuns()
 	if err != nil {
 		return fail(err)
 	}

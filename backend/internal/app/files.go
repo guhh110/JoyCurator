@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,54 +10,15 @@ import (
 	"joycurator/internal/infra/fsops"
 	"joycurator/internal/infra/scanner"
 	"joycurator/internal/model"
-	"joycurator/internal/recognition"
 )
-
-type ScannedFile struct {
-	model.File
-	Metadata recognition.Metadata `json:"metadata"`
-}
 
 type FileService struct {
 	access   *fsops.FS
 	settings SettingsReader
-	extract  *recognition.Service
 }
 
-func NewFiles(access *fsops.FS, settings SettingsReader, extract *recognition.Service) *FileService {
-	return &FileService{access: access, settings: settings, extract: extract}
-}
-func (a *FileService) Scan(ctx context.Context, paths []string) ([]ScannedFile, error) {
-	if len(paths) == 0 || len(paths) > 200 {
-		return nil, errors.New("请选择 1–200 个文件或目录")
-	}
-	s, err := a.settings.Load()
-	if err != nil {
-		return nil, err
-	}
-	for _, path := range paths {
-		if !a.SourceAllowed(path, s) {
-			return nil, errors.New("只能添加源目录内的文件或文件夹，目标目录不能作为来源")
-		}
-	}
-	items := []ScannedFile{}
-	err = scanner.Walk(ctx, a.access, paths, []string{s.TargetRoot}, func(path string, info os.FileInfo) error {
-		if len(items) >= 2000 {
-			return errors.New("单次最多导入 2000 个视频，请分批添加")
-		}
-		extracted, _, extractErr := a.extract.ExtractFile(ctx, path, s.SourceRoot, "")
-		if extractErr != nil {
-			return extractErr
-		}
-		season := -1
-		if extracted.Metadata.Season != nil {
-			season = *extracted.Metadata.Season
-		}
-		items = append(items, ScannedFile{File: model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: season, Episodes: extracted.Metadata.Episodes}, Metadata: extracted.Metadata})
-		return nil
-	})
-	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })
-	return items, err
+func NewFiles(access *fsops.FS, settings SettingsReader) *FileService {
+	return &FileService{access, settings}
 }
 func (a *FileService) SourceAllowed(path string, s model.Settings) bool {
 	path = a.access.Canonical(path)

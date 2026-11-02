@@ -12,11 +12,14 @@ import (
 	"testing"
 
 	"joycurator/internal/infra/fsops"
+	"joycurator/internal/matching"
+	"joycurator/internal/model"
+	"joycurator/internal/trace"
 )
 
 var fixtureDatabases sync.Map
 
-func openTest(t *testing.T, dir, source, target string, secure bool) (*App, error) {
+func openTest(t testing.TB, dir, source, target string, secure bool) (*App, error) {
 	t.Helper()
 	a, err := Open(dir, source, target, secure)
 	if err != nil {
@@ -31,7 +34,7 @@ func openTest(t *testing.T, dir, source, target string, secure bool) (*App, erro
 	t.Cleanup(func() { fixtureDatabases.Delete(a); db.Close() })
 	return a, nil
 }
-func testDB(t *testing.T, a *App) *sql.DB {
+func testDB(t testing.TB, a *App) *sql.DB {
 	t.Helper()
 	v, ok := fixtureDatabases.Load(a)
 	if !ok {
@@ -57,7 +60,7 @@ func testUpdateSettings(t *testing.T, a *App, w *httptest.ResponseRecorder, r *h
 	return nil
 }
 
-func testAccess(t *testing.T, a *App) *fsops.FS {
+func testAccess(t testing.TB, a *App) *fsops.FS {
 	t.Helper()
 	s, err := a.dependencies.Config.Load()
 	if err != nil {
@@ -68,4 +71,24 @@ func testAccess(t *testing.T, a *App) *fsops.FS {
 		t.Fatal(err)
 	}
 	return access
+}
+
+// Empty search results keep workspace scans deterministic and offline.
+type emptySearch struct{ matching.Provider }
+
+func (emptySearch) Search(context.Context, string, string, int) ([]model.Entry, error) {
+	return []model.Entry{}, nil
+}
+func scanWorkspace(t *testing.T, a *App, paths []string) ([]matching.Item, error) {
+	t.Helper()
+	a.dependencies.Workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) { return emptySearch{}, nil }
+	task, err := a.dependencies.Workspace.Start(paths, "")
+	if err != nil {
+		return nil, err
+	}
+	task = waitRecognition(t, a, task.ID)
+	if task.State != "completed" {
+		return nil, fmt.Errorf("workspace: %s", task.Error)
+	}
+	return task.Items, nil
 }

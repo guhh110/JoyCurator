@@ -3,11 +3,24 @@ import os
 import runpy
 import tempfile
 import unittest
+import subprocess
 
-inspect = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[2] / 'scripts/check-release.py'))['inspect']
+checker = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[2] / 'scripts/check-release.py'))
+inspect = checker['inspect']
+source_files = checker['source_files']
 
 
 class PrivacyCheckTest(unittest.TestCase):
+    def test_current_sources_include_new_files_and_exclude_deleted_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            subprocess.run(['git', 'init', '-q', directory], check=True)
+            (root / 'before.go').write_text('package example')
+            subprocess.run(['git', 'add', 'before.go'], cwd=root, check=True)
+            (root / 'before.go').unlink()
+            (root / 'after.go').write_text('package example')
+            self.assertEqual(source_files(root), ['after.go'])
+
     def test_private_file_paths(self):
         for name in ('local/data/app.db', 'backend/test.sqlite3-wal',
                      'frontend/.env.production', 'private.key', 'credentials.json'):

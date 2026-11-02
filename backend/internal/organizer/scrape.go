@@ -20,7 +20,7 @@ import (
 
 func withinMedia(root, path string) bool { return fsops.Within(root, path) }
 
-func (a *Service) validateSkipped(mappings []model.MediaMapping, ops []model.Work) error {
+func (a *Service) validateSkipped(mappings []model.MediaMapping, ops []Work) error {
 	active := map[string]bool{}
 	for _, op := range ops {
 		if op.Kind == "video" {
@@ -106,12 +106,12 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 		return ScrapePlan{}, err
 	}
 	plan := ScrapePlan{ID: model.Key(), Title: entry.Title, Type: kind, TMDBID: id, Targets: selected, Artifacts: []string{}, Issues: []string{}}
-	ops := []model.Work{}
-	seen := map[string]model.Operation{}
+	ops := []Work{}
+	seen := map[string]Operation{}
 	remaining := map[uint64]int64{}
 	add := func(target, kind, url string, content []byte, owner string) {
 		key := strings.ToLower(target)
-		op := model.Operation{Target: target, Kind: kind, Mode: "copy", URL: url, Content: content, Status: "pending"}
+		op := Operation{Target: target, Kind: kind, Mode: "copy", URL: url, Content: content, Status: "pending"}
 		if kind == "image" && strings.HasSuffix(strings.ToLower(target), ".jpg") && strings.HasSuffix(strings.ToLower(url), ".png") {
 			op.ConvertJPEG = true
 		}
@@ -153,7 +153,7 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 			plan.Issues = append(plan.Issues, "目标空间不足")
 		}
 		op.ID = int64(len(ops) + 1)
-		ops = append(ops, model.Work{Operation: op, Owner: owner})
+		ops = append(ops, Work{Operation: op, Owner: owner})
 		plan.Artifacts = append(plan.Artifacts, target)
 	}
 	showDirs := map[string]string{}
@@ -296,14 +296,8 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 		}
 	}
 	sort.Strings(plan.Artifacts)
-	a.scrapeMu.Lock()
-	for key, old := range a.scrapePlans {
-		if time.Now().After(old.expires) {
-			delete(a.scrapePlans, key)
-		}
-	}
-	a.scrapePlans[plan.ID] = scrapePreview{plan: plan, ops: ops, version: s.Version, expires: time.Now().Add(15 * time.Minute), mappings: items}
-	a.scrapeMu.Unlock()
+	a.previews.put(&Plan{ID: plan.ID, Purpose: "scrape", Ops: ops, Mappings: items, Version: s.Version,
+		Expires: time.Now().Add(previewTTL), Issues: plan.Issues, Title: plan.Title})
 	return plan, nil
 }
 
@@ -348,23 +342,21 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 	if a.coordinator.closed || a.coordinator.running != "" || a.coordinator.batch != "" {
 		return Run{}, ErrBusy
 	}
-	a.scrapeMu.Lock()
-	p, ok := a.scrapePlans[id]
-	a.scrapeMu.Unlock()
-	if !ok || time.Now().After(p.expires) {
+	p := a.previews.get(id)
+	if p == nil || p.Purpose != "scrape" || time.Now().After(p.Expires) {
 		return Run{}, errors.New("刮削预览已过期")
 	}
-	if len(p.plan.Issues) > 0 || len(p.ops) == 0 {
+	if len(p.Issues) > 0 || len(p.Ops) == 0 {
 		return Run{}, errors.New("刮削预览有冲突")
 	}
 	s, e := a.settings.Load()
 	if e != nil {
 		return Run{}, e
 	}
-	if s.Version != p.version {
+	if s.Version != p.Version {
 		return Run{}, errors.New("设置已更新，请重新预览")
 	}
-	for _, item := range p.mappings {
+	for _, item := range p.Mappings {
 		if !withinMedia(s.TargetRoot, item.Path) {
 			return Run{}, errors.New("目标视频已变化，请重新预览")
 		}
@@ -373,7 +365,7 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 			return Run{}, errors.New("目标视频已变化，请重新预览")
 		}
 	}
-	for _, mapping := range p.mappings {
+	for _, mapping := range p.Mappings {
 		current, lookupErr := a.mappings.Mapping(mapping.Path)
 		if lookupErr != nil {
 			return Run{}, lookupErr
@@ -382,7 +374,7 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 			return Run{}, errors.New("刮削映射已变化，请重新预览")
 		}
 	}
-	for _, op := range p.ops {
+	for _, op := range p.Ops {
 		info, e := a.access.Stat(op.Target)
 		if op.Replace {
 			if e != nil || !info.Mode().IsRegular() || fsops.Identity(info) != op.ReplaceIdentity || info.Size() != op.ReplaceSize || info.ModTime().UnixNano() != op.ReplaceMTime {
@@ -392,12 +384,10 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 			return Run{}, errors.New("刮削目标已变化，请重新预览")
 		}
 	}
-	r := Run{ID: model.Key(), Title: p.plan.Title, Mode: "scrape", State: "running", Created: time.Now().Format(time.RFC3339), Ops: p.ops, Total: len(p.ops), Purpose: "scrape", Mappings: p.mappings, Version: p.version}
+	r := Run{ID: model.Key(), Title: p.Title, Mode: "scrape", State: "running", Created: time.Now().Format(time.RFC3339), Ops: p.Ops, Total: len(p.Ops), Purpose: "scrape", Mappings: p.Mappings, Version: p.Version}
 	result, err := a.launch(r)
 	if err == nil {
-		a.scrapeMu.Lock()
-		delete(a.scrapePlans, id)
-		a.scrapeMu.Unlock()
+		a.previews.remove(id)
 	}
 	return result, err
 }

@@ -1,2 +1,2 @@
-// Package organizer contains the organizer domain boundary.
+// Package organizer owns media previews, execution, records and recovery.
 package organizer

@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 
-	"joycurator/internal/model"
 	"joycurator/internal/organizer"
 	_ "modernc.org/sqlite"
 )
@@ -36,18 +35,18 @@ func (a *Store) Run(id string) (organizer.Run, error) {
 	}
 	return r, err
 }
-func (a *Store) Runs(page int) (map[string]any, error) {
+func (a *Store) Runs(page int) (organizer.RunPage, error) {
 	return a.RunsByPurpose(page, "organize")
 }
 
-func (a *Store) RunsByPurpose(page int, purpose string) (map[string]any, error) {
+func (a *Store) RunsByPurpose(page int, purpose string) (organizer.RunPage, error) {
 	var total int
 	if err := a.db.QueryRow("SELECT COUNT(*) FROM runs WHERE json_extract(value,'$.purpose')=?", purpose).Scan(&total); err != nil {
-		return nil, err
+		return organizer.RunPage{}, err
 	}
-	rows, err := a.db.Query("SELECT value FROM runs WHERE json_extract(value,'$.purpose')=? ORDER BY rowid DESC LIMIT 20 OFFSET ?", purpose, (page-1)*20)
+	rows, err := a.db.Query("SELECT json_remove(value,'$.ops','$.mappings') FROM runs WHERE json_extract(value,'$.purpose')=? ORDER BY rowid DESC LIMIT 20 OFFSET ?", purpose, (page-1)*20)
 	if err != nil {
-		return nil, err
+		return organizer.RunPage{}, err
 	}
 	defer rows.Close()
 	items := []organizer.Run{}
@@ -55,20 +54,22 @@ func (a *Store) RunsByPurpose(page int, purpose string) (map[string]any, error) 
 		var raw string
 		var r organizer.Run
 		if err = rows.Scan(&raw); err != nil {
-			return nil, err
+			return organizer.RunPage{}, err
 		}
 		if err = decode(raw, &r); err != nil {
-			return nil, err
+			return organizer.RunPage{}, err
 		}
 		r.Ops = nil
 		items = append(items, r)
 	}
-	return map[string]any{"items": items, "total": total, "page": page}, rows.Err()
+	return organizer.RunPage{Items: items, Total: total, Page: page}, rows.Err()
 }
 
-func (a *Store) AllRuns() ([]organizer.Run, error) { return a.readRuns("SELECT value FROM runs") }
-func (a *Store) BatchRuns(id string) ([]organizer.Run, error) {
-	return a.readRuns("SELECT value FROM runs WHERE json_extract(value,'$.batchId')=? ORDER BY rowid", id)
+func (a *Store) BatchSummaries(id string) ([]organizer.Run, error) {
+	return a.readRuns("SELECT json_remove(value,'$.ops','$.mappings') FROM runs WHERE json_extract(value,'$.batchId')=? ORDER BY rowid", id)
+}
+func (a *Store) UnfinishedRuns() ([]organizer.Run, error) {
+	return a.readRuns("SELECT value FROM runs WHERE json_extract(value,'$.state') IN ('running','queued')")
 }
 func (a *Store) readRuns(query string, args ...any) ([]organizer.Run, error) {
 	rows, err := a.db.Query(query, args...)
@@ -97,21 +98,6 @@ func (a *Store) LatestBatchID() (string, error) {
 		return "", nil
 	}
 	return id, err
-}
-func (a *Store) Owned(target string) (*model.Work, error) {
-	var raw string
-	err := a.db.QueryRow(`SELECT op.value FROM runs, json_each(runs.value,'$.ops') op
- WHERE json_extract(runs.value,'$.state')<>'undone' AND json_extract(op.value,'$.target')=?
- AND json_extract(op.value,'$.status') IN ('completed','published') LIMIT 1`, target).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var work model.Work
-	err = decode(raw, &work)
-	return &work, err
 }
 func (a *Store) Shared(id, target, identity string) (bool, error) {
 	var n int

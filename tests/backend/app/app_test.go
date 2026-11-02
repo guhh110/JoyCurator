@@ -16,10 +16,9 @@ import (
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
 	"joycurator/internal/organizer"
-	"joycurator/internal/planning"
 )
 
-func fixture(t *testing.T) (*App, string) {
+func fixture(t testing.TB) (*App, string) {
 	t.Helper()
 	base := t.TempDir()
 	media := filepath.Join(base, "media")
@@ -49,19 +48,31 @@ func fixture(t *testing.T) (*App, string) {
 	seed("/tv/2/season/0?language=zh-CN", `{"episodes":[{"episode_number":1,"name":"特别篇"}]}`)
 	return a, media
 }
-func mediaFile(t *testing.T, a *App, root, name string) model.File {
+func mediaFile(t testing.TB, a *App, root, name string) model.File {
 	t.Helper()
 	path := filepath.Join(root, "source", name)
 	if err := os.WriteFile(path, bytes.Repeat([]byte("test-video"), 64), 0644); err != nil {
 		t.Fatal(err)
 	}
-	files, err := a.dependencies.Files.Scan(context.Background(), []string{path})
-	if err != nil || len(files) != 1 {
-		t.Fatalf("scan: %#v %v", files, err)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return files[0].File
+	settings, err := a.dependencies.Config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := a.dependencies.Recognition.Parse(context.Background(), path, settings.SourceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	season := -1
+	if parsed.Metadata.Season != nil {
+		season = *parsed.Metadata.Season
+	}
+	return model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: season, Episodes: parsed.Metadata.Episodes}
 }
-func previewRequest(t *testing.T, a *App, kind string, id int, mode, policy string, files ...model.File) planning.PreviewRequest {
+func previewRequest(t testing.TB, a *App, kind string, id int, mode, policy string, files ...model.File) organizer.BatchPreviewRequest {
 	t.Helper()
 	entry := &model.Entry{Type: kind, TMDBID: id, Title: "测试作品", OriginalTitle: "测试作品", Year: 2024}
 	if kind == "tv" {
@@ -77,11 +88,7 @@ func previewRequest(t *testing.T, a *App, kind string, id int, mode, policy stri
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}
-	paths := make([]string, 0, len(files))
-	for _, file := range files {
-		paths = append(paths, file.Path)
-	}
-	return planning.PreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Paths: paths, Mode: mode, DuplicatePolicy: policy}
+	return organizer.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: mode, DuplicatePolicy: policy}
 }
 func done(t *testing.T, a *App, r organizer.Run) organizer.Run {
 	t.Helper()
@@ -105,18 +112,22 @@ func done(t *testing.T, a *App, r organizer.Run) organizer.Run {
 	t.Fatal("task timed out")
 	return organizer.Run{}
 }
-func executePlan(t *testing.T, a *App, p *planning.Plan) organizer.Run {
+func executePlan(t *testing.T, a *App, p *organizer.Plan) organizer.Run {
 	t.Helper()
 	if len(p.Issues) > 0 {
 		t.Fatalf("issues %v", p.Issues)
 	}
-	r, err := a.dependencies.Organizer.Execute(p.ID)
+	batch, err := a.dependencies.Organizer.ExecuteBatch(p.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r = done(t, a, r)
-	if r.State != "completed" {
-		t.Fatalf("run: %+v", r)
+	batch = waitBatch(t, a, batch.ID)
+	if len(batch.Runs) != 1 {
+		t.Fatalf("expected one work, got %d", len(batch.Runs))
+	}
+	r, err := a.dependencies.Organizer.Record(batch.Runs[0].ID)
+	if err != nil || r.State != "completed" {
+		t.Fatalf("run: %+v %v", r, err)
 	}
 	return r
 }
@@ -127,7 +138,7 @@ func TestTVPreviewExecuteUndoWithSharedArtifacts(t *testing.T) {
 	a, root := fixture(t)
 	f1 := mediaFile(t, a, root, "山海旅人.S01E01.mkv")
 	f2 := mediaFile(t, a, root, "山海旅人.S01E02.mkv")
-	p, err := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", f1, f2))
+	p, err := a.dependencies.Organizer.BatchPreview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", f1, f2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,9 +177,9 @@ func TestSeparateOrganizeRunsOnlyRegisterVideoMappings(t *testing.T) {
 	a, root := fixture(t)
 	f1 := mediaFile(t, a, root, "Show.S01E01.mkv")
 	f2 := mediaFile(t, a, root, "Show.S01E02.mkv")
-	p, _ := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", f1))
+	p, _ := a.dependencies.Organizer.BatchPreview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", f1))
 	r1 := executePlan(t, a, p)
-	p, err := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", f2))
+	p, err := a.dependencies.Organizer.BatchPreview(context.Background(), previewRequest(t, a, "tv", 2, "copy", "error", f2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,27 +220,27 @@ func TestStalePlanAndSourceChangesRejected(t *testing.T) {
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
 	in := previewRequest(t, a, "movie", 1, "copy", "error", f)
-	p, err := a.dependencies.Planning.Preview(context.Background(), in)
+	p, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s, _ := a.dependencies.Config.Load()
 	s.Version++
 	_, _ = testDB(t, a).Exec("UPDATE config SET value=?", jsonText(s))
-	if _, err = a.dependencies.Organizer.Execute(p.ID); err == nil {
+	if _, err = a.dependencies.Organizer.ExecuteBatch(p.ID); err == nil {
 		t.Fatal("stale settings accepted")
 	}
-	p, err = a.dependencies.Planning.Preview(context.Background(), in)
+	p, err = a.dependencies.Organizer.BatchPreview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = os.WriteFile(f.Path, []byte("changed"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = a.dependencies.Organizer.Execute(p.ID); err == nil {
+	if _, err = a.dependencies.Organizer.ExecuteBatch(p.ID); err == nil {
 		t.Fatal("changed source accepted")
 	}
-	if _, err = a.dependencies.Organizer.Execute("client-controlled-payload"); err == nil {
+	if _, err = a.dependencies.Organizer.ExecuteBatch("client-controlled-payload"); err == nil {
 		t.Fatal("unknown preview accepted")
 	}
 }
@@ -240,9 +251,10 @@ func TestNoOverwriteAndPathLevelUndo(t *testing.T) {
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
 	in := previewRequest(t, a, "movie", 1, "copy", "error", f)
-	p, _ := a.dependencies.Planning.Preview(context.Background(), in)
+	p, _ := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 	r := executePlan(t, a, p)
-	p, err := a.dependencies.Planning.Preview(context.Background(), in)
+	in = previewRequest(t, a, "movie", 1, "copy", "error", f)
+	p, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +289,7 @@ func TestMoveAndHardlink(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			a, root := fixture(t)
 			f := mediaFile(t, a, root, "电影.2024.mkv")
-			p, err := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "movie", 1, mode, "error", f))
+			p, err := a.dependencies.Organizer.BatchPreview(context.Background(), previewRequest(t, a, "movie", 1, mode, "error", f))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -358,7 +370,7 @@ func TestScanExcludesTargetsSymlinksAndPreservesUnknownSeason(t *testing.T) {
 	_ = os.WriteFile(outside, []byte("test"), 0644)
 	_ = os.Symlink(outside, filepath.Join(root, "source", "link.mp4"))
 	_ = os.WriteFile(filepath.Join(root, "target", "output.mp4"), []byte("test"), 0644)
-	files, err := a.dependencies.Files.Scan(context.Background(), []string{filepath.Join(root, "source")})
+	files, err := scanWorkspace(t, a, []string{filepath.Join(root, "source")})
 	if err != nil || len(files) != 2 {
 		t.Fatalf("%v %v", files, err)
 	}
@@ -370,7 +382,7 @@ func TestInterruptedRunCanResumeAfterRestart(t *testing.T) {
 	}
 	a, root := fixture(t)
 	f := mediaFile(t, a, root, "电影.2024.mkv")
-	p, err := a.dependencies.Planning.Preview(context.Background(), previewRequest(t, a, "movie", 1, "copy", "error", f))
+	p, err := a.dependencies.Organizer.BatchPreview(context.Background(), previewRequest(t, a, "movie", 1, "copy", "error", f))
 	if err != nil {
 		t.Fatal(err)
 	}

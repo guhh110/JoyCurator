@@ -1,25 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { useRecords } from '../features/records/queries'
 import { ArrowRight, Clock3, FileImage, RotateCcw, Layers3 } from '@lucide/vue'
-import { api, type Run } from '../api'
 import { useRuntime } from '../app/runtime'
 import PageHeader from '../components/ui/PageHeader.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import { date, states } from '../features/records/presentation'
 const runtime = useRuntime()
 const page = ref(1)
-const records = useQuery({ queryKey: computed(() => ['scrape','runs',page.value]), queryFn: ({ signal }) => api<{items:Run[];total:number}>(`/scrape/runs?page=${page.value}`,undefined,'GET',{signal}),refetchInterval:1500 })
-const error = ref('')
-const busy = ref(false)
-async function action(run: Run, kind: string) {
-  busy.value = true; error.value = ''
-  try {
-    await api(`/scrape/runs/${run.id}/${kind}`,{})
-    await records.refetch()
-  } catch (e) { error.value = (e as Error).message }
-  finally { busy.value = false }
-}
+const records = useRecords(page, 'scrape')
+const busy = runtime.actionBusy
+const action = runtime.recordAction
 </script>
 <template>
   <section aria-label="刮削记录">
@@ -35,7 +26,6 @@ async function action(run: Run, kind: string) {
         </article>
       </template>
       <div v-if="(records.data.value?.total ?? 0)>20"><button class="button small" :disabled="page===1" @click="page--">上一页</button><button class="button small" :disabled="page*20>=(records.data.value?.total ?? 0)" @click="page++">下一页</button></div>
-      <p v-if="error" class="notice error">{{ error }}</p>
     </QueryState>
   </section>
 </template>

@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"joycurator/internal/infra/fsops"
-	"joycurator/internal/model"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 )
 
-func overwriteFixture(t *testing.T, mode string) (*Engine, *model.Operation, []byte) {
+func overwriteFixture(t *testing.T, mode string) (*Engine, *Operation, []byte) {
 	t.Helper()
 	e, op, body := fixture(t, mode)
 	if err := os.MkdirAll(filepath.Dir(op.Target), 0755); err != nil {

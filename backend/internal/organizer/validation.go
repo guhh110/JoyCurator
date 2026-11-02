@@ -1,4 +1,4 @@
-package planning
+package organizer
 
 import (
 	"context"
@@ -7,15 +7,14 @@ import (
 	"path/filepath"
 
 	"joycurator/internal/infra/fsops"
-	"joycurator/internal/model"
 )
 
-func (a *Service) ValidateOps(ops []model.Work) error {
+func (a *Service) validateOps(ops []Work) error {
 	needed := map[uint64]int64{}
 	free := map[uint64]int64{}
 	for _, op := range ops {
 		if op.Reused {
-			if err := a.verifier.Check(context.Background(), op.Target, op.Identity, op.Hash); err != nil {
+			if err := (&Engine{FS: a.access}).Check(context.Background(), op.Target, op.Identity, op.Hash); err != nil {
 				return err
 			}
 			continue

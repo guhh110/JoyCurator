@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"joycurator/internal/matching"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -143,8 +145,8 @@ func TestHTTPConfigurationSimulationPersistenceAndHistory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("dummy media"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	// Formal scan and debug share exactly the same engine and produce identical metadata.
-	s.call(t, "POST", "/api/scan", map[string]any{"paths": []string{path}}, 200)
+	// Workspace import and debug share exactly the same engine and produce identical metadata.
+	s.importFile(t, path)
 	history := s.history(t)
 	if history.Total != initial+1 || history.Items[0].StepCount != 1 {
 		t.Fatal(history)
@@ -242,7 +244,7 @@ func TestHistoryPaginationRestartInterruptionAndCleanup(t *testing.T) {
 	s.call(t, "DELETE", "/api/extraction/traces/"+history.Items[0].ID, nil, 200)
 }
 
-func TestScriptHTTPTrialInvalidSaveAndFormalScan(t *testing.T) {
+func TestScriptHTTPTrialInvalidSaveAndWorkspaceImport(t *testing.T) {
 	s := newService(t)
 	path := filepath.Join(s.source, "Film.mkv")
 	rule := scriptRule("script", r.Title, "function extract(ctx) { trace(\"source\", ctx.text); return ctx.params.title; }")
@@ -263,7 +265,7 @@ func TestScriptHTTPTrialInvalidSaveAndFormalScan(t *testing.T) {
 	if err := os.WriteFile(path, []byte("dummy"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	s.call(t, "POST", "/api/scan", map[string]any{"paths": []string{path}}, 200)
+	s.importFile(t, path)
 	history := s.history(t)
 	formal := decodeResponse[r.Result](t, s.call(t, "GET", "/api/extraction/traces/"+history.Items[0].ID, nil, 200))
 	if !reflect.DeepEqual(formal.Metadata, trial.Metadata) || formal.Steps[0].RuleConfig.Config.Code != rule.Config.Code || len(formal.Steps[0].Attempts[0].Trace) != 3 {
@@ -277,4 +279,41 @@ func TestScriptHTTPTrialInvalidSaveAndFormalScan(t *testing.T) {
 		t.Fatal("editing changed history")
 	}
 	s.call(t, "DELETE", "/api/extraction/traces/"+history.Items[0].ID, nil, 200)
+}
+
+// Import through the only production workspace path, with local TMDB search responses.
+func (s *service) importFile(t *testing.T, path string) {
+	t.Helper()
+	result := decodeResponse[r.Result](t, s.call(t, "POST", "/api/extraction/test", map[string]any{"path": path}, 200))
+	db, err := sql.Open("sqlite", filepath.Join(s.base, "data", "joycurator.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec("UPDATE config SET token='test-token'"); err != nil {
+		t.Fatal(err)
+	}
+	title := ""
+	if result.Metadata.Title != nil {
+		title = *result.Metadata.Title
+	}
+	for _, kind := range []string{"movie", "tv"} {
+		q := url.Values{"query": {title}, "include_adult": {"false"}, "language": {"zh-CN"}}
+		if _, err = db.Exec("INSERT OR REPLACE INTO tmdb_cache VALUES(?,?,?)", "/search/"+kind+"?"+q.Encode(), `{"results":[]}`, time.Now().Add(time.Hour).Unix()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	task := decodeResponse[matching.Workspace](t, s.call(t, "POST", "/api/recognitions", map[string]any{"paths": []string{path}}, 200))
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		task = decodeResponse[matching.Workspace](t, s.call(t, "GET", "/api/recognitions/"+task.ID, nil, 200))
+		if task.State != "running" {
+			if task.State != "completed" {
+				t.Fatal(task.Error)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("workspace did not finish")
 }

@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-func TestCurrentScanAndWorkspaceExposeMetadata(t *testing.T) {
+func TestWorkspaceExposesMetadata(t *testing.T) {
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "Show.S00E01.mkv")
-	files, err := a.dependencies.Files.Scan(context.Background(), []string{file.Path})
+	files, err := scanWorkspace(t, a, []string{file.Path})
 	if err != nil || len(files) != 1 {
 		t.Fatal(files, err)
 	}
@@ -49,6 +49,11 @@ func TestCurrentScanAndWorkspaceExposeMetadata(t *testing.T) {
 	}
 	if response := call("/api/extraction/test", `{"path":"/absent/Show.S00E01.mkv"}`); response.Code != 200 || !strings.Contains(response.Body.String(), `"metadata"`) {
 		t.Fatal(response.Code, response.Body.String())
+	}
+	for _, path := range []string{"/api/scan", "/api/preview", "/api/execute"} {
+		if response := call(path, `{}`); response.Code != 404 {
+			t.Fatal("removed endpoint available", path, response.Code)
+		}
 	}
 	if response := call("/api/recognitions/debug", `{"path":"/absent/file.mkv","mode":"parse"}`); response.Code != 404 {
 		t.Fatal("removed endpoint still available", response.Code)

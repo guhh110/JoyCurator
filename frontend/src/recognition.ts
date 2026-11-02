@@ -1,4 +1,4 @@
-import type { RecognitionItem } from './api'
+import type { RecognitionItem } from './model'
 
 const pathOrder = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
 interface EpisodePosition {

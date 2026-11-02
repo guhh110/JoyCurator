@@ -1,4 +1,4 @@
-import type { Episode, RecognitionItem } from '../../api'
+import type { Episode, RecognitionItem } from '../../model'
 
 export interface OffsetMapping {
   path: string

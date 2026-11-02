@@ -15,12 +15,9 @@
 | `GET /settings` | 设置、授权 `roots`、凭据存在标志 `hasToken`；不返回 Token |
 | `PUT /settings` | 设置及当前 `version`，可选 `tmdbToken`；版本过期拒绝保存 |
 | `GET /browse?path=` | 默认仅浏览已配置源目录；目录设置选择器可用 `scope=roots` 浏览授权根目录，跳过隐藏文件和符号链接 |
-| `POST /scan` | `{paths}`，递归扫描，返回视频数组 |
 | `GET /search?type=&q=&year=` | 搜索 TMDB，`type` 为 `movie` 或 `tv` |
 | `GET /seasons?id=` | 作品的季列表 |
 | `GET /episodes?id=&season=` | 指定季的集列表，季号 0 为特别篇 |
-| `POST /preview` | `{recognitionId,revision,paths,mode,duplicatePolicy}`，仅预览同一工作区内已确认的一部作品；不接受任意 TMDB ID/文件组合，不请求 TMDB；重复策略必填 `error/skip/overwrite` |
-| `POST /execute` | `{id}`，执行已确认的预览，返回任务 |
 | `GET /scrape/works?q=&cursor=` | 刮削作品概览，按类型和 TMDB ID 稳定排序，每次最多 50 部；返回 `{items:[{type,tmdbId,representative,total,pending,failed,completed}],nextCursor}`。搜索匹配目标路径或 TMDB ID；不逐个检查视频是否可用 |
 | `GET /scrape/works/{kind}/{id}` | 指定电影或剧集的全部已登记目标视频及实时可用状态，返回 `MediaMapping[]`；不扫描旧媒体 |
 | `POST /scrape/preview` | `{paths}`，仅接受已登记且可用的同一作品，单次 1–1000 个目标视频，返回产物、空间与冲突 |
@@ -49,7 +46,7 @@
 | `POST /runs/{id}/retry` | 重试失败、取消或中断的整理 |
 | `POST /runs/{id}/undo` | 整批撤销；撤销中断后再次调用以继续 |
 
-扫描文件结构含 `path`、`size`、`mtime`、`metadata`、`season` 和 `episodes`。metadata 是规则直接提取的原始结果，季集映射可由用户另行修正。`mtime` 为纳秒时间戳字符串，避免 JavaScript 数值精度损失；未知季号为 `-1`，预览前由用户选择的季补全。
+工作区文件结构含 `path`、`size`、`mtime`、`metadata`、`season` 和 `episodes`。metadata 是规则直接提取的原始结果，季集映射可由用户另行修正。`mtime` 为纳秒时间戳字符串，避免 JavaScript 数值精度损失；未知季号为 `-1`，预览前由用户选择的季补全。
 
 预览返回 `id`、`rows`、`required`、`issues`。仅无阻塞问题的预览可执行；需要跳过冲突文件时，去掉对应文件后重新请求预览。前端不提交文件操作指令。
 
@@ -57,11 +54,11 @@
 
 每次只运行一个整理或撤销任务。自动整理队列占用执行槽直到整批结束，期间禁止其他执行及设置变更；单部作品失败后继续下一部。每部作品的记录带可选 `batchId`，可独立重试、撤销。重启后运行中和排队中的记录均标为中断，不自动执行。
 
-手动工作区保存在浏览器；自动识别工作区和修正、队列、整理记录保存在 SQLite，预览仅短期保存在内存。
+工作区和修正、队列、整理记录保存在 SQLite；浏览器仅维护编辑草稿、视图状态与活动任务引用。两类预览共享内存缓存，15 分钟有效、合计最多 32 份，满额逐出最早预览，设置保存后全部失效。
 
 ## 自动识别工作区
 
-识别任务返回 `id`、`revision`、`state`、`paths`、`items`、`completed`、`total`、`error`、`created`。任务状态为 `running`、`completed`、`failed`、`cancelled`、`interrupted`。每个文件在扫描字段之外包含可选 `traceId`（旧结果无轨迹）、`metadata`、`group`、`entry`、`candidates`、`state`、`reason`、`selected`、`removed`；文件状态为 `pending`、`ready`、`review`、`unmatched`、`failed`。只有 `ready` 的选中文件可进入预览。
+识别任务返回 `id`、`revision`、`state`、`paths`、`items`、`completed`、`total`、`error`、`created`。任务状态为 `running`、`completed`、`failed`、`cancelled`、`interrupted`。每个文件在扫描字段之外包含可选 `traceId`、`metadata`、`group`、`entry`、`candidates`、`state`、`reason`、`selected`、`removed`；文件状态为 `pending`、`ready`、`review`、`unmatched`、`failed`。只有 `ready` 的选中文件可进入预览。
 
 保存修正需提交完整文件列表；每项为 `{path,group,type,tmdbId,season,episodes,selected,removed}`。大小和修改时间由服务端保留，不接受前端修改。`tmdbId:0` 表示尚未选定作品。服务端校验季集，并自动取消无效文件的选择。预览绑定工作区版本，任何后续保存均要求重新预览。
 
@@ -75,7 +72,7 @@
 
 `Step.attempts[].trace` 保存脚本的正则调用、`trace/print` 中间值、阶段和源码行列号。脚本语法、参数结构错误在保存或试跑时返回 HTTP 400；运行错误和超限作为该规则的 `error` 步骤保留日志，继续执行后续规则。历史详情中的配置与源码均来自当次快照。
 
-`Metadata` 的单值字段未知为 `null`，集数未知为 `[]`；`season:0` 为特别篇。`Step` 保存每条规则的配置、输入尝试、命中与捕获、提出的值、前后值、采用标志、原因、时间和耗时；`matched` 状态不等于已采用。规则模型及执行语义详见 [路径元数据提取](RECOGNITION.md)。当前链保存无效时保留原链；单次调用只使用开始时获取的链。正式轨迹长期保存，重启将运行中轨迹标为中断；删除轨迹不会修改原识别结果。
+`Metadata` 的单值字段未知为 `null`，集数未知为 `[]`；`season:0` 为特别篇。`Step` 保存每条规则的配置、输入尝试、命中与捕获、提出的值、前后值、采用标志、原因、时间和耗时；`matched` 状态不等于已采用。规则模型及执行语义详见 [路径元数据提取](RECOGNITION.md)。当前链保存无效时保留原链；单次调用只使用开始时获取的链。正式轨迹逐文件集中写入步骤和最终摘要，长期保存；正常取消保存已产生步骤，强制退出时当前文件可能只有摘要，重启标为中断；删除轨迹不会修改原识别结果。
 
 ## 目录与分类
 
@@ -84,3 +81,5 @@
 分类规则的 `name` 是目标目录下的相对子目录，允许多级路径，例如 `电影/华语电影`、`电视剧/国产剧`。规则按顺序匹配，首个命中规则的路径填入 `{category}`；最终文件路径统一以 `targetRoot` 为根。禁止绝对路径、`.`、`..`、空路径段和非法目录名。
 
 扫描及预览均校验来源必须位于 `sourceRoot` 内且不在 `targetRoot` 内。显式提交目标文件也会被拒绝。`scope=roots` 只供设置目录浏览，不会放宽扫描或预览权限。
+
+单部与多部整理共用工作区和批次入口。独立扫描、单作品预览执行入口已移除。记录列表及批次状态不包含 `ops` 和 `mappings`；单条详情按需返回完整记录。刮削记录对应 `GET /scrape/runs`、`GET /scrape/runs/{id}` 及 `POST /scrape/runs/{id}/cancel|retry|undo`，与整理记录按用途隔离。

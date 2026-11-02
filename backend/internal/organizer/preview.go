@@ -1,4 +1,4 @@
-package planning
+package organizer
 
 import (
 	"context"
@@ -14,54 +14,7 @@ import (
 	"joycurator/internal/rules"
 )
 
-func (a *Service) Preview(ctx context.Context, in PreviewRequest) (*Plan, error) {
-	task, err := a.workspaces.Read(in.RecognitionID)
-	if err != nil {
-		return nil, err
-	}
-	if task.State == "running" || task.Revision != in.Revision {
-		return nil, errors.New("识别结果已变化，请保存并重新预览")
-	}
-	if len(in.Paths) == 0 || len(in.Paths) > 1000 {
-		return nil, errors.New("每次整理 1–1000 个文件")
-	}
-	selected := make(map[string]bool, len(in.Paths))
-	for _, path := range in.Paths {
-		if selected[path] {
-			return nil, errors.New("文件重复")
-		}
-		selected[path] = true
-	}
-	items := make([]matching.Item, 0, len(in.Paths))
-	for _, item := range task.Items {
-		if !selected[item.Path] {
-			continue
-		}
-		if item.Removed || item.State != "ready" || item.Entry == nil {
-			return nil, errors.New("选择中包含待确认文件")
-		}
-		items = append(items, item)
-		delete(selected, item.Path)
-	}
-	if len(selected) != 0 {
-		return nil, errors.New("选择包含不属于此工作区的文件")
-	}
-	for _, item := range items[1:] {
-		if matching.EntryGroup(*item.Entry) != matching.EntryGroup(*items[0].Entry) {
-			return nil, errors.New("单项预览只能选择一部作品")
-		}
-	}
-	plan, err := a.buildPreview(ctx, items, in.Mode, in.DuplicatePolicy)
-	if err != nil {
-		return nil, err
-	}
-	plan.RecognitionID, plan.Revision = task.ID, task.Revision
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.storePlan(plan)
-	return plan, nil
-}
-func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode, policy string) (*Plan, error) {
+func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode, policy string, s model.Settings) (*Plan, error) {
 	if len(items) == 0 || len(items) > 1000 {
 		return nil, errors.New("每次整理 1–1000 个文件")
 	}
@@ -75,22 +28,18 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 	if entry.Type != "movie" && entry.Type != "tv" || entry.TMDBID <= 0 {
 		return nil, errors.New("请先选择作品")
 	}
-	s, err := a.settings.Load()
-	if err != nil {
-		return nil, err
-	}
 	for _, item := range items {
 		if item.State != "ready" || item.Removed || item.Entry == nil || matching.EntryGroup(*item.Entry) != matching.EntryGroup(entry) || !a.sources.SourceAllowed(item.Path, s) {
 			return nil, errors.New("预览包含源目录之外或目标目录内的文件，请重新添加")
 		}
 	}
-	plan := &Plan{ID: model.Key(), Title: entry.Title, Type: entry.Type, TMDBID: entry.TMDBID, Mode: mode, DuplicatePolicy: policy, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(15 * time.Minute), Purpose: "organize"}
-	seen := map[string]model.Operation{}
+	plan := &Plan{ID: model.Key(), Title: entry.Title, Type: entry.Type, TMDBID: entry.TMDBID, Mode: mode, DuplicatePolicy: policy, Rows: []Row{}, Issues: []string{}, Version: s.Version, Expires: time.Now().Add(previewTTL), Purpose: "organize"}
+	seen := map[string]Operation{}
 	free := map[uint64]int64{}
 	needed := map[uint64]int64{}
 	files := map[string]bool{}
 	subtitles := map[string][]os.DirEntry{}
-	add := func(row *Row, op model.Operation) {
+	add := func(row *Row, op Operation) {
 		issue := func(msg string) { row.Issues = append(row.Issues, msg); plan.Issues = append(plan.Issues, msg) }
 		targetKey := strings.ToLower(op.Target)
 		if _, ok := seen[targetKey]; ok {
@@ -154,7 +103,7 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 		needed[dev] += need
 		plan.Required += need
 		op.Status = "pending"
-		plan.Ops = append(plan.Ops, model.Work{Operation: op, Owner: row.Source})
+		plan.Ops = append(plan.Ops, Work{Operation: op, Owner: row.Source})
 		if op.Kind != "video" {
 			row.Artifacts = append(row.Artifacts, filepath.Base(op.Target))
 		}
@@ -192,7 +141,7 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 		}
 		row.Target = target
 		mapping := model.MediaMapping{Path: target, Source: f.Path, Type: entry.Type, TMDBID: entry.TMDBID, Season: f.Season, Episodes: f.Episodes, State: "pending"}
-		add(&row, model.Operation{Kind: "video", Mode: mode, Source: f.Path, Target: target, Size: f.Size, MTime: f.MTime})
+		add(&row, Operation{Kind: "video", Mode: mode, Source: f.Path, Target: target, Size: f.Size, MTime: f.MTime})
 		if row.Action == "skip" {
 			if existing, err := a.access.Stat(target); err == nil {
 				mapping.Identity, mapping.Size, mapping.MTime = fsops.Identity(existing), existing.Size(), existing.ModTime().UnixNano()
@@ -249,7 +198,7 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 					continue
 				}
 			}
-			add(&row, model.Operation{Kind: "subtitle", Mode: mode, Source: path, Target: targetStem + strings.TrimPrefix(base, stem) + ext, Size: stat.Size(), MTime: stat.ModTime().UnixNano()})
+			add(&row, Operation{Kind: "subtitle", Mode: mode, Source: path, Target: targetStem + strings.TrimPrefix(base, stem) + ext, Size: stat.Size(), MTime: stat.ModTime().UnixNano()})
 		}
 		plan.Rows = append(plan.Rows, row)
 	}
@@ -261,4 +210,4 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 	return plan, nil
 }
 
-// storePlan is called under mu. Child previews are never independently cached.
+// Child previews are included in their parent and never independently cached.

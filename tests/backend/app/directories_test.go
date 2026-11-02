@@ -3,14 +3,13 @@ package app
 import (
 	"bytes"
 	"context"
+	"joycurator/internal/organizer"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-
-	"joycurator/internal/planning"
 )
 
 func TestDirectoryDefaults(t *testing.T) {
@@ -39,11 +38,11 @@ func TestSourceBoundaryAndNestedTargetExclusion(t *testing.T) {
 	outside := filepath.Join(media, "outside.mkv")
 	_ = os.WriteFile(outside, []byte("outside"), 0644)
 	for _, path := range []string{outside, filepath.Join(media, "target")} {
-		if _, err := a.dependencies.Files.Scan(context.Background(), []string{path}); err == nil {
+		if _, err := scanWorkspace(t, a, []string{path}); err == nil {
 			t.Fatal("source boundary bypassed", path)
 		}
 	}
-	if _, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{RecognitionID: "missing", Revision: 1, Paths: []string{outside}, Mode: "copy", DuplicatePolicy: "error"}); err == nil {
+	if _, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{RecognitionID: "missing", Revision: 1, Mode: "copy", DuplicatePolicy: "error"}); err == nil {
 		t.Fatal("preview accepted file outside source")
 	}
 	s, _ := a.dependencies.Config.Load()
@@ -54,11 +53,11 @@ func TestSourceBoundaryAndNestedTargetExclusion(t *testing.T) {
 	if err := testUpdateSettings(t, a, httptest.NewRecorder(), request); err != nil {
 		t.Fatal(err)
 	}
-	files, err := a.dependencies.Files.Scan(context.Background(), []string{s.SourceRoot})
+	files, err := scanWorkspace(t, a, []string{s.SourceRoot})
 	if err != nil || len(files) != 1 || files[0].Path != input.Path {
 		t.Fatal(files, err)
 	}
-	if _, err := a.dependencies.Files.Scan(context.Background(), []string{filepath.Join(s.TargetRoot, "output.mkv")}); err == nil {
+	if _, err := scanWorkspace(t, a, []string{filepath.Join(s.TargetRoot, "output.mkv")}); err == nil {
 		t.Fatal("target accepted as direct source")
 	}
 	s, _ = a.dependencies.Config.Load()

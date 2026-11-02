@@ -2,6 +2,7 @@ package recognition
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"crypto/rand"
@@ -15,12 +16,7 @@ func (a *Service) ExtractFile(ctx context.Context, path, root, workspace string)
 	if err := a.store.StartTrace(trace); err != nil {
 		return Result{}, "", err
 	}
-	position := 0
-	result, err := engine.Extract(ctx, Input{Path: path, Root: root}, func(_ context.Context, step Step) error {
-		position++
-		e := a.store.AppendStep(id, position, step)
-		return e
-	})
+	result, err := engine.Extract(ctx, Input{Path: path, Root: root}, nil)
 	status, message := "completed", ""
 	if err != nil {
 		status, message = "failed", err.Error()
@@ -32,9 +28,7 @@ func (a *Service) ExtractFile(ctx context.Context, path, root, workspace string)
 		}
 	}
 	trace.Status, trace.Error, trace.Metadata, trace.FinishedAt = status, message, result.Metadata, time.Now().UTC().Format(time.RFC3339Nano)
-	saveErr := a.store.FinishTrace(trace)
-	if err == nil {
-		err = saveErr
-	}
+	saveErr := a.store.FinishTrace(trace, result.Steps)
+	err = errors.Join(err, saveErr)
 	return result, id, err
 }

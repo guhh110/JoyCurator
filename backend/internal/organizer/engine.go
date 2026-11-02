@@ -17,7 +17,6 @@ import (
 	"runtime"
 
 	"joycurator/internal/infra/fsops"
-	"joycurator/internal/model"
 )
 
 type Engine struct {
@@ -67,7 +66,7 @@ func (e *Engine) Check(ctx context.Context, path, identity, checksum string) err
 	}
 	return nil
 }
-func (e *Engine) Run(ctx context.Context, op *model.Operation, save func() error) error {
+func (e *Engine) Run(ctx context.Context, op *Operation, save func() error) error {
 	// Windows FileInfo does not provide a stable file ID for recovery checks.
 	// Fail before creating or moving files rather than writing unowned temp files.
 	if runtime.GOOS == "windows" {
@@ -79,7 +78,7 @@ func (e *Engine) Run(ctx context.Context, op *model.Operation, save func() error
 	return e.run(ctx, op, save)
 }
 
-func (e *Engine) run(ctx context.Context, op *model.Operation, save func() error) error {
+func (e *Engine) run(ctx context.Context, op *Operation, save func() error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -370,7 +369,7 @@ func (e *Engine) run(ctx context.Context, op *model.Operation, save func() error
 	return e.cleanup(op, save)
 }
 
-func (e *Engine) cleanup(op *model.Operation, save func() error) error {
+func (e *Engine) cleanup(op *Operation, save func() error) error {
 	if op.ReplaceHold != "" {
 		info, err := e.FS.Stat(op.ReplaceHold)
 		if err == nil {
@@ -410,7 +409,7 @@ func (e *Engine) cleanup(op *model.Operation, save func() error) error {
 	return save()
 }
 
-func (e *Engine) recoverHold(ctx context.Context, op *model.Operation, save func() error) error {
+func (e *Engine) recoverHold(ctx context.Context, op *Operation, save func() error) error {
 	if op.ReplaceHold == "" {
 		return nil
 	}
@@ -466,7 +465,7 @@ func (e *Engine) recoverHold(ctx context.Context, op *model.Operation, save func
 
 // removeJournaled records the exact isolation path before moving the leaf.
 // A retry only touches that path after verifying both identity and contents.
-func (e *Engine) removeJournaled(ctx context.Context, op *model.Operation, source bool, save func() error) error {
+func (e *Engine) removeJournaled(ctx context.Context, op *Operation, source bool, save func() error) error {
 	path, identity, hold := op.Target, op.Identity, &op.RemoveHold
 	if source {
 		path, identity, hold = op.Source, op.SourceIdentity, &op.SourceRemoveHold
@@ -514,7 +513,7 @@ func (e *Engine) removeJournaled(ctx context.Context, op *model.Operation, sourc
 	return save()
 }
 
-func (e *Engine) Undo(ctx context.Context, op *model.Operation, save func() error) error {
+func (e *Engine) Undo(ctx context.Context, op *Operation, save func() error) error {
 	if runtime.GOOS == "windows" {
 		return errors.New("Windows 暂不支持安全地撤销文件整理")
 	}
@@ -527,7 +526,7 @@ func (e *Engine) Undo(ctx context.Context, op *model.Operation, save func() erro
 	return e.undo(ctx, op, save)
 }
 
-func (e *Engine) undo(ctx context.Context, op *model.Operation, save func() error) error {
+func (e *Engine) undo(ctx context.Context, op *Operation, save func() error) error {
 	if op.Status == "undone" || op.Status == "retained" {
 		return nil
 	}
@@ -607,7 +606,7 @@ func (e *Engine) undo(ctx context.Context, op *model.Operation, save func() erro
 				if err != nil {
 					return err
 				}
-				op.Undo = &model.Operation{ID: op.ID, Source: op.Target, Target: op.Source, Mode: "copy", Kind: "video", Size: info.Size(), MTime: info.ModTime().UnixNano(), Status: "pending"}
+				op.Undo = &Operation{ID: op.ID, Source: op.Target, Target: op.Source, Mode: "copy", Kind: "video", Size: info.Size(), MTime: info.ModTime().UnixNano(), Status: "pending"}
 				if err = save(); err != nil {
 					return err
 				}

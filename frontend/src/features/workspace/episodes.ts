@@ -1,4 +1,4 @@
-import type { Episode, RecognitionItem } from '../../api'
+import type { Episode, RecognitionItem } from '../../model'
 
 export function episodeComparison(episodes: Episode[], files: RecognitionItem[], season: number) {
   return [...episodes].sort((a, b) => a.number - b.number).map(episode => ({

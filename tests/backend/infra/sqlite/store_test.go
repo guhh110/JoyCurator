@@ -31,7 +31,7 @@ func TestWorkspaceRejectsUnknownFieldsWithoutRewritingData(t *testing.T) {
 	}
 }
 
-func openStore(t *testing.T) *Store {
+func openStore(t testing.TB) *Store {
 	t.Helper()
 	s := model.DefaultSettings()
 	s.SourceRoot = filepath.Join(t.TempDir(), "source")
@@ -50,9 +50,9 @@ func TestBatchTransactionRollsBackEveryQueuedRecord(t *testing.T) {
 	if err := store.SaveBatch(runs); err == nil {
 		t.Fatal("duplicate primary key accepted")
 	}
-	all, err := store.AllRuns()
-	if err != nil || len(all) != 0 {
-		t.Fatalf("partial transaction persisted: %+v %v", all, err)
+	var count int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM runs").Scan(&count); err != nil || count != 0 {
+		t.Fatal("partial transaction persisted", count, err)
 	}
 }
 
@@ -64,10 +64,7 @@ func TestTraceSnapshotsPaginationAndCascade(t *testing.T) {
 		if err := store.StartTrace(recognition.Trace{ID: id, Path: "/source/file.mkv", Root: "/source", Status: "running"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := store.AppendStep(id, 1, recognition.Step{RuleID: rule.ID, RuleConfig: rule, Status: "matched"}); err != nil {
-			t.Fatal(err)
-		}
-		if err := store.FinishTrace(recognition.Trace{ID: id, Status: "completed", Metadata: recognition.Metadata{Episodes: []int{}}}); err != nil {
+		if err := store.FinishTrace(recognition.Trace{ID: id, Status: "completed", Metadata: recognition.Metadata{Episodes: []int{}}}, []recognition.Step{{RuleID: rule.ID, RuleConfig: rule, Status: "matched"}}); err != nil {
 			t.Fatal(err)
 		}
 	}

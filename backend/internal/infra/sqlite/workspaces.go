@@ -9,8 +9,12 @@ import (
 )
 
 func (a *Store) SaveWorkspace(task *matching.Workspace) error {
-	task.Revision++
-	_, err := a.db.Exec("INSERT INTO recognitions(id,value) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value", task.ID, jsonText(task))
+	next := *task
+	next.Revision++
+	_, err := a.db.Exec("INSERT INTO recognitions(id,value) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value", task.ID, jsonText(next))
+	if err == nil {
+		task.Revision = next.Revision
+	}
 	return err
 }
 func (a *Store) Workspace(id string) (matching.Workspace, error) {

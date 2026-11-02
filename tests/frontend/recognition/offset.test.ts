@@ -1,10 +1,10 @@
 import { createSSRApp, effectScope, h, nextTick, ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Episode, Recognition, RecognitionItem, Season } from '../../../frontend/src/api'
-import { applyOffsetMappings, currentEpisodeOffset, offsetRows } from '../../../frontend/src/features/automatic/episodeOffset'
-import { useEpisodeOffset } from '../../../frontend/src/features/automatic/useEpisodeOffset'
-import EpisodeOffsetDialog from '../../../frontend/src/features/automatic/EpisodeOffsetDialog.vue'
+import type { Episode, Recognition, RecognitionItem, Season } from '../../../frontend/src/model'
+import { applyOffsetMappings, currentEpisodeOffset, offsetRows } from '../../../frontend/src/features/workspace/episodeOffset'
+import { useEpisodeOffset } from '../../../frontend/src/features/workspace/useEpisodeOffset'
+import EpisodeOffsetDialog from '../../../frontend/src/features/workspace/EpisodeOffsetDialog.vue'
 
 vi.mock('../../../frontend/src/components/Modal.vue', () => ({ default: { setup: (_props: unknown, { slots }: any) => () => h('section', [slots.default?.(), slots.footer?.()]) } }))
 vi.mock('../../../frontend/src/components/ui/Select.vue', () => ({ default: { props: ['label'], setup: (props: { label: string }) => () => h('span', props.label) } }))

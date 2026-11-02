@@ -21,7 +21,7 @@ func seedRecognitionCache(t *testing.T, a *App, path, body string) {
 		t.Fatal(err)
 	}
 }
-func waitRecognition(t *testing.T, a *App, id string) matching.Workspace {
+func waitRecognition(t testing.TB, a *App, id string) matching.Workspace {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

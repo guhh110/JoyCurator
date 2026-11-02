@@ -7,24 +7,11 @@ import {
   watch,
 } from 'vue'
 
-import { api, parseEpisodes } from '../../api'
-import type {
-  Batch,
-  BatchPreview,
-  Entry,
-  DuplicatePolicy,
-  Episode,
-  Recognition,
-  RecognitionItem,
-  Run,
-  Season,
-} from '../../api'
+import { api } from '../../api'
+import type { Recognition, RecognitionItem } from '../../model'
 import {
   recognitionEdits,
   recognitionGroups,
-  sortByEpisode,
-  sourceOf,
-  sourceSummaries,
 } from '../../recognition'
 import { useQuery } from '@tanstack/vue-query'
 
@@ -32,49 +19,29 @@ import { useRuntime } from '../../app/runtime'
 import { useAction } from '../../app/useAction'
 import { keys } from '../../app/query'
 import { confirmAction } from '../../app/confirm'
+import { useWorkspaceSources } from './useWorkspaceSources'
+import { useSeasonComparison } from './useSeasonComparison'
+import { useWorkSelection } from './useWorkSelection'
+import { useWorkspacePreview } from './useWorkspacePreview'
 import { useEpisodeOffset } from './useEpisodeOffset'
-import { useToastFeedback } from '../../app/toast'
 
-export function useAutomaticRecognition() {
+export function useWorkspace() {
   const runtime = useRuntime()
   const { act: perform, busy, message: error, success: notice } = useAction()
   const active = ref(true)
   const batch = runtime.batch
-  const task = ref<Recognition | null>(null),
-    preview = ref<BatchPreview | null>(null)
+  // A mutable edit draft; taskQuery remains the authoritative server snapshot.
+  const task = ref<Recognition | null>(null)
   const browser = ref(false)
   const filter = ref('all'),
     query = ref(''),
     focus = ref(''),
-    mode = ref('copy'),
     groupPage = ref(1),
     filePage = ref(1)
-  const searchGroup = ref(''),
-    searchQuery = ref(''),
-    searchYear = ref(''),
-    searchKind = ref<'movie' | 'tv'>('movie'),
-    searchResults = ref<Entry[]>([]),
-    searchBusy = ref(false),
-    searchError = ref('')
-  const editing = ref<RecognitionItem | null>(null),
-    editSeason = ref(-1),
-    editEpisodes = ref(''),
-    seasons = ref<Season[]>([]),
-    editError = ref('')
-  useToastFeedback(searchError)
-  useToastFeedback(editError)
   const transfer = ref<RecognitionItem | null>(null),
     transferGroup = ref('new')
-  const comparisonSeason = ref<number>(1),
-    freshImport = ref(false)
-  const groupSeasons = ref<Season[]>([])
-  const groupSeasonsLoading = ref(false)
-  const groupSeasonsError = ref('')
-  const detailView = ref<'files' | 'episodes'>('files')
-  let seasonRequest = 0
-  let alive = true,
-    searchRequest = 0,
-    editRequest = 0
+  const freshImport = ref(false)
+  let alive = true
   const recognizing = computed(() => task.value?.state === 'running')
   const locked = computed(
     () =>
@@ -84,21 +51,7 @@ export function useAutomaticRecognition() {
       runtime.executing.value,
   )
   const groups = computed(() => recognitionGroups(task.value?.items || []))
-  // '' shows every added source; otherwise only files from that added path.
-  const source = ref('')
-  const sources = computed(() =>
-    sourceSummaries(task.value?.items || [], task.value?.paths || []),
-  )
-  const scoped = computed(() =>
-    source.value
-      ? recognitionGroups(
-          (task.value?.items || []).filter(
-            (file) =>
-              sourceOf(file.path, task.value?.paths || []) === source.value,
-          ),
-        )
-      : groups.value,
-  )
+  const { source, sources, scoped, chooseSource, removeSource } = useWorkspaceSources({ task, groups, act, invalidatePreview: () => { preview.value = null }, changeFilter })
   const filtered = computed(() =>
     scoped.value.filter(
       (group) =>
@@ -132,43 +85,6 @@ export function useAutomaticRecognition() {
         filePage.value * 40,
       ) || [],
   )
-  watch(() => current.value?.entry?.type === 'tv' ? current.value.entry.tmdbId : null, loadGroupSeasons, { immediate: true })
-  async function loadGroupSeasons(id: number | null) {
-    const request = ++seasonRequest
-    groupSeasons.value = []
-    groupSeasonsError.value = ''
-    comparisonSeason.value = -1
-    groupSeasonsLoading.value = !!id
-    if (!id) return
-    try {
-      const value = await runtime.client.fetchQuery({
-        queryKey: ['tmdb', 'seasons', id],
-        queryFn: ({ signal }) => api<Season[]>(`/seasons?id=${id}`, undefined, 'GET', { signal }),
-        staleTime: 60_000,
-      })
-      if (!alive || request !== seasonRequest) return
-      groupSeasons.value = value
-      const existing = current.value?.files[0]?.season
-      comparisonSeason.value = value.find((season) => season.number === existing)?.number ?? value[0]?.number ?? -1
-    } catch (e) {
-      if (alive && request === seasonRequest) groupSeasonsError.value = (e as Error).message
-    } finally {
-      if (request === seasonRequest) groupSeasonsLoading.value = false
-    }
-  }
-  const episodeQuery = useQuery({
-    queryKey: computed(() => ['tmdb', 'episodes', current.value?.entry?.tmdbId, comparisonSeason.value]),
-    enabled: computed(() => active.value && current.value?.entry?.type === 'tv' && comparisonSeason.value >= 0 && detailView.value === 'episodes'),
-    queryFn: ({ signal }) => api<Episode[]>(`/episodes?id=${current.value!.entry!.tmdbId}&season=${comparisonSeason.value}`, undefined, 'GET', { signal }),
-    staleTime: 60_000,
-  })
-  async function retryComparison() {
-    if (groupSeasonsError.value) {
-      await loadGroupSeasons(current.value?.entry?.type === 'tv' ? current.value.entry.tmdbId : null)
-    } else if (comparisonSeason.value >= 0) {
-      await episodeQuery.refetch()
-    }
-  }
   const selected = computed(
     () =>
       task.value?.items.filter(
@@ -201,18 +117,6 @@ export function useAutomaticRecognition() {
     move: '移动',
     hardlink: '硬链接',
   }
-  const previewPage = ref(1)
-  const duplicatePolicy = ref<DuplicatePolicy>('skip')
-  const previewReady = computed(() => !!preview.value && preview.value.duplicatePolicy === duplicatePolicy.value && !busy.value && !preview.value.issues.length && preview.value.rows.length > 0)
-  const previewRows = computed(() => {
-    if (!preview.value) return []
-    const groupOrder = new Map(preview.value.groups.flatMap((group, index) => group.rows.map(row => [row.source, index] as const)))
-    const ungrouped = preview.value.groups.length
-    return sortByEpisode(preview.value.rows, row => ({ ...row, path: row.source }))
-      .sort((a, b) => (groupOrder.get(a.source) ?? ungrouped) - (groupOrder.get(b.source) ?? ungrouped))
-      .slice((previewPage.value - 1) * 30, previewPage.value * 30)
-  })
-
   const taskQuery = useQuery({
     queryKey: computed(() => keys.recognition(task.value?.id || 'latest')),
     queryFn: ({ signal }) =>
@@ -223,7 +127,7 @@ export function useAutomaticRecognition() {
         { signal },
       ),
     enabled: computed(() => active.value && !busy.value),
-    staleTime: 0,
+    staleTime: 1000,
     refetchInterval: (query) =>
       query.state.data?.state === 'running' || batch.value?.active
         ? 1200
@@ -246,13 +150,6 @@ export function useAutomaticRecognition() {
     },
     { immediate: true },
   )
-  watch(
-    () => batch.value?.active,
-    (value, previous) => {
-      if (previous && !value)
-        void runtime.client.invalidateQueries({ queryKey: ['recognitions'] })
-    },
-  )
   async function act(fn: () => Promise<void>) {
     await perform(async () => {
       await runtime.client.cancelQueries({ queryKey: ['recognitions'] })
@@ -264,6 +161,8 @@ export function useAutomaticRecognition() {
         )
     })
   }
+  const previewState = useWorkspacePreview({ task, busy, act, notice, runtime })
+  const { preview, mode, previewPage, previewRows, duplicatePolicy, previewReady, prepare, changeDuplicatePolicy, execute, cancelBatch } = previewState
   async function save(items?: RecognitionItem[]) {
     if (!task.value) return
     preview.value = null
@@ -288,6 +187,8 @@ export function useAutomaticRecognition() {
       throw e
     }
   }
+  const { comparisonSeason, groupSeasons, groupSeasonsLoading, groupSeasonsError, detailView, episodeQuery, retryComparison, viewSeason, assignEpisode } = useSeasonComparison({ current, active, locked, runtime, act, save })
+  const { searchGroup, searchQuery, searchYear, searchKind, searchResults, searchBusy, searchError, editing, editSeason, editEpisodes, seasons, editError, openSearch, search, pick, openEdit, saveEdit, closeSearch, closeEdit } = useWorkSelection({ task, current, focus, filePage, runtime, act, save })
   const offsetEditor = useEpisodeOffset({
     task,
     locked,
@@ -397,129 +298,6 @@ export function useAutomaticRecognition() {
       filePage.value = 1
     })
   }
-  function openSearch() {
-    if (!current.value) return
-    searchGroup.value = current.value.id
-    searchQuery.value =
-      current.value.entry?.title || current.value.files[0]!.metadata.title || ''
-    searchYear.value = String(current.value.files[0]!.metadata.year || '')
-    searchKind.value =
-      current.value.entry?.type ||
-      (current.value.files[0]!.metadata.mediaType === 'tv' ? 'tv' : 'movie')
-    const found = new Map<string, Entry>()
-    for (const file of current.value.files)
-      for (const candidate of file.candidates)
-        found.set(`${candidate.type}:${candidate.tmdbId}`, candidate)
-    searchResults.value = [...found.values()]
-    searchError.value = ''
-    searchRequest++
-  }
-  async function search() {
-    const request = ++searchRequest
-    searchBusy.value = true
-    searchError.value = ''
-    try {
-      const value = await runtime.client.fetchQuery({
-        queryKey: [
-          'tmdb',
-          'search',
-          searchKind.value,
-          searchQuery.value.trim(),
-          searchYear.value,
-        ],
-        queryFn: ({ signal }) =>
-          api<Entry[]>(
-            `/search?type=${searchKind.value}&q=${encodeURIComponent(searchQuery.value.trim())}&year=${encodeURIComponent(searchYear.value)}`,
-            undefined,
-            'GET',
-            { signal },
-          ),
-        staleTime: 60_000,
-      })
-      if (alive && request === searchRequest) searchResults.value = value
-    } catch (e) {
-      if (alive && request === searchRequest)
-        searchError.value = (e as Error).message
-    } finally {
-      if (request === searchRequest) searchBusy.value = false
-    }
-  }
-  async function pick(entry: Entry) {
-    await act(async () => {
-      for (const file of task.value?.items || [])
-        if (file.group === searchGroup.value && !file.removed) {
-          file.entry = entry
-          file.group = `tmdb:${entry.type}:${entry.tmdbId}`
-          file.selected = true
-        }
-      const id = `tmdb:${entry.type}:${entry.tmdbId}`
-      await save()
-      focus.value = id
-      filePage.value = 1
-      searchGroup.value = ''
-    })
-  }
-  async function openEdit(file: RecognitionItem) {
-    editing.value = file
-    editSeason.value = file.season
-    editEpisodes.value = file.episodes.join(',')
-    editError.value = ''
-    seasons.value = []
-    const request = ++editRequest
-    if (file.entry?.type === 'tv')
-      try {
-        const value = await runtime.client.fetchQuery({
-          queryKey: ['tmdb', 'seasons', file.entry.tmdbId],
-          queryFn: ({ signal }) =>
-            api<Season[]>(
-              `/seasons?id=${file.entry!.tmdbId}`,
-              undefined,
-              'GET',
-              { signal },
-            ),
-          staleTime: 60_000,
-        })
-        if (alive && request === editRequest) seasons.value = value
-      } catch (e) {
-        if (alive && request === editRequest)
-          editError.value = (e as Error).message
-      }
-  }
-  async function saveEdit() {
-    editError.value = ''
-    try {
-      if (
-        !seasons.value.some(season => season.number === editSeason.value)
-      )
-        throw new Error('请选择 TMDB 中存在的季度')
-      const eps = parseEpisodes(editEpisodes.value)
-      await act(async () => {
-        if (!editing.value) return
-        editing.value.season = editSeason.value
-        editing.value.episodes = eps
-        editing.value.selected = true
-        await save()
-        editing.value = null
-      })
-    } catch (e) {
-      editError.value = (e as Error).message
-    }
-  }
-  function viewSeason(season: number) {
-    if (current.value?.entry?.type !== 'tv' || groupSeasonsLoading.value || !groupSeasons.value.some(item => item.number === season)) return
-    comparisonSeason.value = season
-  }
-  async function assignEpisode(file: RecognitionItem, number: number) {
-    if (locked.value || !current.value?.files.includes(file)) return
-    if (!episodeQuery.data.value?.some(episode => episode.number === number)) return
-    const season = comparisonSeason.value
-    await act(async () => {
-      file.season = season
-      file.episodes = [number]
-      file.selected = true
-      await save()
-    })
-  }
   async function moveGroup() {
     await act(async () => {
       if (!transfer.value) return
@@ -538,41 +316,6 @@ export function useAutomaticRecognition() {
       filePage.value = 1
     })
   }
-  async function prepare() {
-    await act(async () => {
-      if (!task.value) return
-      if (!preview.value) duplicatePolicy.value = 'skip'
-      preview.value = await api<BatchPreview>('/batches/preview', {
-        recognitionId: task.value.id,
-        revision: task.value.revision,
-        mode: mode.value,
-        duplicatePolicy: duplicatePolicy.value,
-      })
-      previewPage.value = 1
-    })
-  }
-  async function changeDuplicatePolicy(value: string) {
-    if (busy.value || !preview.value || !['skip', 'overwrite'].includes(value)) return
-    duplicatePolicy.value = value as DuplicatePolicy
-    await prepare()
-  }
-  async function execute() {
-    if (!previewReady.value) return
-    await act(async () => {
-      if (!preview.value) return
-      const value = await api<Batch>('/batches/execute', {
-        id: preview.value.id,
-      })
-      runtime.acceptBatch(value)
-      preview.value = null
-      notice.value = '已加入整理队列，每部作品分别记录，可独立重试或撤销。'
-    })
-  }
-  async function cancelBatch() {
-    await act(async () => {
-      if (batch.value) await api(`/batches/${batch.value.id}/cancel`, {})
-    })
-  }
   function chooseGroup(id: string) {
     focus.value = id
     filePage.value = 1
@@ -580,38 +323,6 @@ export function useAutomaticRecognition() {
   function openTransfer(file: RecognitionItem) {
     transfer.value = file
     transferGroup.value = 'new'
-  }
-  function closeSearch() {
-    searchGroup.value = ''
-    searchRequest++
-    searchBusy.value = false
-  }
-  function closeEdit() {
-    editing.value = null
-    editRequest++
-  }
-  async function removeSource(path: string) {
-    if (!task.value) return
-    const count = sources.value.find((item) => item.path === path)?.files ?? 0
-    if (!await confirmAction({
-      title: '移出来源？',
-      description: `将「${path}」及其 ${count} 个文件移出整理工作区？磁盘上的文件不会被删除。`,
-      confirmLabel: '移出来源',
-      destructive: true,
-    })) return
-    await act(async () => {
-      task.value = await api<Recognition>(
-        `/recognitions/${task.value!.id}/sources/remove`,
-        { path, revision: task.value!.revision },
-      )
-      preview.value = null
-      if (source.value === path) source.value = ''
-      changeFilter()
-    })
-  }
-  function chooseSource(path: string) {
-    source.value = path
-    changeFilter()
   }
   function changeFilter() {
     focus.value = ''
@@ -624,21 +335,18 @@ export function useAutomaticRecognition() {
   onDeactivated(() => {
     active.value = false
     browser.value = false
-    searchGroup.value = ''
-    editing.value = null
+    closeSearch()
+    closeEdit()
     transfer.value = null
     preview.value = null
     offsetEditor.close()
-    searchRequest++
-    editRequest++
   })
   onUnmounted(() => {
     alive = false
-    searchRequest++
-    editRequest++
   })
 
   return {
+    previewState,
     runtime,
     busy,
     error,

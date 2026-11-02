@@ -12,10 +12,9 @@ import (
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
 	"joycurator/internal/organizer"
-	"joycurator/internal/planning"
 )
 
-func batchFixture(t *testing.T) (*App, string, matching.Workspace, *planning.Plan) {
+func batchFixture(t *testing.T) (*App, string, matching.Workspace, *organizer.Plan) {
 	t.Helper()
 	a, root := fixture(t)
 	movie := mediaFile(t, a, root, "film.mkv")
@@ -27,7 +26,7 @@ func batchFixture(t *testing.T) (*App, string, matching.Workspace, *planning.Pla
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
+	plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
 	if err != nil || len(plan.Issues) > 0 {
 		t.Fatal(plan, err)
 	}
@@ -56,9 +55,6 @@ func TestBatchExecuteSeparateRecordsAndUndo(t *testing.T) {
 	a, _, task, plan := batchFixture(t)
 	if len(plan.Groups) != 2 || len(plan.Rows) != 2 {
 		t.Fatal(plan)
-	}
-	if _, err := a.dependencies.Organizer.Execute(plan.ID); err == nil {
-		t.Fatal("batch preview accepted by manual execute")
 	}
 	batch, err := a.dependencies.Organizer.ExecuteBatch(plan.ID)
 	if err != nil {
@@ -124,7 +120,7 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 		s.Rules.TVFile = "video.{ext}"
 		s.Version++
 		_, _ = testDB(t, a).Exec("UPDATE config SET value=?", jsonText(s))
-		plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
+		plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +161,7 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 		if err := a.store.SaveWorkspace(&task); err != nil {
 			t.Fatal(err)
 		}
-		plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
+		plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -179,7 +175,7 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 		}
 	})
 }
-func prepareQueuedBatch(t *testing.T, a *App, plan *planning.Plan) organizer.Batch {
+func prepareQueuedBatch(t *testing.T, a *App, plan *organizer.Plan) organizer.Batch {
 	t.Helper()
 	batch := organizer.Batch{ID: model.Key(), Runs: []organizer.Run{}, Active: true}
 	for _, group := range plan.Groups {

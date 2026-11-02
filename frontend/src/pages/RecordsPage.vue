@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useRecords } from '../features/records/queries'
 import {
   ChevronRight,
   Folder,
   History,
   Undo2,
 } from '@lucide/vue'
-import { api, type Run } from '../api'
 import { pageNumber } from '../app/routing'
-import { keys } from '../app/query'
 import { useRuntime } from '../app/runtime'
 import { date, modeNames, states } from '../features/records/presentation'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -20,24 +18,7 @@ const route = useRoute(),
   router = useRouter(),
   runtime = useRuntime()
 const page = computed(() => pageNumber(route.query.page))
-const recordsQuery = useQuery({
-  queryKey: computed(() => keys.runs(page.value)),
-  queryFn: ({ signal }) =>
-    api<{ items: Run[]; total: number }>(
-      `/runs?page=${page.value}`,
-      undefined,
-      'GET',
-      { signal },
-    ),
-  staleTime: 0,
-  refetchInterval: (query) =>
-    runtime.executing.value ||
-    query.state.data?.items.some((item) =>
-      ['running', 'queued'].includes(item.state),
-    )
-      ? 1500
-      : false,
-})
+const recordsQuery = useRecords(page, 'organize')
 const records = computed(() => recordsQuery.data.value?.items ?? [])
 function changePage(value: number) {
   void router.push({ name: 'records', query: { page: value } })

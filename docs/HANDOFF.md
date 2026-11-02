@@ -19,7 +19,7 @@ flowchart LR
 
 1. **路径提取**：从文本提取 ID、标题、年份、季集等；不读取文件，不访问 TMDB。代码在 `internal/recognition`。
 2. **作品识别**：消费提取结果，查询 TMDB、判断候选、校验季集、形成可整理或待处理状态。代码在 `internal/matching/`。
-3. **整理与刮削**：整理预览直接使用工作区快照，检查源文件与目标冲突，只执行视频／字幕复制、移动或硬链接；刮削另行查询 TMDB 并生成 NFO／图片。代码在 `planning/preview.go`、`organizer/jobs.go`、`organizer/batch.go`、`organizer/fast.go` 和 `organizer`。
+3. **整理与刮削**：整理预览直接使用工作区快照，检查源文件与目标冲突，只执行视频／字幕复制、移动或硬链接；刮削另行查询 TMDB 并生成 NFO／图片。代码在 `organizer/preview.go`、`organizer/jobs.go`、`organizer/batch.go`、`organizer/fast.go` 和 `organizer`。
 
 这三个环节的边界需要保持。比如“某个标题对应哪个 TMDB 作品”属于作品识别，“S02E03 提取为季 2、集 3”属于路径提取，“最终保存在哪个目录”属于命名与整理。
 
@@ -37,7 +37,6 @@ backend/
     app/                      装配、HTTP、工作区流程、认证与设置接入
     recognition/              路径规则、Metadata、调试、轨迹
     matching/                 TMDB 匹配、候选与季集策略
-    planning/                 Plan 生成、修改、删除、提交
     organizer/                Run、队列、文件操作、记录与回退
     model/                    共用文件、作品、设置与操作 DTO
     infra/tmdb/               TMDB 请求、响应转换和缓存端口
@@ -62,7 +61,7 @@ local/                        本地数据、缓存、构建产物、备份与�
 
 后端为 Go 服务，SQLite 使用 `modernc.org/sqlite`，前端为 Vue 3 + TypeScript + Vite。发布构建将前端静态资源嵌入 Go 可执行文件；开发时前后端分别启动。
 
-`local/archive/legacy-20261027/source/frontend` 是本次参考的旧前端备份，不参与当前构建。采用了其中的 Vue Router、TanStack Vue Query、布局与通用组件组织思路，没有把备份目录作为运行依赖。
+当前前端使用 Vue Router、TanStack Vue Query 与通用布局组件，构建只使用当前源码。
 
 ## 3. 后端启动与职责划分
 
@@ -85,9 +84,9 @@ main.main
   → http.Server.ListenAndServe
 ```
 
-退出时 HTTP 服务先停止接收请求，随后 `App.Close` 取消当前整理、识别与批次，等待后台工作结束，再关闭数据库。
+退出时 HTTP 服务先停止接收请求，随后 `App.Close` 取消当前整理、识别与批次，等待后台工作结束，关闭 TMDB 空闲连接和数据库。
 
-`App` 装配四个业务模块与 infra，并接入 HTTP、设置、认证和工作区流程；当前链属于 recognition，预览属于 planning，任务与后台生命周期由 organizer.Coordinator 管理。业务模块不直接依赖 SQL／HTTP，具体边界与调用链见 [后端架构](BACKEND.md)。
+`App` 装配三个业务模块与 infra，并接入 HTTP、设置、认证和工作区流程；当前链属于 recognition，预览与执行统一属于 organizer，任务与后台生命周期由 organizer.Coordinator 管理。业务模块不直接依赖 SQL／HTTP，具体边界与调用链见 [后端架构](BACKEND.md)。
 
 数据库仅设置一个打开连接。不要在尚未关闭的查询结果集内再执行依赖同连接的写入；读取后关闭 rows，再修改记录。并发控制和任务取消要遵循`organizer.Coordinator` 的准入锁、等待计数和 context 生命周期。
 
@@ -230,13 +229,12 @@ DebugPage / 规则编辑器试跑 → useExtraction
 recognition.Service.ExtractFile(path,root,workspace)
   → 获取当前 Engine
   → 插入 extraction_traces(status=running)
-  → Engine.Extract(observer)
-      每完成一条 Step → 插入 extraction_steps
-  → 保存最终 metadata、status、finishedAt、error
+  → Engine.Extract：内存收集完整步骤
+  → 单个事务插入 extraction_steps 并保存最终 metadata、status、finishedAt、error
   → 返回 Result 与 traceId
 ```
 
-手动 `/scan` 和自动识别都会调用 `ExtractFile`；手动扫描还会做媒体探测，自动识别阶段不探测。消费方的无持久化适配入口是 `recognition.Service.Parse`。
+工作区导入统一调用 `ExtractFile`，不探测媒体；独立 `/scan` 已移除。消费方的无持久化适配入口是 `recognition.Service.Parse`。
 
 工作区文件行只携带 `traceId`，历史列表分页读取摘要，选中详情才获取全部步骤。每步含完整规则及源码快照，当前规则改名、修改或删除不影响旧记录。重启将遗留 running 轨迹标记 interrupted。清理仅允许已结束轨迹，关联 steps 通过外键级联删除，不删除工作区结果。
 
@@ -245,7 +243,7 @@ recognition.Service.ExtractFile(path,root,workspace)
 ## 8. 自动识别、匹配与人工修正
 
 ```text
-AutomaticRecognitionPage → useAutomaticRecognition.add
+AutomaticRecognitionPage → useWorkspace.start
   → POST /api/recognitions {paths,id?}
   → WorkspaceService.Start：校验目录／数量、初始化或补充工作区
   → 保存 Recognition，建立后台 context
@@ -278,7 +276,7 @@ AutomaticRecognitionPage → useAutomaticRecognition.add
 ## 9. 整理工作区与预览调用链
 
 ```text
-AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognitions
+AutomaticRecognitionPage → useWorkspace.start → POST /recognitions
   → 自动识别并分组 → 服务端保存工作区
 组内搜索作品 → GET /search → 选择 Entry → PUT /recognitions/{id}
   → 剧集 GET /seasons、GET /episodes → 单集对照、关联文件、修正季集
@@ -289,12 +287,12 @@ AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognition
   → 校验源路径和工作区版本、读取已确认的作品详情与季集快照（不请求 TMDB）
   → rules.Target / ShowRoot 渲染分类与命名
   → 整理仅生成视频／字幕操作并登记目标视频映射；独立刮削预览生成 NFO／图片操作
-  → 校验冲突、磁盘需求等 → storePlan
-确认 → POST /batches/execute {id} → 按作品执行 → launch → work
+  → 校验冲突、磁盘需求等 → PreviewCache
+确认 → POST /batches/execute {id} → 按作品执行 → runBatch → work
   → organizer.Engine.Run，逐步持久化操作状态
 ```
 
-`buildPreview` 是单项与批量共用的规划入口。前端提交工作区 ID、修订号、文件路径和模式，不能提交作品详情或可信文件操作指令。预览在内存中短期保存（15 分钟），包含配置版本及服务端生成的 ops；服务重启后须重新预览。
+`BatchPreview` 是单部与多部作品共用的规划入口，各组调用 `buildPreview`。前端提交工作区 ID、修订号、重复策略和模式，不能提交作品详情或可信文件操作指令。两类预览在共享缓存中短期保存（15 分钟，合计最多 32 份，满额逐出最早预览），包含配置版本及服务端生成的 ops；服务重启后须重新预览。
 
 `organizer` 将整理的视频／字幕和独立刮削的 NFO／图片分开记录，通过 `fsops` 完成受限目录内的读写、暂存与发布。视频／字幕采用无全文件哈希的快速路径；异常中断若状态不明，保留现场待人工确认。整理撤销只按路径处理，不核对内容或身份，可能误移／误删同路径外部文件；刮削仍保持内容与身份校验。覆盖没有备份，不能恢复旧内容。
 
@@ -302,19 +300,19 @@ AutomaticRecognitionPage → useAutomaticRecognition.start → POST /recognition
 
 ```text
 POST /batches/preview {recognitionId,revision,mode,duplicatePolicy}
-  → Planning.BatchPreview：仅收集已选 ready 文件，按作品分组
+  → Organizer.BatchPreview：仅收集已选 ready 文件，按作品分组
   → 每组 buildPreview
   → 合并全部 ops，检查跨作品重复目标与合计空间
   → 保存统一 Plan（绑定工作区 revision 与设置 version）
 POST /batches/execute {id}
-  → Planning.Submit → Organizer.ExecuteBatch：重验预览、revision、设置、来源与目标
+  → Organizer.ExecuteBatch：重验预览、revision、设置、来源与目标
   → 事务写入每作品一条 queued Run，带 batchId
   → 占用批次执行槽 → runBatch 顺序调用 work
 ```
 
 批次不是单独的数据库表，`batchId` 将 `runs` 中的作品记录关联起来，`readBatch` 重建批次视图。每部作品启动前重新校验配置版本、授权来源和操作条件；某部失败继续下一部。
 
-`organizer.Coordinator` 管当前单任务和整个队列的互斥占用，避免两部作品之间的空隙被其他执行抢占。手动执行、重试、撤销和另一批次共享执行限制；队列结束前不允许设置变更。
+`organizer.Coordinator` 管当前单任务和整个队列的互斥占用，避免两部作品之间的空隙被其他执行抢占。刮削、重试、撤销和另一批次共享执行限制；队列结束前不允许设置变更。
 
 批次取消作用于当前任务和尚未开始项；已完成记录保留。每部作品独立重试／撤销。撤销按操作逆序执行，公共 NFO／图片的共享所有权通过记录判断，不能盲删。重启后 queued/running 均标为 interrupted，不自动恢复执行。
 
@@ -329,8 +327,8 @@ POST /batches/execute {id}
 | 提取执行与步骤 | SQLite extraction_traces / extraction_steps | 长期保留，人工清理 |
 | 自动识别工作区 | SQLite recognitions | JSON，含 revision、修正、候选、traceId |
 | 整理／撤销记录与队列 | SQLite runs | JSON，操作恢复信息与可选 batchId |
-| 尚未执行的预览 | planning.Service 内存 | 过期或重启失效 |
-| 手动文件列表、作品、活动任务引用 | 浏览器 localStorage | 跨刷新恢复；退出清空 |
+| 尚未执行的预览 | organizer.PreviewCache 内存 | 过期或重启失效 |
+| 活动任务引用 | 浏览器 localStorage | 跨刷新恢复；退出清空 |
 | 查询响应缓存 | TanStack Query 内存 | 按 key 隔离，退出清空 |
 | 规则编辑草稿、调试结果 | 页面内存 | 未保存编辑离开规则页会丢失 |
 
@@ -355,7 +353,7 @@ main.ts
 
 | 导航组 | 页面 | 路径与业务封装 |
 | --- | --- | --- |
-| 工作区 | 整理工作区 | `/recognition` → AutomaticRecognitionPage + useAutomaticRecognition |
+| 工作区 | 整理工作区 | `/recognition` → AutomaticRecognitionPage + useWorkspace |
 | 记录 | 整理记录 | `/records` → RecordsPage |
 | 记录 | 识别历史列表 | `/recognition/history` → HistoryPage + ExtractionHistory |
 | 记录 | 识别历史详情 | `/recognition/history/:traceId` → HistoryDetailPage + ExtractionHistoryDetail |
@@ -448,4 +446,6 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 8. 批次执行和恢复信息持久化，预览不持久化；服务重启只标中断，不自动继续危险的文件操作。
 9. 前端已按路由与 feature 分开，既有大表单与业务样式仍有继续细分空间；新增逻辑应遵循现有职责，不回填到应用外壳。
 
-建议接手顺序：先读本节总体链路，再读 `recognition/model.go → engine.go → scripts`，然后 `recognition → matching → planning → organizer`，配合 `infra/sqlite` 和 `app/http*.go`，最后结合前端 `routes.ts → runtime.ts → 对应 feature` 追一条实际路径。
+建议接手顺序：先读本节总体链路，再读 `recognition/model.go → engine.go → scripts`，然后 `recognition → matching → organizer`，配合 `infra/sqlite` 和 `app/http*.go`，最后结合前端 `routes.ts → runtime.ts → 对应 feature` 追一条实际路径。
+
+本轮规范化保留持久化格式，只增加查询索引。模型所有者、构造依赖、摘要读取及事务语义以 [后端架构](BACKEND.md) 为准；性能样本见 [性能记录](PERFORMANCE.md)。

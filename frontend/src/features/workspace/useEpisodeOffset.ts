@@ -1,5 +1,6 @@
 import { computed, onScopeDispose, ref, watch, type Ref } from 'vue'
-import { api, type Episode, type Recognition, type RecognitionItem, type Season } from '../../api'
+import { api } from '../../api'
+import type { Episode, Recognition, RecognitionItem, Season } from '../../model'
 import { sortByEpisode, sourceOf } from '../../recognition'
 import { applyOffsetMappings, offsetRows, originalEpisodesValid } from './episodeOffset'
 import { useToastFeedback } from '../../app/toast'

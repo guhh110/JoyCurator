@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { MediaMapping, ScrapePreview } from '../../../frontend/src/api'
+import type { MediaMapping, ScrapePreview } from '../../../frontend/src/model'
 import { addSelection, artifactSummary, hasMultipleVersions, visibleEpisodes } from '../../../frontend/src/features/scrape/selection'
 
 const item = (path: string, state: MediaMapping['state'], season = 1, episodes = [1]): MediaMapping =>

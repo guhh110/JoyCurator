@@ -21,11 +21,11 @@ func (a *Service) ExecuteBatch(id string) (Batch, error) {
 	if a.coordinator.running != "" || a.coordinator.batch != "" {
 		return Batch{}, ErrBusy
 	}
-	p := a.plans.Get(id)
+	p := a.previews.get(id)
 	if p == nil || time.Now().After(p.Expires) {
 		return Batch{}, errors.New("预览已过期，请重新预览")
 	}
-	if len(p.Groups) == 0 || len(p.Mappings) == 0 || len(p.Issues) > 0 {
+	if p.Purpose != "organize" || len(p.Groups) == 0 || len(p.Mappings) == 0 || len(p.Issues) > 0 {
 		return Batch{}, errors.New("请先处理预览中的冲突")
 	}
 	revision, err := a.revision(p.RecognitionID)
@@ -42,7 +42,7 @@ func (a *Service) ExecuteBatch(id string) (Batch, error) {
 	if s.Version != p.Version {
 		return Batch{}, errors.New("设置已更新，请重新预览")
 	}
-	if err = a.plans.ValidateOps(p.Ops); err != nil {
+	if err = a.validateOps(p.Ops); err != nil {
 		return Batch{}, err
 	}
 	if err = a.validateSkipped(p.Mappings, p.Ops); err != nil {
@@ -53,7 +53,7 @@ func (a *Service) ExecuteBatch(id string) (Batch, error) {
 		if len(group.Mappings) == 0 {
 			continue
 		}
-		run := Run{ID: model.Key(), Title: group.Title, Mode: p.Mode, State: "queued", Created: time.Now().Format(time.RFC3339), Ops: append([]model.Work(nil), group.Ops...), Total: len(group.Ops), BatchID: batch.ID, Version: p.Version, RecognitionID: p.RecognitionID, Purpose: "organize", Mappings: group.Mappings}
+		run := Run{ID: model.Key(), Title: group.Title, Mode: p.Mode, State: "queued", Created: time.Now().Format(time.RFC3339), Ops: append([]Work(nil), group.Ops...), Total: len(group.Ops), BatchID: batch.ID, Version: p.Version, RecognitionID: p.RecognitionID, Purpose: "organize", Mappings: group.Mappings}
 
 		batch.Runs = append(batch.Runs, run)
 	}
@@ -64,10 +64,11 @@ func (a *Service) ExecuteBatch(id string) (Batch, error) {
 	a.coordinator.batch, a.coordinator.batchCancel = batch.ID, cancel
 	a.coordinator.wg.Add(1)
 	go a.runBatch(ctx, cancel, batch)
-	a.plans.Remove(id)
+	a.previews.remove(id)
 	batch.Runs = append([]Run(nil), batch.Runs...)
 	for i := range batch.Runs {
 		batch.Runs[i].Ops = nil
+		batch.Runs[i].Mappings = nil
 	}
 	return batch, nil
 }
@@ -102,13 +103,13 @@ func (a *Service) runBatch(ctx context.Context, cancel context.CancelFunc, batch
 			}
 		}
 		if err == nil {
-			pending := make([]model.Work, 0, len(run.Ops))
+			pending := make([]Work, 0, len(run.Ops))
 			for _, op := range run.Ops {
 				if op.Status == "pending" {
 					pending = append(pending, op)
 				}
 			}
-			err = a.plans.ValidateOps(pending)
+			err = a.validateOps(pending)
 		}
 		if err == nil {
 			err = a.validateSkipped(run.Mappings, run.Ops)

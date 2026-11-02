@@ -3,16 +3,16 @@ package app
 import (
 	"net/http"
 
-	"joycurator/internal/planning"
+	"joycurator/internal/organizer"
 )
 
 func batchRoutes(a Dependencies, add func(string, endpoint)) {
 	add("POST /api/batches/preview", func(w http.ResponseWriter, r *http.Request) error {
-		var in planning.BatchPreviewRequest
+		var in organizer.BatchPreviewRequest
 		if e := read(r, &in); e != nil {
 			return e
 		}
-		v, e := a.Planning.BatchPreview(r.Context(), in)
+		v, e := a.Organizer.BatchPreview(r.Context(), in)
 		return respond(w, v, e)
 	})
 	add("POST /api/batches/execute", func(w http.ResponseWriter, r *http.Request) error {
@@ -22,7 +22,7 @@ func batchRoutes(a Dependencies, add func(string, endpoint)) {
 		if e := read(r, &in); e != nil {
 			return e
 		}
-		v, e := a.Planning.Submit(in.ID, true)
+		v, e := a.Organizer.ExecuteBatch(in.ID)
 		return respond(w, v, e)
 	})
 	add("GET /api/batches", func(w http.ResponseWriter, r *http.Request) error {

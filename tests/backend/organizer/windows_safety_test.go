@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-
-	"joycurator/internal/model"
 )
 
 func TestWindowsRejectsUnverifiableFileOperations(t *testing.T) {
@@ -18,7 +16,7 @@ func TestWindowsRejectsUnverifiableFileOperations(t *testing.T) {
 	if err := os.WriteFile(target, []byte("keep"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	op := &model.Operation{Target: target, Status: "completed"}
+	op := &Operation{Target: target, Status: "completed"}
 	save := func() error {
 		t.Fatal("rejected operation must not save changes")
 		return nil

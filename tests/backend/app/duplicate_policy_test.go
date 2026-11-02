@@ -2,13 +2,12 @@ package app
 
 import (
 	"context"
+	"joycurator/internal/organizer"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-
-	"joycurator/internal/planning"
 )
 
 func TestBatchDuplicatePolicySkipAndOverwrite(t *testing.T) {
@@ -25,7 +24,7 @@ func TestBatchDuplicatePolicySkipAndOverwrite(t *testing.T) {
 			if err := os.WriteFile(target, []byte("old video"), 0644); err != nil {
 				t.Fatal(err)
 			}
-			plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy", DuplicatePolicy: policy})
+			plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy", DuplicatePolicy: policy})
 			if err != nil || len(plan.Issues) > 0 {
 				t.Fatal(plan, err)
 			}
@@ -46,7 +45,7 @@ func TestBatchDuplicatePolicySkipAndOverwrite(t *testing.T) {
 				}
 			}
 			if policy == "skip" {
-				if len(batch.Runs) != 1 {
+				if len(batch.Runs) != 2 {
 					t.Fatal("skipped mapping registration run missing")
 				}
 				got, _ := os.ReadFile(target)
@@ -94,7 +93,7 @@ func TestDuplicatePoliciesDoNotAllowInBatchCollisions(t *testing.T) {
 			if err := os.WriteFile(target, []byte("existing"), 0644); err != nil {
 				t.Fatal(err)
 			}
-			plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy", DuplicatePolicy: policy})
+			plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy", DuplicatePolicy: policy})
 			if err != nil || !strings.Contains(strings.Join(plan.Issues, " "), "作品之间目标重复") {
 				t.Fatal(plan, err)
 			}
@@ -118,7 +117,7 @@ func TestDuplicateSubtitleAndNonregularTargetPolicies(t *testing.T) {
 				t.Fatal(err)
 			}
 			in := previewRequest(t, a, "movie", 1, "copy", policy, file)
-			first, err := a.dependencies.Planning.Preview(context.Background(), in)
+			first, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,7 +128,7 @@ func TestDuplicateSubtitleAndNonregularTargetPolicies(t *testing.T) {
 			if err = os.WriteFile(target, []byte("old subtitle"), 0644); err != nil {
 				t.Fatal(err)
 			}
-			plan, err := a.dependencies.Planning.Preview(context.Background(), in)
+			plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 			if err != nil || len(plan.Issues) > 0 {
 				t.Fatal(plan, err)
 			}
@@ -161,7 +160,7 @@ func TestDuplicateSubtitleAndNonregularTargetPolicies(t *testing.T) {
 				a, root := fixture(t)
 				file := mediaFile(t, a, root, "film.mkv")
 				in := previewRequest(t, a, "movie", 1, "copy", policy, file)
-				initial, err := a.dependencies.Planning.Preview(context.Background(), in)
+				initial, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -177,7 +176,7 @@ func TestDuplicateSubtitleAndNonregularTargetPolicies(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				plan, err := a.dependencies.Planning.Preview(context.Background(), in)
+				plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 				if err != nil || !strings.Contains(strings.Join(plan.Issues, " "), "不是普通文件") {
 					t.Fatal(plan, err)
 				}
@@ -188,7 +187,7 @@ func TestDuplicateSubtitleAndNonregularTargetPolicies(t *testing.T) {
 
 func TestDuplicatePolicyRevalidatesTargetAndRejectsInvalidPolicy(t *testing.T) {
 	a, _, task, initial := batchFixture(t)
-	in := planning.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy", DuplicatePolicy: "overwrite"}
+	in := organizer.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy", DuplicatePolicy: "overwrite"}
 	target := initial.Rows[0].Target
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		t.Fatal(err)
@@ -196,7 +195,7 @@ func TestDuplicatePolicyRevalidatesTargetAndRejectsInvalidPolicy(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old video"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := a.dependencies.Planning.BatchPreview(context.Background(), in)
+	plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +207,7 @@ func TestDuplicatePolicyRevalidatesTargetAndRejectsInvalidPolicy(t *testing.T) {
 	}
 	for _, policy := range []string{"", "invalid"} {
 		in.DuplicatePolicy = policy
-		if _, err = a.dependencies.Planning.BatchPreview(context.Background(), in); err == nil {
+		if _, err = a.dependencies.Organizer.BatchPreview(context.Background(), in); err == nil {
 			t.Fatal("invalid policy accepted")
 		}
 	}
@@ -224,7 +223,7 @@ func TestAllSkippedBatchRegistersMappings(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "move", DuplicatePolicy: "skip"})
+	plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "move", DuplicatePolicy: "skip"})
 	if err != nil || len(plan.Issues) != 0 || len(plan.Ops) != 0 || plan.Required != 0 {
 		t.Fatal(plan, err)
 	}
@@ -254,7 +253,7 @@ func TestDuplicatePoliciesDoNotOverwriteNewlyAppearedTargets(t *testing.T) {
 	for _, policy := range []string{"skip", "overwrite"} {
 		t.Run(policy, func(t *testing.T) {
 			a, _, task, _ := batchFixture(t)
-			plan, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy", DuplicatePolicy: policy})
+			plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "copy", DuplicatePolicy: policy})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -280,7 +279,7 @@ func TestSkipStillDetectsSameWorkTargetCollision(t *testing.T) {
 	first := mediaFile(t, a, root, "first.mkv")
 	second := mediaFile(t, a, root, "second.mkv")
 	in := previewRequest(t, a, "movie", 1, "copy", "skip", first, second)
-	initial, err := a.dependencies.Planning.Preview(context.Background(), in)
+	initial, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +293,7 @@ func TestSkipStillDetectsSameWorkTargetCollision(t *testing.T) {
 	if err = os.WriteFile(target, []byte("existing video"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := a.dependencies.Planning.Preview(context.Background(), in)
+	plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 	if err != nil || !strings.Contains(strings.Join(plan.Issues, " "), "目标重复") {
 		t.Fatal(plan, err)
 	}
@@ -307,13 +306,13 @@ func TestOverwriteDoesNotRestoreEarlierRunOnUndo(t *testing.T) {
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "film.mkv")
 	in := previewRequest(t, a, "movie", 1, "copy", "error", file)
-	first, err := a.dependencies.Planning.Preview(context.Background(), in)
+	first, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}
 	oldRun := executePlan(t, a, first)
-	in.DuplicatePolicy = "overwrite"
-	second, err := a.dependencies.Planning.Preview(context.Background(), in)
+	in = previewRequest(t, a, "movie", 1, "copy", "overwrite", file)
+	second, err := a.dependencies.Organizer.BatchPreview(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}

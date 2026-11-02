@@ -1,4 +1,4 @@
-import type { MediaMapping, ScrapePreview } from '../../api'
+import type { MediaMapping, ScrapePreview } from '../../model'
 
 export type ScrapeStateFilter = 'all' | MediaMapping['state']
 

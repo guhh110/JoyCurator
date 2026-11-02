@@ -10,8 +10,8 @@ type memoryStore struct {
 	rules              []Rule
 	trace              Trace
 	steps              []Step
-	saveErr, errorStep error
-	afterStep          func()
+	saveErr, finishErr error
+	afterStart         func()
 }
 
 func (s *memoryStore) LoadRules() ([]Rule, error) { return s.rules, nil }
@@ -22,20 +22,24 @@ func (s *memoryStore) SaveRules(rules []Rule) error {
 	s.rules = rules
 	return nil
 }
-func (s *memoryStore) StartTrace(value Trace) error { s.trace = value; s.steps = nil; return nil }
-func (s *memoryStore) AppendStep(_ string, _ int, step Step) error {
-	if s.errorStep != nil {
-		return s.errorStep
-	}
-	s.steps = append(s.steps, step)
-	if s.afterStep != nil {
-		callback := s.afterStep
-		s.afterStep = nil
-		callback()
+func (s *memoryStore) StartTrace(value Trace) error {
+	s.trace = value
+	s.steps = nil
+	if s.afterStart != nil {
+		f := s.afterStart
+		s.afterStart = nil
+		f()
 	}
 	return nil
 }
-func (s *memoryStore) FinishTrace(value Trace) error { s.trace = value; return nil }
+func (s *memoryStore) FinishTrace(value Trace, steps []Step) error {
+	if s.finishErr != nil {
+		return s.finishErr
+	}
+	s.trace = value
+	s.steps = steps
+	return nil
+}
 func (s *memoryStore) TraceHistory(int, string, string) ([]Trace, int, error) {
 	return []Trace{s.trace}, 1, nil
 }
@@ -76,7 +80,7 @@ func TestInvalidOrFailedSaveKeepsCurrentChain(t *testing.T) {
 func TestFileUsesOneChainWhileNextFileUsesSavedChain(t *testing.T) {
 	service, store := extractionFixture(t)
 	count := len(service.Current().Rules())
-	store.afterStep = func() {
+	store.afterStart = func() {
 		if err := service.Save([]Rule{}); err != nil {
 			t.Fatal(err)
 		}
@@ -97,14 +101,14 @@ func TestFileUsesOneChainWhileNextFileUsesSavedChain(t *testing.T) {
 func TestCancellationAndStorageFailurePreserveCompletedSteps(t *testing.T) {
 	service, store := extractionFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	store.afterStep = cancel
+	store.afterStart = cancel
 	result, _, err := service.ExtractFile(ctx, "/source/Show.S02E03.mkv", "/source", "workspace")
 	if !errors.Is(err, context.Canceled) || store.trace.Status != "cancelled" || len(store.steps) != len(service.Current().Rules()) || result.Steps[1].Status != "skipped" {
 		t.Fatal(store.trace.Status, len(store.steps), err)
 	}
-	store.errorStep = errors.New("cannot append trace")
+	store.finishErr = errors.New("cannot append trace")
 	_, _, err = service.ExtractFile(context.Background(), "/source/file.mkv", "/source", "")
-	if !errors.Is(err, store.errorStep) || store.trace.Status != "failed" {
+	if !errors.Is(err, store.finishErr) || store.trace.Status != "running" {
 		t.Fatal(store.trace.Status, err)
 	}
 }

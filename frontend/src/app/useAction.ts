@@ -15,7 +15,7 @@ export function useAction() {
     try {
       return (await mutation.mutateAsync(action)) as T
     } catch (error) {
-      message.value = (error as Error).message
+      if ((error as Error).name !== 'AbortError') message.value = (error as Error).message
     }
   }
   return { act, busy: mutation.isPending, message, success }

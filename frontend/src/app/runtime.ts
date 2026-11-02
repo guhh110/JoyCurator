@@ -1,11 +1,7 @@
-import { computed, inject, provide, ref, watch, type InjectionKey } from 'vue'
+import { computed, inject, provide, ref, watch, nextTick, type InjectionKey } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import {
-  api,
-  type Batch,
-  type Run,
-  type Settings,
-} from '../api'
+import { api } from '../api'
+import type { Batch, Run, Settings } from '../model'
 import { keys } from './query'
 import { useToastFeedback } from './toast'
 
@@ -31,7 +27,7 @@ export function createRuntime() {
     refetchInterval: (query) => (query.state.data?.active ? 1200 : false),
   })
   const activeQuery = useQuery({
-    queryKey: computed(() => activeId.value.startsWith('scrape:') ? ['scrape', 'active', activeId.value] : keys.run(activeId.value)),
+    queryKey: computed(() => keys.run(activeId.value)),
     enabled: computed(() => !!activeId.value),
     queryFn: ({ signal }) =>
       api<Run>(
@@ -40,15 +36,15 @@ export function createRuntime() {
         'GET',
         { signal },
       ),
-    staleTime: 0,
+    staleTime: 1000,
     refetchInterval: (query) =>
       ['running', 'queued'].includes(query.state.data?.state ?? '')
         ? 1200
         : false,
   })
   const detailQuery = useQuery({
-    queryKey: computed(() => detailId.value.startsWith('scrape:') ? ['scrape', 'detail', detailId.value] : keys.run(detailId.value)),
-    enabled: computed(() => !!detailId.value),
+    queryKey: computed(() => keys.run(detailId.value)),
+    enabled: computed(() => !!detailId.value && detailId.value !== activeId.value),
     queryFn: ({ signal }) =>
       api<Run>(
         `${detailId.value.startsWith('scrape:') ? '/scrape' : ''}/runs/${encodeURIComponent(detailId.value.replace(/^scrape:/, ''))}`,
@@ -56,7 +52,7 @@ export function createRuntime() {
         'GET',
         { signal },
       ),
-    staleTime: 0,
+    staleTime: 1000,
     refetchInterval: (query) =>
       ['running', 'queued'].includes(query.state.data?.state ?? '')
         ? 1200
@@ -69,6 +65,13 @@ export function createRuntime() {
       ['running', 'queued'].includes(active.value?.state ?? '') ||
       !!batch.value?.active,
   )
+  watch(() => batch.value?.active, (active, previous) => {
+    if (previous && !active) {
+      void client.invalidateQueries({ queryKey: ['runs', 'list'] })
+      void client.invalidateQueries({ queryKey: ['scrape'] })
+      void client.invalidateQueries({ queryKey: ['recognitions'] })
+    }
+  })
   let completedId = ''
   watch(active, (value) => {
     if (
@@ -83,8 +86,9 @@ export function createRuntime() {
     void client.invalidateQueries({ queryKey: ['scrape'] })
   })
   function startRun(value: Run) {
-    client.setQueryData(keys.run(value.id), value)
+    completedId = ''
     activeId.value = value.purpose === 'scrape' ? `scrape:${value.id}` : value.id
+    client.setQueryData(keys.run(activeId.value), value)
     localStorage.setItem('joycurator-active', activeId.value)
   }
   function acceptBatch(value: Batch | null) {
@@ -93,6 +97,11 @@ export function createRuntime() {
   function inspect(value: Run) {
     detailTitle.value = value.title
     detailId.value = value.purpose === 'scrape' ? `scrape:${value.id}` : value.id
+    const id = detailId.value
+    void nextTick().then(() => {
+      if (detailId.value === id && !client.getQueryData<Run>(keys.run(id))?.ops)
+        return client.invalidateQueries({ queryKey: keys.run(id) }, { cancelRefetch: false })
+    })
   }
   const action = useMutation({
     mutationFn: async ({ run, kind }: { run: Run; kind: string }) => {
@@ -100,7 +109,7 @@ export function createRuntime() {
       const prefix = run.purpose === 'scrape' ? '/scrape' : ''
       if (kind === 'cancel') {
         await api(`${prefix}/runs/${run.id}/cancel`, {})
-        await client.invalidateQueries({ queryKey: keys.run(run.id) })
+        await client.invalidateQueries({ queryKey: keys.run(run.purpose === 'scrape' ? `scrape:${run.id}` : run.id) })
       } else {
         const value = await api<Run>(`${prefix}/runs/${run.id}/${kind}`, {})
         startRun(value)

@@ -1,4 +1,4 @@
-"""Check the four business modules and their infrastructure boundary."""
+"""Check the three business modules and their infrastructure boundary."""
 from pathlib import Path
 import re
 import unittest
@@ -19,8 +19,8 @@ class ArchitectureTest(unittest.TestCase):
             self.assertNotRegex(source.stem.lower(), r'compat|migration|legacy')
             self.assertNotRegex(source.read_text(), r'\b(?:MigrateLegacyRules|ParsedMetadata|MetadataFromParsed|type Parsed)\b')
 
-    def test_four_modules_do_not_access_sql_or_http(self):
-        for module in ('recognition', 'matching', 'planning', 'organizer'):
+    def test_three_modules_do_not_access_sql_or_http(self):
+        for module in ('recognition', 'matching', 'organizer'):
             self.assertTrue((INTERNAL / module).is_dir())
             for source in (INTERNAL / module).rglob('*.go'):
                 for dependency in imports(source):
@@ -38,9 +38,6 @@ class ArchitectureTest(unittest.TestCase):
                                      for value in imports(source)), str(source))
         for source in (INTERNAL / 'recognition').rglob('*.go'):
             self.assertNotIn('joycurator/internal/matching', source.read_text())
-        # planning submits through a port; it doesn't import the execution module.
-        for source in (INTERNAL / 'planning').glob('*.go'):
-            self.assertNotIn('joycurator/internal/organizer', source.read_text())
 
     def test_http_does_not_bypass_use_cases(self):
         sources = list((INTERNAL / 'app').glob('http_*.go'))
@@ -54,7 +51,7 @@ class ArchitectureTest(unittest.TestCase):
     def test_sql_is_confined_and_old_packages_are_removed(self):
         for old in ('adapters', 'transport', 'store', 'tmdb', 'scanner', 'fsops',
                     'execution', 'extraction', 'identification', 'catalog',
-                    'configuration', 'organization', 'library', 'settings'):
+                    'configuration', 'organization', 'library', 'settings', 'planning'):
             self.assertFalse((INTERNAL / old).exists(), old)
         for source in INTERNAL.rglob('*.go'):
             if 'webui/dist' in str(source):

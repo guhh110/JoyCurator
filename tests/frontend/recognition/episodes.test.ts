@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Episode, RecognitionItem } from '../../../frontend/src/api'
-import { episodeComparison } from '../../../frontend/src/features/automatic/episodes'
+import type { Episode, RecognitionItem } from '../../../frontend/src/model'
+import { episodeComparison } from '../../../frontend/src/features/workspace/episodes'
 
 const episodes = [1, 2, 3].map(number => ({ number, season: 1, name: `第 ${number} 集`, airDate: '' })) satisfies Episode[]
 function file(path: string, season: number, numbers: number[], removed = false) {

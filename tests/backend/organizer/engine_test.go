@@ -9,10 +9,9 @@ import (
 	"testing"
 
 	"joycurator/internal/infra/fsops"
-	"joycurator/internal/model"
 )
 
-func fixture(t *testing.T, mode string) (*Engine, *model.Operation, []byte) {
+func fixture(t *testing.T, mode string) (*Engine, *Operation, []byte) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows execution unsupported")
@@ -31,7 +30,7 @@ func fixture(t *testing.T, mode string) (*Engine, *model.Operation, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Engine{FS: access}, &model.Operation{ID: 1, Source: source, Target: filepath.Join(dir, "organized", "target.mkv"), Mode: mode, Kind: "video", Size: info.Size(), MTime: info.ModTime().UnixNano(), Status: "pending"}, body
+	return &Engine{FS: access}, &Operation{ID: 1, Source: source, Target: filepath.Join(dir, "organized", "target.mkv"), Mode: mode, Kind: "video", Size: info.Size(), MTime: info.ModTime().UnixNano(), Status: "pending"}, body
 }
 func TestModesAndUndo(t *testing.T) {
 	for _, mode := range []string{"copy", "move", "hardlink"} {
@@ -155,7 +154,7 @@ func TestFastPathRejectsSymlinkTarget(t *testing.T) {
 
 // stopAfterPublish halts a run right after the target is published, so the
 // source file still exists and both sides can be compared.
-func stopAfterPublish(t *testing.T, e *Engine, op *model.Operation) {
+func stopAfterPublish(t *testing.T, e *Engine, op *Operation) {
 	t.Helper()
 	stop := errors.New("stop after publish")
 	if err := e.Run(context.Background(), op, func() error {

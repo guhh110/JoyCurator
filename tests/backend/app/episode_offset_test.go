@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"joycurator/internal/organizer"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,7 +11,6 @@ import (
 
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
-	"joycurator/internal/planning"
 	"joycurator/internal/recognition"
 )
 
@@ -53,7 +53,7 @@ func TestWorkspaceEpisodeZeroValidationAndPreview(t *testing.T) {
 			if err != nil || !slices.Equal(reloaded.Items[0].Episodes, tc.numbers) || !slices.Equal(reloaded.Items[0].Metadata.Episodes, []int{1}) {
 				t.Fatal(reloaded, err)
 			}
-			plan, err := a.dependencies.Planning.Preview(context.Background(), planning.PreviewRequest{RecognitionID: task.ID, Revision: reloaded.Revision, Paths: []string{file.Path}, Mode: "copy", DuplicatePolicy: "error"})
+			plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{RecognitionID: task.ID, Revision: reloaded.Revision, Mode: "copy", DuplicatePolicy: "error"})
 			if !tc.ready {
 				if err == nil {
 					t.Fatal("unconfirmed mapping was previewed", plan)
@@ -72,7 +72,7 @@ func TestWorkspaceEpisodeZeroValidationAndPreview(t *testing.T) {
 				if err != nil || !slices.Equal(repeated.Items[0].Episodes, tc.numbers) {
 					t.Fatal(repeated, err)
 				}
-				batch, err := a.dependencies.Planning.BatchPreview(context.Background(), planning.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: repeated.Revision, Mode: "copy"})
+				batch, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: repeated.Revision, Mode: "copy"})
 				if err != nil || len(batch.Issues) != 0 || len(batch.Rows) != 1 {
 					t.Fatal(batch, err)
 				}

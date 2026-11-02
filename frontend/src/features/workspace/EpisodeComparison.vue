@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Check, LoaderCircle } from '@lucide/vue'
-import type { Episode, RecognitionItem } from '../../api'
+import type { Episode, RecognitionItem } from '../../model'
 import { name } from '../../api'
 import Modal from '../../components/Modal.vue'
 import Select from '../../components/ui/Select.vue'

@@ -55,9 +55,9 @@ func TestSharedScrapeRecognizesOverwrittenPredecessor(t *testing.T) {
 	}
 	defer store.Close()
 	target := filepath.Join(settings.TargetRoot, "poster.jpg")
-	first := model.Work{Operation: model.Operation{Kind: "image", Target: target, Status: "completed", Identity: "1:2"}}
-	second := model.Work{Operation: model.Operation{Kind: "image", Target: target, Status: "completed", Identity: "1:3", ReplaceIdentity: "1:2"}}
-	for _, run := range []organizer.Run{{ID: "first", Purpose: "scrape", State: "completed", Ops: []model.Work{first}}, {ID: "second", Purpose: "scrape", State: "completed", Ops: []model.Work{second}}} {
+	first := organizer.Work{Operation: organizer.Operation{Kind: "image", Target: target, Status: "completed", Identity: "1:2"}}
+	second := organizer.Work{Operation: organizer.Operation{Kind: "image", Target: target, Status: "completed", Identity: "1:3", ReplaceIdentity: "1:2"}}
+	for _, run := range []organizer.Run{{ID: "first", Purpose: "scrape", State: "completed", Ops: []organizer.Work{first}}, {ID: "second", Purpose: "scrape", State: "completed", Ops: []organizer.Work{second}}} {
 		if err = store.SaveRun(run); err != nil {
 			t.Fatal(err)
 		}

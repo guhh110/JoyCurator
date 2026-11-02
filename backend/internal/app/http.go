@@ -15,7 +15,6 @@ import (
 	"joycurator/internal/auth"
 	"joycurator/internal/matching"
 	"joycurator/internal/organizer"
-	"joycurator/internal/planning"
 	"joycurator/internal/recognition"
 )
 
@@ -28,7 +27,6 @@ type Dependencies struct {
 	Recognition *recognition.Service
 	Workspace   *WorkspaceService
 	Files       *FileService
-	Planning    *planning.Service
 	Organizer   *organizer.Service
 }
 type endpoint func(http.ResponseWriter, *http.Request) error

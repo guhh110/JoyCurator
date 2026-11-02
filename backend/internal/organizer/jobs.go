@@ -7,54 +7,10 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	"time"
 
 	"joycurator/internal/infra/fsops"
-	"joycurator/internal/model"
 )
 
-func (a *Service) Execute(id string) (Run, error) {
-	if runtime.GOOS == "windows" {
-		return Run{}, errors.New("Windows 暂不支持执行文件整理")
-	}
-	a.coordinator.mu.Lock()
-	defer a.coordinator.mu.Unlock()
-	p := a.plans.Get(id)
-	if p == nil || time.Now().After(p.Expires) {
-		return Run{}, errors.New("预览已过期，请重新预览")
-	}
-	if len(p.Issues) > 0 || len(p.Mappings) == 0 || p.Purpose == "scrape" {
-		return Run{}, errors.New("请先处理预览中的冲突")
-	}
-	if len(p.Groups) > 0 {
-		return Run{}, errors.New("请通过批量整理接口执行此预览")
-	}
-	s, err := a.settings.Load()
-	if err != nil {
-		return Run{}, err
-	}
-	if s.Version != p.Version {
-		return Run{}, errors.New("设置已更新，请重新预览")
-	}
-	if p.RecognitionID != "" {
-		revision, revisionErr := a.revision(p.RecognitionID)
-		if revisionErr != nil || revision != p.Revision {
-			return Run{}, errors.New("识别结果已修改，请重新预览")
-		}
-	}
-	if err = a.plans.ValidateOps(p.Ops); err != nil {
-		return Run{}, err
-	}
-	if err = a.validateSkipped(p.Mappings, p.Ops); err != nil {
-		return Run{}, err
-	}
-	r := Run{ID: model.Key(), Title: p.Title, Mode: p.Mode, State: "running", Created: time.Now().Format(time.RFC3339), Ops: append([]model.Work(nil), p.Ops...), Total: len(p.Ops), Purpose: p.Purpose, Mappings: p.Mappings, Version: p.Version, RecognitionID: p.RecognitionID}
-	result, err := a.launch(r)
-	if err == nil {
-		a.plans.Remove(id)
-	}
-	return result, err
-}
 func (a *Service) Resume(id string, undo bool) (Run, error) {
 	a.coordinator.mu.Lock()
 	defer a.coordinator.mu.Unlock()
@@ -162,6 +118,7 @@ func (a *Service) launch(r Run) (Run, error) {
 	go a.work(ctx, cancel, r)
 	summary := r
 	summary.Ops = nil
+	summary.Mappings = nil
 	return summary, nil
 }
 func (a *Service) work(ctx context.Context, cancel context.CancelFunc, r Run) {

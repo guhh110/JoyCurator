@@ -1,4 +1,4 @@
-package planning
+package organizer
 
 import (
 	"context"
@@ -18,6 +18,10 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 	}
 	if task.State == "running" || task.Revision != in.Revision {
 		return nil, errors.New("识别结果已变化，请保存并重新预览")
+	}
+	settings, err := a.settings.Load()
+	if err != nil {
+		return nil, err
 	}
 	requests := [][]matching.Item{}
 	indexes := map[string]int{}
@@ -42,17 +46,12 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 	if count < 1 || count > 1000 {
 		return nil, errors.New("每次整理 1–1000 个视频")
 	}
-	plan := &Plan{ID: model.Key(), Title: fmt.Sprintf("自动整理 · %d 部作品", len(requests)), Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy, Rows: []Row{}, Issues: []string{}, Groups: []*Plan{}, Expires: time.Now().Add(15 * time.Minute), RecognitionID: task.ID, Revision: task.Revision}
+	plan := &Plan{ID: model.Key(), Title: fmt.Sprintf("自动整理 · %d 部作品", len(requests)), Mode: in.Mode, DuplicatePolicy: in.DuplicatePolicy, Rows: []Row{}, Issues: []string{}, Groups: []*Plan{}, Expires: time.Now().Add(previewTTL), RecognitionID: task.ID, Revision: task.Revision, Version: settings.Version, Purpose: "organize"}
 	targets := map[string]bool{}
 	for _, request := range requests {
-		group, err := a.buildPreview(ctx, request, in.Mode, in.DuplicatePolicy)
+		group, err := a.buildPreview(ctx, request, in.Mode, in.DuplicatePolicy, settings)
 		if err != nil {
 			return nil, err
-		}
-		if plan.Version == 0 {
-			plan.Version = group.Version
-		} else if plan.Version != group.Version {
-			return nil, errors.New("设置已变化，请重新预览")
 		}
 		for _, op := range group.Ops {
 			target := strings.ToLower(op.Target)
@@ -75,17 +74,14 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 		plan.Rows = append(plan.Rows, group.Rows...)
 		plan.Ops = append(plan.Ops, group.Ops...)
 		plan.Mappings = append(plan.Mappings, group.Mappings...)
-		plan.Purpose = "organize"
 		plan.Required += group.Required
 		plan.Issues = append(plan.Issues, group.Issues...)
 	}
 	if len(plan.Issues) == 0 {
-		if err := a.ValidateOps(plan.Ops); err != nil {
+		if err := a.validateOps(plan.Ops); err != nil {
 			plan.Issues = append(plan.Issues, err.Error())
 		}
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.storePlan(plan)
+	a.previews.put(plan)
 	return plan, nil
 }

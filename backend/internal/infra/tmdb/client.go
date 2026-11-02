@@ -33,20 +33,57 @@ type Client struct {
 	Trace    *trace.Recorder
 	// RetryWait is the base backoff between attempts. Tests shorten it.
 	RetryWait time.Duration
-	mu        sync.Mutex
-	next      time.Time
+	limiter   *requestLimiter
 }
 
+// New creates an independent client. The app uses Pool.Client to share transport and rate limits.
 func New(cache Cache, token, proxy, language string) (*Client, error) {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	return (&Pool{}).Client(cache, token, proxy, language, nil)
+}
+
+// Pool owns one active proxy transport and a shared request-start limiter.
+// Existing requests retain their immutable client snapshot after configuration changes.
+type Pool struct {
+	mu      sync.Mutex
+	proxy   string
+	http    *http.Client
+	limiter requestLimiter
+}
+type requestLimiter struct {
+	mu   sync.Mutex
+	next time.Time
+}
+
+func (p *Pool) Client(cache Cache, token, proxy, language string, log *trace.Recorder) (*Client, error) {
+	var proxyURL *url.URL
 	if proxy != "" {
 		u, err := url.Parse(proxy)
 		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5") {
 			return nil, errors.New("代理地址必须是 http、https 或 socks5 URL")
 		}
-		transport.Proxy = http.ProxyURL(u)
+		proxyURL = u
 	}
-	return &Client{Cache: cache, HTTP: &http.Client{Transport: transport, Timeout: 20 * time.Second}, BaseURL: "https://api.themoviedb.org/3", Token: token, Language: language, RetryWait: time.Second}, nil
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.http == nil || proxy != p.proxy {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		if proxyURL != nil {
+			transport.Proxy = http.ProxyURL(proxyURL)
+		}
+		if p.http != nil {
+			p.http.CloseIdleConnections()
+		}
+		p.http = &http.Client{Transport: transport, Timeout: 20 * time.Second}
+		p.proxy = proxy
+	}
+	return &Client{Cache: cache, HTTP: p.http, BaseURL: "https://api.themoviedb.org/3", Token: token, Language: language, Trace: log, RetryWait: time.Second, limiter: &p.limiter}, nil
+}
+func (p *Pool) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.http != nil {
+		p.http.CloseIdleConnections()
+	}
 }
 
 func (c *Client) retryWait() time.Duration {
@@ -61,13 +98,13 @@ func (c *Client) retryWait() time.Duration {
 const minInterval = 100 * time.Millisecond
 
 func (c *Client) throttle(ctx context.Context) error {
-	c.mu.Lock()
-	delay := time.Until(c.next)
+	c.limiter.mu.Lock()
+	delay := time.Until(c.limiter.next)
 	if delay < 0 {
 		delay = 0
 	}
-	c.next = time.Now().Add(delay + minInterval)
-	c.mu.Unlock()
+	c.limiter.next = time.Now().Add(delay + minInterval)
+	c.limiter.mu.Unlock()
 	return wait(ctx, delay)
 }
 func wait(ctx context.Context, d time.Duration) error {

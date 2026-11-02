@@ -1,4 +1,4 @@
-package planning
+package organizer
 
 import (
 	"time"
@@ -26,7 +26,7 @@ type Plan struct {
 	Issues          []string             `json:"issues"`
 	Version         int                  `json:"-"`
 	Expires         time.Time            `json:"-"`
-	Ops             []model.Work         `json:"-"`
+	Ops             []Work               `json:"-"`
 	Mappings        []model.MediaMapping `json:"-"`
 	Purpose         string               `json:"-"`
 	Groups          []*Plan              `json:"groups,omitempty"`
@@ -34,14 +34,6 @@ type Plan struct {
 	TMDBID          int                  `json:"tmdbId,omitempty"`
 	RecognitionID   string               `json:"-"`
 	Revision        int                  `json:"-"`
-}
-
-type PreviewRequest struct {
-	RecognitionID   string   `json:"recognitionId"`
-	Revision        int      `json:"revision"`
-	Paths           []string `json:"paths"`
-	Mode            string   `json:"mode"`
-	DuplicatePolicy string   `json:"duplicatePolicy"`
 }
 
 type BatchPreviewRequest struct {

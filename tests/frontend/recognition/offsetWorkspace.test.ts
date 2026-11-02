@@ -1,8 +1,8 @@
 import { createRenderer, h, nextTick } from 'vue'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useAutomaticRecognition } from '../../../frontend/src/features/automatic/useAutomaticRecognition'
-import type { BatchPreview, PreviewRow, Recognition, RecognitionItem } from '../../../frontend/src/api'
+import { useWorkspace } from '../../../frontend/src/features/workspace/useWorkspace'
+import type { BatchPreview, PreviewRow, Recognition, RecognitionItem } from '../../../frontend/src/model'
 import { clearToasts, toasts } from '../../../frontend/src/app/toast'
 
 const mocks = vi.hoisted(() => ({ cancelQueries: vi.fn(async () => {}), setQueryData: vi.fn(), fetchQuery: vi.fn() }))
@@ -22,8 +22,8 @@ async function settle() { for (let i = 0; i < 15; i++) await Promise.resolve(); 
 async function fixture() {
   mocks.fetchQuery.mockResolvedValue([{ number: 1, name: '第一季', count: 20 }, { number: 2, name: '第二季', count: 12 }])
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  let state!: ReturnType<typeof useAutomaticRecognition>
-  const app = renderer.createApp({ setup() { state = useAutomaticRecognition(); return () => h('div') } })
+  let state!: ReturnType<typeof useWorkspace>
+  const app = renderer.createApp({ setup() { state = useWorkspace(); return () => h('div') } })
   app.use(VueQueryPlugin, { queryClient: client })
   app.mount({})
   cleanup.push(() => { app.unmount(); client.clear() })
@@ -225,4 +225,24 @@ describe('workspace offset save integration', () => {
     expect(toasts.value).toHaveLength(1)
     expect(toasts.value[0]!.tone).toBe('error')
   })
+})
+
+it('aborts a pending preview when the workspace is disposed and ignores its response', async () => {
+  let signal: AbortSignal | undefined
+  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
+    if (url !== '/api/batches/preview') return response(null)
+    signal = options?.signal as AbortSignal
+    return new Promise<Response>((_resolve, reject) => {
+      signal!.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    })
+  }))
+  const state = await fixture()
+  const pending = state.prepare()
+  await settle()
+  expect(signal?.aborted).toBe(false)
+  cleanup.splice(0).forEach(fn => fn())
+  expect(signal?.aborted).toBe(true)
+  await pending
+  expect(state.preview.value).toBeNull()
+  expect(toasts.value).toHaveLength(0)
 })

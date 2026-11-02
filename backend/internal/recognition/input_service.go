@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// Parse is the common non-persistent entry used by planning and simulation.
+// Parse is the common non-persistent entry used by organizer and simulation.
 func (a *Service) Parse(ctx context.Context, path, root string) (Result, error) {
 	return a.Current().Extract(ctx, Input{Path: path, Root: root}, nil)
 }
