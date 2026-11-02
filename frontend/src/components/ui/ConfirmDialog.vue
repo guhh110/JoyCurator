@@ -22,7 +22,7 @@ import {
     @update:open="(open) => { if (!open) dismissConfirmation() }"
   >
     <AlertDialogPortal>
-      <AlertDialogOverlay class="confirm-overlay" />
+      <AlertDialogOverlay class="confirm-overlay" @click.self="dismissConfirmation" />
       <AlertDialogContent class="confirm-dialog">
         <AlertDialogTitle class="confirm-title">
           {{ activeConfirmation?.options.title }}

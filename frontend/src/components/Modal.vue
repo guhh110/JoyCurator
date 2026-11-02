@@ -2,11 +2,24 @@
 import { onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue'
 import { registerToastTarget } from '../app/toast'
 import { X } from '@lucide/vue'
-defineProps<{ title: string; wide?: boolean; locked?: boolean }>()
+const props = defineProps<{ title: string; wide?: boolean; locked?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement>()
 let previous: HTMLElement | null = null
 let releaseToasts: (() => void) | undefined
+let pressedOutside = false
+function isOutside(event: MouseEvent) {
+  const element = dialog.value
+  if (!element || event.target !== element) return false
+  const bounds = element.getBoundingClientRect()
+  return event.clientX < bounds.left || event.clientX > bounds.right ||
+    event.clientY < bounds.top || event.clientY > bounds.bottom
+}
+function closeOnBackdrop(event: MouseEvent) {
+  const startedOutside = pressedOutside
+  pressedOutside = false
+  if (startedOutside && !props.locked && isOutside(event)) emit('close')
+}
 onMounted(() => {
   previous = document.activeElement as HTMLElement
   dialog.value?.showModal()
@@ -22,6 +35,9 @@ onUnmounted(() => previous?.focus())
     :class="{ wide }"
     :aria-label="title"
     @cancel.prevent="!locked && emit('close')"
+    @pointerdown.capture="pressedOutside = isOutside($event)"
+    @pointercancel="pressedOutside = false"
+    @click="closeOnBackdrop"
   >
     <header class="modal-head">
       <div>

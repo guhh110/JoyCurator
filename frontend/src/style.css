@@ -1837,45 +1837,6 @@ small {
   min-width: 31px;
   text-align: center;
 }
-.task-toast {
-  position: fixed;
-  bottom: 101px;
-  right: 34px;
-  z-index: 50;
-  background: #fff;
-  border: 1px solid #e8e0f3;
-  box-shadow: 0 7px 27px #5a417c12;
-  border-radius: 11px;
-  padding: 13px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: 380px;
-}
-.task-toast strong,
-.task-toast span {
-  display: block;
-}
-.task-toast strong {
-  font-size: 11px;
-  font-weight: 550;
-}
-.task-toast span {
-  font-size: 10px;
-  color: #877795;
-  margin-top: 4px;
-}
-.task-toast > div {
-  min-width: 0;
-}
-.task-toast span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.task-toast.finished {
-  bottom: 28px;
-}
 .login-screen {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2472,28 +2433,6 @@ small {
   }
   .category-fields label {
     font-size: 10px;
-  }
-  .task-toast,
-  .task-toast.finished {
-    bottom: calc(139px + env(safe-area-inset-bottom));
-    left: 15px;
-    right: 15px;
-    max-width: none;
-    padding: 10px 13px;
-    gap: 10px;
-  }
-  .task-toast strong {
-    font-size: 10px;
-  }
-  .task-toast span {
-    font-size: 10px;
-  }
-  .task-toast .text-button {
-    font-size: 10px;
-    margin-left: auto;
-  }
-  .task-toast > svg {
-    width: 17px;
   }
   .modal,
   .modal.wide {
