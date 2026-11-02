@@ -158,5 +158,5 @@ export function useWorkSelection(options: {
     editing.value = null
     editRequest++
   }
-  return { searchGroup, searchQuery, searchYear, searchKind, searchResults, searchBusy, searchError, editing, editSeason, editEpisodes, seasons, editError, openSearch, search, pick, openEdit, saveEdit, closeSearch, closeEdit }
+  return { searchGroup, searchQuery, searchYear, searchKind, searchResults, searchBusy, editing, editSeason, editEpisodes, seasons, openSearch, search, pick, openEdit, saveEdit, closeSearch, closeEdit }
 }

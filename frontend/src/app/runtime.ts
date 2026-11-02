@@ -19,10 +19,9 @@ export function createRuntime() {
   })
   const queue = computed(() => queueQuery.data.value ?? null)
   const executing = computed(() => !!queue.value?.active)
-  const activeRuns = computed(() => [queue.value?.organize.current, queue.value?.scrape.current].filter((run): run is Run => !!run))
   watch(queue, (value, previous) => {
     if (!value || !previous || value.revision === previous.revision) return
-    for (const key of [['runs', 'list'], ['batches'], ['recognitions'], ['scrape'], ['queue', 'items']]) void client.invalidateQueries({ queryKey: key })
+    for (const key of [['runs', 'list'], ['recognitions'], ['scrape']]) void client.invalidateQueries({ queryKey: key })
   })
   const detailQuery = useQuery({
     queryKey: computed(() => keys.run(detailId.value)),
@@ -34,7 +33,7 @@ export function createRuntime() {
   function inspect(run: Run) { detailTitle.value = run.title; detailId.value = run.purpose === 'scrape' ? `scrape:${run.id}` : run.id }
   async function refreshQueue() { await client.invalidateQueries({ queryKey: keys.queue }) }
   async function refreshRecords() {
-    await Promise.all([refreshQueue(), client.invalidateQueries({ queryKey: ['runs', 'list'] }), client.invalidateQueries({ queryKey: ['batches'] }), client.invalidateQueries({ queryKey: ['recognitions'] }), client.invalidateQueries({ queryKey: ['scrape'] })])
+    await Promise.all([refreshQueue(), client.invalidateQueries({ queryKey: ['runs', 'list'] }), client.invalidateQueries({ queryKey: ['recognitions'] }), client.invalidateQueries({ queryKey: ['scrape'] })])
   }
   const action = useMutation({
     mutationFn: async ({ run, kind }: { run: Run; kind: string }) => {
@@ -44,18 +43,13 @@ export function createRuntime() {
       await Promise.all([refreshRecords(), client.invalidateQueries({ queryKey: keys.run(id) })])
     },
   })
-  const batchCancel = useMutation({ mutationFn: async (id: string) => { await api(`/batches/${encodeURIComponent(id)}/cancel`, {}); notify('批次取消请求已提交', 'success'); await refreshRecords() } })
   async function recordAction(run: Run, kind: string) {
     undoing.value = null; error.value = ''
     try { await action.mutateAsync({ run, kind }) } catch (cause) { error.value = (cause as Error).message }
   }
-  async function cancelBatch(id: string) {
-    error.value = ''
-    try { await batchCancel.mutateAsync(id) } catch (cause) { error.value = (cause as Error).message }
-  }
   return {
-    error, queue, queueQuery, activeRuns, executing, settingsQuery, detailId, detailTitle, detailQuery, undoing, inspect, recordAction, cancelBatch, refreshQueue, refreshRecords,
-    actionBusy: computed(() => action.isPending.value || batchCancel.isPending.value), client
+    error, queue, queueQuery, executing, settingsQuery, detailId, detailTitle, detailQuery, undoing, inspect, recordAction, refreshQueue, refreshRecords,
+    actionBusy: action.isPending, client
   }
 }
 export type Runtime = ReturnType<typeof createRuntime>

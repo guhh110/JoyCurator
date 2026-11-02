@@ -5,12 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 )
-
-var numberRE = regexp.MustCompile(`\d+`)
 
 func (m Metadata) value(target Target) any {
 	switch target {

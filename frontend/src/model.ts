@@ -163,4 +163,3 @@ export interface RunPage { items: Run[]; total: number; page: number }
 export interface FileExecution {runId: string; state: string; locked: boolean; completed: boolean; manualReview: boolean}
 export interface LaneStatus {current: Run | null; queued: number; queuedBatches: number; waitReason: string}
 export interface QueueStatus {active: boolean; recognizing: boolean; revision: number; organize: LaneStatus; scrape: LaneStatus}
-export interface BatchPage {items: Batch[];total: number;page: number}

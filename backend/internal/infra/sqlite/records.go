@@ -53,8 +53,6 @@ func writeConfig(q queryer, key, root, owner string, position int, v model.Setti
 	return nil
 }
 
-const columnsConfigCategories = "f_name,f_type,f_year_min,f_year_max"
-
 func scanConfigCategories(s scanner) (model.Category, error) {
 	var v model.Category
 	var err error
@@ -162,8 +160,6 @@ func readConfigCategories(q queryer, root string) ([]rowConfigCategories, error)
 	return out, nil
 }
 
-const columnsCategoryCountries = "value"
-
 func scanCategoryCountries(s scanner) (string, error) {
 	var v string
 	var err error
@@ -174,16 +170,9 @@ func scanCategoryCountries(s scanner) (string, error) {
 	return v, nil
 }
 
-func putCategoryCountries(q queryer, key, root, owner string, position int, v string) error {
+func writeCategoryCountries(q queryer, key, root, owner string, position int, v string) error {
 	_, err := q.Exec("INSERT INTO category_countries(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeCategoryCountries(q queryer, key, root, owner string, position int, v string) error {
-	if err := putCategoryCountries(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowCategoryCountries struct {
@@ -215,8 +204,6 @@ func readCategoryCountries(q queryer, root string) ([]rowCategoryCountries, erro
 	return out, nil
 }
 
-const columnsCategoryGenres = "value"
-
 func scanCategoryGenres(s scanner) (string, error) {
 	var v string
 	var err error
@@ -227,16 +214,9 @@ func scanCategoryGenres(s scanner) (string, error) {
 	return v, nil
 }
 
-func putCategoryGenres(q queryer, key, root, owner string, position int, v string) error {
+func writeCategoryGenres(q queryer, key, root, owner string, position int, v string) error {
 	_, err := q.Exec("INSERT INTO category_genres(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeCategoryGenres(q queryer, key, root, owner string, position int, v string) error {
-	if err := putCategoryGenres(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowCategoryGenres struct {
@@ -267,8 +247,6 @@ func readCategoryGenres(q queryer, root string) ([]rowCategoryGenres, error) {
 	}
 	return out, nil
 }
-
-const columnsRules = "f_id,f_name,f_description,f_target,f_source,f_order,f_enabled,f_kind,f_overwrite,f_config_code,f_config_source_code,f_config_params,f_config_pattern,f_config_capture,f_config_value"
 
 func scanRules(s scanner) (recognition.Rule, error) {
 	var v recognition.Rule
@@ -369,8 +347,6 @@ func readRules(q queryer, root string) ([]rowRules, error) {
 	return out, nil
 }
 
-const columnsRuleExamples = "f_path,f_root,f_expected"
-
 func scanRuleExamples(s scanner) (recognition.Example, error) {
 	var v recognition.Example
 	var err error
@@ -387,20 +363,13 @@ func scanRuleExamples(s scanner) (recognition.Example, error) {
 	return v, nil
 }
 
-func putRuleExamples(q queryer, key, root, owner string, position int, v recognition.Example) error {
+func writeRuleExamples(q queryer, key, root, owner string, position int, v recognition.Example) error {
 	j2, err := dynamicJSON(v.Expected)
 	if err != nil {
 		return err
 	}
 	_, err = q.Exec("INSERT INTO rule_examples(k,root,owner,position,f_path,f_root,f_expected) VALUES(?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_path=excluded.f_path,f_root=excluded.f_root,f_expected=excluded.f_expected", key, root, owner, position, v.Path, v.Root, j2)
 	return err
-}
-
-func writeRuleExamples(q queryer, key, root, owner string, position int, v recognition.Example) error {
-	if err := putRuleExamples(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowRuleExamples struct {
@@ -472,8 +441,6 @@ func writeRecognitions(q queryer, key, root, owner string, position int, v match
 	return nil
 }
 
-const columnsWorkspacePaths = "value"
-
 func scanWorkspacePaths(s scanner) (string, error) {
 	var v string
 	var err error
@@ -484,16 +451,9 @@ func scanWorkspacePaths(s scanner) (string, error) {
 	return v, nil
 }
 
-func putWorkspacePaths(q queryer, key, root, owner string, position int, v string) error {
+func writeWorkspacePaths(q queryer, key, root, owner string, position int, v string) error {
 	_, err := q.Exec("INSERT INTO workspace_paths(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeWorkspacePaths(q queryer, key, root, owner string, position int, v string) error {
-	if err := putWorkspacePaths(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowWorkspacePaths struct {
@@ -524,8 +484,6 @@ func readWorkspacePaths(q queryer, root string) ([]rowWorkspacePaths, error) {
 	}
 	return out, nil
 }
-
-const columnsWorkspaceItems = "f_path,f_size,f_m_time,f_season,f_group,f_state,f_reason,f_selected,f_removed,f_edited,f_trace_id"
 
 func scanWorkspaceItems(s scanner) (matching.Item, error) {
 	var v matching.Item
@@ -686,8 +644,6 @@ func readWorkspaceItems(q queryer, root string) ([]rowWorkspaceItems, error) {
 	return out, nil
 }
 
-const columnsItemEpisodes = "value"
-
 func scanItemEpisodes(s scanner) (int, error) {
 	var v int
 	var err error
@@ -698,16 +654,9 @@ func scanItemEpisodes(s scanner) (int, error) {
 	return v, nil
 }
 
-func putItemEpisodes(q queryer, key, root, owner string, position int, v int) error {
+func writeItemEpisodes(q queryer, key, root, owner string, position int, v int) error {
 	_, err := q.Exec("INSERT INTO item_episodes(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeItemEpisodes(q queryer, key, root, owner string, position int, v int) error {
-	if err := putItemEpisodes(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowItemEpisodes struct {
@@ -739,8 +688,6 @@ func readItemEpisodes(q queryer, root string) ([]rowItemEpisodes, error) {
 	return out, nil
 }
 
-const columnsMetadataEpisodes = "value"
-
 func scanMetadataEpisodes(s scanner) (int, error) {
 	var v int
 	var err error
@@ -751,16 +698,9 @@ func scanMetadataEpisodes(s scanner) (int, error) {
 	return v, nil
 }
 
-func putMetadataEpisodes(q queryer, key, root, owner string, position int, v int) error {
+func writeMetadataEpisodes(q queryer, key, root, owner string, position int, v int) error {
 	_, err := q.Exec("INSERT INTO metadata_episodes(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeMetadataEpisodes(q queryer, key, root, owner string, position int, v int) error {
-	if err := putMetadataEpisodes(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowMetadataEpisodes struct {
@@ -792,8 +732,6 @@ func readMetadataEpisodes(q queryer, root string) ([]rowMetadataEpisodes, error)
 	return out, nil
 }
 
-const columnsTraceEpisodes = "value"
-
 func scanTraceEpisodes(s scanner) (int, error) {
 	var v int
 	var err error
@@ -804,16 +742,9 @@ func scanTraceEpisodes(s scanner) (int, error) {
 	return v, nil
 }
 
-func putTraceEpisodes(q queryer, key, root, owner string, position int, v int) error {
+func writeTraceEpisodes(q queryer, key, root, owner string, position int, v int) error {
 	_, err := q.Exec("INSERT INTO trace_episodes(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeTraceEpisodes(q queryer, key, root, owner string, position int, v int) error {
-	if err := putTraceEpisodes(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowTraceEpisodes struct {
@@ -845,60 +776,10 @@ func readTraceEpisodes(q queryer, root string) ([]rowTraceEpisodes, error) {
 	return out, nil
 }
 
-const columnsMappingEpisodes = "value"
-
-func scanMappingEpisodes(s scanner) (int, error) {
-	var v int
-	var err error
-	err = s.Scan(&v)
-	if err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func putMappingEpisodes(q queryer, key, root, owner string, position int, v int) error {
+func writeMappingEpisodes(q queryer, key, root, owner string, position int, v int) error {
 	_, err := q.Exec("INSERT INTO mapping_episodes(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
 }
-
-func writeMappingEpisodes(q queryer, key, root, owner string, position int, v int) error {
-	if err := putMappingEpisodes(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
-}
-
-type rowMappingEpisodes struct {
-	Key, Owner string
-	Position   int
-	Value      int
-}
-
-func readMappingEpisodes(q queryer, root string) ([]rowMappingEpisodes, error) {
-	rows, err := q.Query("SELECT k,owner,position,value FROM mapping_episodes WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowMappingEpisodes{}
-	for rows.Next() {
-		var r rowMappingEpisodes
-		var v int
-		v, err = scanMappingEpisodes(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-const columnsRunMappingEpisodes = "value"
 
 func scanRunMappingEpisodes(s scanner) (int, error) {
 	var v int
@@ -910,16 +791,9 @@ func scanRunMappingEpisodes(s scanner) (int, error) {
 	return v, nil
 }
 
-func putRunMappingEpisodes(q queryer, key, root, owner string, position int, v int) error {
+func writeRunMappingEpisodes(q queryer, key, root, owner string, position int, v int) error {
 	_, err := q.Exec("INSERT INTO run_mapping_episodes(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeRunMappingEpisodes(q queryer, key, root, owner string, position int, v int) error {
-	if err := putRunMappingEpisodes(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowRunMappingEpisodes struct {
@@ -950,8 +824,6 @@ func readRunMappingEpisodes(q queryer, root string) ([]rowRunMappingEpisodes, er
 	}
 	return out, nil
 }
-
-const columnsItemMetadata = "f_tmdbid,f_title,f_media_type,f_year,f_season,f_release_tag"
 
 func scanItemMetadata(s scanner) (recognition.Metadata, error) {
 	var v recognition.Metadata
@@ -1113,8 +985,6 @@ func readTraceMetadata(q queryer, root string) ([]rowTraceMetadata, error) {
 	return out, nil
 }
 
-const columnsItemEntries = "f_tmdbid,f_type,f_title,f_original_title,f_year,f_overview,f_date,f_poster_path,f_backdrop_path"
-
 func scanItemEntries(s scanner) (model.Entry, error) {
 	var v model.Entry
 	var err error
@@ -1250,8 +1120,6 @@ func readItemEntries(q queryer, root string) ([]rowItemEntries, error) {
 	return out, nil
 }
 
-const columnsItemEntriesGenres = "value"
-
 func scanItemEntriesGenres(s scanner) (string, error) {
 	var v string
 	var err error
@@ -1262,16 +1130,9 @@ func scanItemEntriesGenres(s scanner) (string, error) {
 	return v, nil
 }
 
-func putItemEntriesGenres(q queryer, key, root, owner string, position int, v string) error {
+func writeItemEntriesGenres(q queryer, key, root, owner string, position int, v string) error {
 	_, err := q.Exec("INSERT INTO item_entries_genres(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeItemEntriesGenres(q queryer, key, root, owner string, position int, v string) error {
-	if err := putItemEntriesGenres(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowItemEntriesGenres struct {
@@ -1303,8 +1164,6 @@ func readItemEntriesGenres(q queryer, root string) ([]rowItemEntriesGenres, erro
 	return out, nil
 }
 
-const columnsItemEntriesCountries = "value"
-
 func scanItemEntriesCountries(s scanner) (string, error) {
 	var v string
 	var err error
@@ -1315,16 +1174,9 @@ func scanItemEntriesCountries(s scanner) (string, error) {
 	return v, nil
 }
 
-func putItemEntriesCountries(q queryer, key, root, owner string, position int, v string) error {
+func writeItemEntriesCountries(q queryer, key, root, owner string, position int, v string) error {
 	_, err := q.Exec("INSERT INTO item_entries_countries(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeItemEntriesCountries(q queryer, key, root, owner string, position int, v string) error {
-	if err := putItemEntriesCountries(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowItemEntriesCountries struct {
@@ -1356,8 +1208,6 @@ func readItemEntriesCountries(q queryer, root string) ([]rowItemEntriesCountries
 	return out, nil
 }
 
-const columnsItemEntriesCast = "f_name,f_role"
-
 func scanItemEntriesCast(s scanner) (model.Actor, error) {
 	var v model.Actor
 	var err error
@@ -1368,16 +1218,9 @@ func scanItemEntriesCast(s scanner) (model.Actor, error) {
 	return v, nil
 }
 
-func putItemEntriesCast(q queryer, key, root, owner string, position int, v model.Actor) error {
+func writeItemEntriesCast(q queryer, key, root, owner string, position int, v model.Actor) error {
 	_, err := q.Exec("INSERT INTO item_entries_cast(k,root,owner,position,f_name,f_role) VALUES(?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_name=excluded.f_name,f_role=excluded.f_role", key, root, owner, position, v.Name, v.Role)
 	return err
-}
-
-func writeItemEntriesCast(q queryer, key, root, owner string, position int, v model.Actor) error {
-	if err := putItemEntriesCast(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowItemEntriesCast struct {
@@ -1408,8 +1251,6 @@ func readItemEntriesCast(q queryer, root string) ([]rowItemEntriesCast, error) {
 	}
 	return out, nil
 }
-
-const columnsItemCandidates = "f_tmdbid,f_type,f_title,f_original_title,f_year,f_overview,f_date,f_poster_path,f_backdrop_path"
 
 func scanItemCandidates(s scanner) (model.Entry, error) {
 	var v model.Entry
@@ -1546,8 +1387,6 @@ func readItemCandidates(q queryer, root string) ([]rowItemCandidates, error) {
 	return out, nil
 }
 
-const columnsItemCandidatesGenres = "value"
-
 func scanItemCandidatesGenres(s scanner) (string, error) {
 	var v string
 	var err error
@@ -1558,16 +1397,9 @@ func scanItemCandidatesGenres(s scanner) (string, error) {
 	return v, nil
 }
 
-func putItemCandidatesGenres(q queryer, key, root, owner string, position int, v string) error {
+func writeItemCandidatesGenres(q queryer, key, root, owner string, position int, v string) error {
 	_, err := q.Exec("INSERT INTO item_candidates_genres(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeItemCandidatesGenres(q queryer, key, root, owner string, position int, v string) error {
-	if err := putItemCandidatesGenres(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowItemCandidatesGenres struct {
@@ -1599,8 +1431,6 @@ func readItemCandidatesGenres(q queryer, root string) ([]rowItemCandidatesGenres
 	return out, nil
 }
 
-const columnsItemCandidatesCountries = "value"
-
 func scanItemCandidatesCountries(s scanner) (string, error) {
 	var v string
 	var err error
@@ -1611,16 +1441,9 @@ func scanItemCandidatesCountries(s scanner) (string, error) {
 	return v, nil
 }
 
-func putItemCandidatesCountries(q queryer, key, root, owner string, position int, v string) error {
+func writeItemCandidatesCountries(q queryer, key, root, owner string, position int, v string) error {
 	_, err := q.Exec("INSERT INTO item_candidates_countries(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeItemCandidatesCountries(q queryer, key, root, owner string, position int, v string) error {
-	if err := putItemCandidatesCountries(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowItemCandidatesCountries struct {
@@ -1652,8 +1475,6 @@ func readItemCandidatesCountries(q queryer, root string) ([]rowItemCandidatesCou
 	return out, nil
 }
 
-const columnsItemCandidatesCast = "f_name,f_role"
-
 func scanItemCandidatesCast(s scanner) (model.Actor, error) {
 	var v model.Actor
 	var err error
@@ -1664,16 +1485,9 @@ func scanItemCandidatesCast(s scanner) (model.Actor, error) {
 	return v, nil
 }
 
-func putItemCandidatesCast(q queryer, key, root, owner string, position int, v model.Actor) error {
+func writeItemCandidatesCast(q queryer, key, root, owner string, position int, v model.Actor) error {
 	_, err := q.Exec("INSERT INTO item_candidates_cast(k,root,owner,position,f_name,f_role) VALUES(?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_name=excluded.f_name,f_role=excluded.f_role", key, root, owner, position, v.Name, v.Role)
 	return err
-}
-
-func writeItemCandidatesCast(q queryer, key, root, owner string, position int, v model.Actor) error {
-	if err := putItemCandidatesCast(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowItemCandidatesCast struct {
@@ -1721,15 +1535,6 @@ func putRuns(q queryer, key, root, owner string, position int, v organizer.Run) 
 	_, err := q.Exec("INSERT INTO runs(id,f_title,f_mode,f_state,f_created,f_error,f_completed,f_total,f_undo,f_batch_id,f_version,f_recognition_id,f_purpose) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET f_title=excluded.f_title,f_mode=excluded.f_mode,f_state=excluded.f_state,f_created=excluded.f_created,f_error=excluded.f_error,f_completed=excluded.f_completed,f_total=excluded.f_total,f_undo=excluded.f_undo,f_batch_id=excluded.f_batch_id,f_version=excluded.f_version,f_recognition_id=excluded.f_recognition_id,f_purpose=excluded.f_purpose", key, v.Title, v.Mode, v.State, v.Created, v.Error, v.Completed, v.Total, v.Undo, v.BatchID, v.Version, v.RecognitionID, v.Purpose)
 	return err
 }
-
-func writeRuns(q queryer, key, root, owner string, position int, v organizer.Run) error {
-	if err := putRuns(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
-}
-
-const columnsRunMappings = "f_path,f_run_id,f_source,f_type,f_tmdbid,f_season,f_state,f_identity,f_size,f_m_time"
 
 func scanRunMappings(s scanner) (model.MediaMapping, error) {
 	var v model.MediaMapping
@@ -1908,8 +1713,6 @@ func readOperations(q queryer, root string) ([]rowOperations, error) {
 	return out, nil
 }
 
-const columnsOperationOwners = "value"
-
 func scanOperationOwners(s scanner) (string, error) {
 	var v string
 	var err error
@@ -1920,16 +1723,9 @@ func scanOperationOwners(s scanner) (string, error) {
 	return v, nil
 }
 
-func putOperationOwners(q queryer, key, root, owner string, position int, v string) error {
+func writeOperationOwners(q queryer, key, root, owner string, position int, v string) error {
 	_, err := q.Exec("INSERT INTO operation_owners(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeOperationOwners(q queryer, key, root, owner string, position int, v string) error {
-	if err := putOperationOwners(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowOperationOwners struct {
@@ -1972,26 +1768,6 @@ func scanExtractionTraces(s scanner) (recognition.Trace, error) {
 	}
 	return v, nil
 }
-
-func putExtractionTraces(q queryer, key, root, owner string, position int, v recognition.Trace) error {
-	_, err := q.Exec("INSERT INTO extraction_traces(id,f_path,f_root,f_workspace_id,f_status,f_started_at,f_finished_at,f_error) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET f_path=excluded.f_path,f_root=excluded.f_root,f_workspace_id=excluded.f_workspace_id,f_status=excluded.f_status,f_started_at=excluded.f_started_at,f_finished_at=excluded.f_finished_at,f_error=excluded.f_error", key, v.Path, v.Root, v.WorkspaceID, v.Status, v.StartedAt, v.FinishedAt, v.Error)
-	return err
-}
-
-func writeExtractionTraces(q queryer, key, root, owner string, position int, v recognition.Trace) error {
-	if err := putExtractionTraces(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	if _, err := q.Exec("DELETE FROM trace_metadata WHERE owner=?", key); err != nil {
-		return err
-	}
-	if err := writeTraceMetadata(q, childKey(key, 0), root, key, 0, v.Metadata); err != nil {
-		return err
-	}
-	return nil
-}
-
-const columnsExtractionSteps = "f_rule_id,f_rule_name,f_order,f_target,f_status,f_matched_text,f_extracted_value,f_before,f_after,f_applied,f_reason,f_started_at,f_duration_ms"
 
 func scanExtractionSteps(s scanner) (recognition.Step, error) {
 	var v recognition.Step
@@ -2195,8 +1971,6 @@ func readExtractionSteps(q queryer, root string) ([]rowExtractionSteps, error) {
 	return out, nil
 }
 
-const columnsStepRules = "f_id,f_name,f_description,f_target,f_source,f_order,f_enabled,f_kind,f_overwrite,f_config_code,f_config_source_code,f_config_params,f_config_pattern,f_config_capture,f_config_value"
-
 func scanStepRules(s scanner) (recognition.Rule, error) {
 	var v recognition.Rule
 	var err error
@@ -2296,8 +2070,6 @@ func readStepRules(q queryer, root string) ([]rowStepRules, error) {
 	return out, nil
 }
 
-const columnsStepRuleExamples = "f_path,f_root,f_expected"
-
 func scanStepRuleExamples(s scanner) (recognition.Example, error) {
 	var v recognition.Example
 	var err error
@@ -2314,20 +2086,13 @@ func scanStepRuleExamples(s scanner) (recognition.Example, error) {
 	return v, nil
 }
 
-func putStepRuleExamples(q queryer, key, root, owner string, position int, v recognition.Example) error {
+func writeStepRuleExamples(q queryer, key, root, owner string, position int, v recognition.Example) error {
 	j2, err := dynamicJSON(v.Expected)
 	if err != nil {
 		return err
 	}
 	_, err = q.Exec("INSERT INTO step_rule_examples(k,root,owner,position,f_path,f_root,f_expected) VALUES(?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_path=excluded.f_path,f_root=excluded.f_root,f_expected=excluded.f_expected", key, root, owner, position, v.Path, v.Root, j2)
 	return err
-}
-
-func writeStepRuleExamples(q queryer, key, root, owner string, position int, v recognition.Example) error {
-	if err := putStepRuleExamples(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowStepRuleExamples struct {
@@ -2359,8 +2124,6 @@ func readStepRuleExamples(q queryer, root string) ([]rowStepRuleExamples, error)
 	return out, nil
 }
 
-const columnsStepInputs = "value"
-
 func scanStepInputs(s scanner) (string, error) {
 	var v string
 	var err error
@@ -2371,16 +2134,9 @@ func scanStepInputs(s scanner) (string, error) {
 	return v, nil
 }
 
-func putStepInputs(q queryer, key, root, owner string, position int, v string) error {
+func writeStepInputs(q queryer, key, root, owner string, position int, v string) error {
 	_, err := q.Exec("INSERT INTO step_inputs(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
 	return err
-}
-
-func writeStepInputs(q queryer, key, root, owner string, position int, v string) error {
-	if err := putStepInputs(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowStepInputs struct {
@@ -2412,8 +2168,6 @@ func readStepInputs(q queryer, root string) ([]rowStepInputs, error) {
 	return out, nil
 }
 
-const columnsStepCaptures = "f_name,f_value"
-
 func scanStepCaptures(s scanner) (capture, error) {
 	var v capture
 	var err error
@@ -2424,16 +2178,9 @@ func scanStepCaptures(s scanner) (capture, error) {
 	return v, nil
 }
 
-func putStepCaptures(q queryer, key, root, owner string, position int, v capture) error {
+func writeStepCaptures(q queryer, key, root, owner string, position int, v capture) error {
 	_, err := q.Exec("INSERT INTO step_captures(k,root,owner,position,f_name,f_value) VALUES(?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_name=excluded.f_name,f_value=excluded.f_value", key, root, owner, position, v.Name, v.Value)
 	return err
-}
-
-func writeStepCaptures(q queryer, key, root, owner string, position int, v capture) error {
-	if err := putStepCaptures(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowStepCaptures struct {
@@ -2464,8 +2211,6 @@ func readStepCaptures(q queryer, root string) ([]rowStepCaptures, error) {
 	}
 	return out, nil
 }
-
-const columnsStepAttempts = "f_input,f_matched,f_matched_text,f_error"
 
 func scanStepAttempts(s scanner) (recognition.Attempt, error) {
 	var v recognition.Attempt
@@ -2581,8 +2326,6 @@ func readStepAttempts(q queryer, root string) ([]rowStepAttempts, error) {
 	return out, nil
 }
 
-const columnsAttemptCaptures = "f_name,f_value"
-
 func scanAttemptCaptures(s scanner) (capture, error) {
 	var v capture
 	var err error
@@ -2593,16 +2336,9 @@ func scanAttemptCaptures(s scanner) (capture, error) {
 	return v, nil
 }
 
-func putAttemptCaptures(q queryer, key, root, owner string, position int, v capture) error {
+func writeAttemptCaptures(q queryer, key, root, owner string, position int, v capture) error {
 	_, err := q.Exec("INSERT INTO attempt_captures(k,root,owner,position,f_name,f_value) VALUES(?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_name=excluded.f_name,f_value=excluded.f_value", key, root, owner, position, v.Name, v.Value)
 	return err
-}
-
-func writeAttemptCaptures(q queryer, key, root, owner string, position int, v capture) error {
-	if err := putAttemptCaptures(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowAttemptCaptures struct {
@@ -2634,8 +2370,6 @@ func readAttemptCaptures(q queryer, root string) ([]rowAttemptCaptures, error) {
 	return out, nil
 }
 
-const columnsAttemptEvents = "f_phase,f_line,f_column,f_function,f_operation,f_message,f_data"
-
 func scanAttemptEvents(s scanner) (recognition.ScriptEvent, error) {
 	var v recognition.ScriptEvent
 	var err error
@@ -2652,20 +2386,13 @@ func scanAttemptEvents(s scanner) (recognition.ScriptEvent, error) {
 	return v, nil
 }
 
-func putAttemptEvents(q queryer, key, root, owner string, position int, v recognition.ScriptEvent) error {
+func writeAttemptEvents(q queryer, key, root, owner string, position int, v recognition.ScriptEvent) error {
 	j6, err := dynamicJSON(v.Data)
 	if err != nil {
 		return err
 	}
 	_, err = q.Exec("INSERT INTO attempt_events(k,root,owner,position,f_phase,f_line,f_column,f_function,f_operation,f_message,f_data) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_phase=excluded.f_phase,f_line=excluded.f_line,f_column=excluded.f_column,f_function=excluded.f_function,f_operation=excluded.f_operation,f_message=excluded.f_message,f_data=excluded.f_data", key, root, owner, position, v.Phase, v.Line, v.Column, v.Function, v.Operation, v.Message, j6)
 	return err
-}
-
-func writeAttemptEvents(q queryer, key, root, owner string, position int, v recognition.ScriptEvent) error {
-	if err := putAttemptEvents(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	return nil
 }
 
 type rowAttemptEvents struct {

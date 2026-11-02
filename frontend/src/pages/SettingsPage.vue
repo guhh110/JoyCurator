@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { VueDraggable } from 'vue-draggable-plus'
 import {
-  ArrowDownToLine,
   Check,
   ChevronDown,
-  Copy,
   Film,
   Folder,
   FolderOpen,
@@ -32,7 +30,6 @@ const {
   categoryKey,
   moveCategory,
   finishCategorySort,
-  loadSettings,
   saveSettings,
   chooseDirectory,
   parts,

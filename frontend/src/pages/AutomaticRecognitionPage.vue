@@ -3,7 +3,6 @@ import {
   ArrowLeftRight,
   ArrowRight,
   Check,
-  CircleAlert,
   Film,
   FolderOpen,
   Layers3,
@@ -25,7 +24,6 @@ import Modal from '../components/Modal.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import Select from '../components/ui/Select.vue'
-import Tooltip from '../components/ui/Tooltip.vue'
 import EliText from '../components/ui/EliText.vue'
 import EpisodeComparison from '../features/workspace/EpisodeComparison.vue'
 import EpisodeOffsetDialog from '../features/workspace/EpisodeOffsetDialog.vue'
@@ -36,11 +34,9 @@ const {
   runtime,
   busy,
   task,
-  preview,
   browser,
   filter,
   query,
-  focus,
   mode,
   groupPage,
   filePage,
@@ -65,7 +61,6 @@ const {
   groupSeasons,
   groupSeasonsLoading,
   groupSeasonsError,
-  freshImport,
   recognizing,
   locked,
   groups,
@@ -77,15 +72,8 @@ const {
   pendingCount,
   readyCount,
   modes,
-  previewPage,
-  previewRows,
-  duplicatePolicy,
-  changeDuplicatePolicy,
-  previewReady,
   taskQuery,
   loading,
-  act,
-  save,
   openBrowser,
   start,
   poll,
@@ -104,7 +92,6 @@ const {
   openOffset,
   moveGroup,
   prepare,
-  execute,
   chooseGroup,
   openTransfer,
   closeSearch,

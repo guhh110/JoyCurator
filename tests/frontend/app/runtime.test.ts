@@ -26,14 +26,14 @@ describe('durable two-lane queue runtime', () => {
   it('does not poll idle queues', async () => { const { requests } = await fixture(); expect(requests()).toBe(1); await vi.advanceTimersByTimeAsync(10_000); expect(requests()).toBe(1) })
   it('discovers both lanes after submission and stops after both finish', async () => {
     const { runtime, requests, setRemote } = await fixture(); const active = idle(); active.active = true; active.revision = 1; active.organize.current = task('organize'); active.scrape.current = task('scrape'); active.organize.queued = 2
-    setRemote(active); await runtime.refreshQueue(); await settle(); expect(runtime.activeRuns.value).toHaveLength(2); expect(runtime.queue.value?.organize.queued).toBe(2)
+    setRemote(active); await runtime.refreshQueue(); await settle(); expect(runtime.queue.value?.organize.current?.id).toBe('organize'); expect(runtime.queue.value?.scrape.current?.id).toBe('scrape'); expect(runtime.queue.value?.organize.queued).toBe(2)
     await vi.advanceTimersByTimeAsync(1200); await settle(); expect(requests()).toBe(3)
     setRemote({ ...idle(), revision: 2 }); await vi.advanceTimersByTimeAsync(1200); await settle(); expect(requests()).toBe(4); expect(runtime.executing.value).toBe(false)
     await vi.advanceTimersByTimeAsync(10_000); expect(requests()).toBe(4)
   })
   it('recovers server-owned tasks on mount and on focus without local active IDs', async () => {
     const active = idle(); active.active = true; active.organize.current = task('organize')
-    const { runtime, requests, setRemote } = await fixture(active); expect(runtime.activeRuns.value).toHaveLength(1)
+    const { runtime, requests, setRemote } = await fixture(active); expect(runtime.queue.value?.organize.current?.id).toBe('organize')
     setRemote({ ...idle(), revision: 1 }); await vi.advanceTimersByTimeAsync(1200); await settle(); expect(requests()).toBe(2)
     focusManager.setFocused(false); setRemote({ ...active, revision: 2 }); focusManager.setFocused(true); await settle(); expect(requests()).toBe(3); expect(runtime.executing.value).toBe(true)
   })
@@ -42,10 +42,11 @@ describe('durable two-lane queue runtime', () => {
     expect(runtime.executing.value).toBe(false); setRemote({ ...idle(), revision: 1 }); await vi.advanceTimersByTimeAsync(1200); await settle(); expect(requests()).toBe(2)
     await vi.advanceTimersByTimeAsync(10_000); expect(requests()).toBe(2)
   })
-  it('invalidates workspace, library, batch and pending-task caches when progress changes', async () => {
+  it('invalidates current workspace and library queries without obsolete batch or pending-list caches', async () => {
     const { runtime, client, setRemote } = await fixture(); const invalidate = vi.spyOn(client, 'invalidateQueries')
     setRemote({ ...idle(), revision: 1 }); await runtime.refreshQueue(); await settle()
-    for (const key of [['recognitions'], ['scrape'], ['batches'], ['queue', 'items']]) expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({ queryKey: key }))
+    for (const key of [['recognitions'], ['scrape']]) expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({ queryKey: key }))
+    for (const key of [['batches'], ['queue', 'items']]) expect(invalidate).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: key }))
   })
   it.each(['organize', 'scrape'] as const)('opens %s details without a duplicate active-task detail request', async purpose => {
     const active = idle(); active.active = true; active[purpose].current = task(purpose)

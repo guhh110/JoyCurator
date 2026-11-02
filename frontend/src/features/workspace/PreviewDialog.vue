@@ -8,7 +8,7 @@ import Tooltip from '../../components/ui/Tooltip.vue'
 import EliText from '../../components/ui/EliText.vue'
 import type { useWorkspacePreview } from './useWorkspacePreview'
 const props = defineProps<{ state: ReturnType<typeof useWorkspacePreview> }>()
-const { preview, mode, previewPage, previewRows, duplicatePolicy, previewReady, prepare, changeDuplicatePolicy, execute } = props.state
+const { preview, previewPage, previewRows, duplicatePolicy, previewReady, prepare, changeDuplicatePolicy, execute } = props.state
 const busy = computed(() => props.state.pending.value)
 const modes: Record<string, string> = { copy: '复制', move: '移动', hardlink: '硬链接' }
 // The same issue is often reported once per file; show it once with a count.

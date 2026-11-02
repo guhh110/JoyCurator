@@ -11,7 +11,7 @@ export function useSettingsForm() {
   const runtime = useRuntime(),
     route = useRoute(),
     router = useRouter()
-  const { act, busy, message, success } = useAction()
+  const { act, busy, success } = useAction()
   const settings = ref<Settings | null>(null),
     token = ref(''),
     clearToken = ref(false),
@@ -123,15 +123,11 @@ export function useSettingsForm() {
     directoryTarget,
     settingsSection,
     running,
-    act,
     busy,
-    message,
-    success,
     categoryDragging,
     categoryKey,
     moveCategory,
     finishCategorySort,
-    loadSettings,
     saveSettings,
     chooseDirectory,
     parts,

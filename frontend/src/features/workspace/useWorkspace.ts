@@ -103,15 +103,6 @@ export function useWorkspace() {
         (file) => !file.removed && file.state === 'ready' && !file.execution?.locked && !file.execution?.completed,
       ).length || 0,
   )
-  const runStates: Record<string, string> = {
-    queued: '等待中',
-    running: '进行中',
-    completed: '已完成',
-    failed: '失败',
-    cancelled: '已取消',
-    interrupted: '已中断',
-    undone: '已撤销',
-  }
   const modes: Record<string, string> = {
     copy: '复制',
     move: '移动',
@@ -193,7 +184,7 @@ export function useWorkspace() {
     }
   }
   const { comparisonSeason, groupSeasons, groupSeasonsLoading, groupSeasonsError, detailView, episodeQuery, retryComparison, viewSeason, assignEpisode } = useSeasonComparison({ current, active, locked, runtime, act, save })
-  const { searchGroup, searchQuery, searchYear, searchKind, searchResults, searchBusy, searchError, editing, editSeason, editEpisodes, seasons, editError, openSearch, search, pick, openEdit, saveEdit, closeSearch, closeEdit } = useWorkSelection({ task, current, focus, filePage, runtime, act, save })
+  const { searchGroup, searchQuery, searchYear, searchKind, searchResults, searchBusy, editing, editSeason, editEpisodes, seasons, openSearch, search, pick, openEdit, saveEdit, closeSearch, closeEdit } = useWorkSelection({ task, current, focus, filePage, runtime, act, save })
   const offsetEditor = useEpisodeOffset({
     task,
     locked,
@@ -360,13 +351,11 @@ export function useWorkspace() {
     busy,
     error,
     notice,
-    queue,
     task,
     preview,
     browser,
     filter,
     query,
-    focus,
     mode,
     groupPage,
     filePage,
@@ -376,12 +365,10 @@ export function useWorkspace() {
     searchKind,
     searchResults,
     searchBusy,
-    searchError,
     editing,
     editSeason,
     editEpisodes,
     seasons,
-    editError,
     transfer,
     transferGroup,
     comparisonSeason,
@@ -393,7 +380,6 @@ export function useWorkspace() {
     groupSeasons,
     groupSeasonsLoading,
     groupSeasonsError,
-    freshImport,
     recognizing,
     locked,
     groups,
@@ -408,7 +394,6 @@ export function useWorkspace() {
     selected,
     pendingCount,
     readyCount,
-    runStates,
     modes,
     previewPage,
     previewRows,
