@@ -16,7 +16,7 @@ export function useSettingsForm() {
     token = ref(''),
     clearToken = ref(false),
     directoryTarget = ref<'sourceRoot' | 'targetRoot' | null>(null)
-  const running = runtime.executing
+  const running = computed(() => runtime.executing.value || !!runtime.queue.value?.recognizing)
   const sections = ['folders', 'tmdb', 'rules']
   const settingsSection = computed({
     get: () =>

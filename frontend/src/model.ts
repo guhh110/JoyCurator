@@ -100,7 +100,7 @@ export interface MediaMapping {
   tmdbId: number
   season: number
   episodes: number[]
-  state: 'pending' | 'completed' | 'failed' | 'unavailable'
+  state: 'pending' | 'completed' | 'failed' | 'unavailable' | 'queued' | 'running'
 }
 export interface ScrapeWork {
   type: 'movie' | 'tv'
@@ -126,6 +126,7 @@ export interface ScrapePreview {
   required: number
 }
 export interface RecognitionItem extends MediaFile {
+  execution?: FileExecution
   traceId?: string
   group: string
   entry: Entry | null
@@ -150,9 +151,16 @@ export interface Batch {
   id: string
   runs: Run[]
   active: boolean
+  state: string
+  position: number
 }
 export interface BatchPreview extends Preview {
   groups: (Preview & { type: string; tmdbId: number })[]
 }
 
 export interface RunPage { items: Run[]; total: number; page: number }
+
+export interface FileExecution {runId: string; state: string; locked: boolean; completed: boolean; manualReview: boolean}
+export interface LaneStatus {current: Run | null; queued: number; queuedBatches: number; waitReason: string}
+export interface QueueStatus {active: boolean; recognizing: boolean; revision: number; organize: LaneStatus; scrape: LaneStatus}
+export interface BatchPage {items: Batch[];total: number;page: number}

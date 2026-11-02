@@ -1,35 +1,30 @@
 package sqlite
 
 import (
-	"encoding/json"
 	"errors"
-	"path/filepath"
-	"strings"
-
 	"joycurator/internal/model"
-	_ "modernc.org/sqlite"
+	"path/filepath"
 )
 
-func (a *Store) SaveSettings(s model.Settings) error {
-	_, err := a.db.Exec("UPDATE config SET value=?,token=? WHERE id=1", jsonText(s), s.Token)
-	return err
+func (a *Store) SaveSettings(v model.Settings) error {
+	return transaction(a.db, func(tx queryer) error { return writeConfig(tx, "1", "1", "", 0, v) })
 }
-func (a *Store) LoadSettings() (model.Settings, error) {
-	var s model.Settings
-	var raw string
-	err := a.db.QueryRow("SELECT value,token FROM config WHERE id=1").Scan(&raw, &s.Token)
+func (a *Store) LoadSettings() (model.Settings, error) { return snapshotRead(a.db, loadSettings) }
+func loadSettings(q queryer) (model.Settings, error) {
+	v, err := scanConfig(q.QueryRow("SELECT " + columnsConfig + " FROM config WHERE id='1'"))
 	if err != nil {
-		return s, err
+		return v, err
 	}
-	token := s.Token
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&s); err != nil {
-		return s, err
+	cats, err := readConfigCategories(q, "1")
+	if err != nil {
+		return v, err
 	}
-	if !filepath.IsAbs(s.SourceRoot) || !filepath.IsAbs(s.TargetRoot) || s.Version < 1 {
-		return s, errors.New("源目录、目标目录或设置版本无效")
+	v.Rules.Categories = []model.Category{}
+	for _, c := range cats {
+		v.Rules.Categories = append(v.Rules.Categories, c.Value)
 	}
-	s.Token = token
-	return s, nil
+	if !filepath.IsAbs(v.SourceRoot) || !filepath.IsAbs(v.TargetRoot) || v.Version < 1 {
+		return v, errors.New("源目录、目标目录或设置版本无效")
+	}
+	return v, nil
 }

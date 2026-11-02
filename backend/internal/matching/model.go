@@ -5,7 +5,15 @@ import (
 	"joycurator/internal/recognition"
 )
 
+type FileExecution struct {
+	RunID        string `json:"runId"`
+	State        string `json:"state"`
+	Locked       bool   `json:"locked"`
+	Completed    bool   `json:"completed"`
+	ManualReview bool   `json:"manualReview"`
+}
 type Item struct {
+	Execution *FileExecution `json:"execution,omitempty"`
 	model.File
 	Metadata   recognition.Metadata `json:"metadata"`
 	Group      string               `json:"group"`

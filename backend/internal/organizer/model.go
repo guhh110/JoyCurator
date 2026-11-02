@@ -34,9 +34,11 @@ type ScrapePlan struct {
 }
 
 type Batch struct {
-	ID     string `json:"id"`
-	Runs   []Run  `json:"runs"`
-	Active bool   `json:"active"`
+	ID       string `json:"id"`
+	Runs     []Run  `json:"runs"`
+	Active   bool   `json:"active"`
+	State    string `json:"state"`
+	Position int    `json:"position"`
 }
 
 // RunPage contains summaries; file operations are loaded through Run(id).
@@ -79,4 +81,23 @@ type Work struct {
 	Owner  string   `json:"owner"`
 	Owners []string `json:"owners,omitempty"`
 	Reused bool     `json:"reused,omitempty"`
+}
+
+type LaneStatus struct {
+	Current       *Run   `json:"current"`
+	Queued        int    `json:"queued"`
+	QueuedBatches int    `json:"queuedBatches"`
+	WaitReason    string `json:"waitReason"`
+}
+type QueueStatus struct {
+	Revision    int64      `json:"revision"`
+	Recognizing bool       `json:"recognizing"`
+	Active      bool       `json:"active"`
+	Organize    LaneStatus `json:"organize"`
+	Scrape      LaneStatus `json:"scrape"`
+}
+type BatchPage struct {
+	Items []Batch `json:"items"`
+	Total int     `json:"total"`
+	Page  int     `json:"page"`
 }

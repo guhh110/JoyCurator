@@ -3,7 +3,7 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useScrape } from '../../../frontend/src/features/scrape/useScrape'
 
-vi.mock('../../../frontend/src/app/runtime', () => ({ useRuntime: () => ({ executing: ref(false), startRun: vi.fn() }) }))
+vi.mock('../../../frontend/src/app/runtime', () => ({ useRuntime: () => ({ executing: ref(true), refreshRecords: vi.fn(async () => {}) }) }))
 const renderer = createRenderer<object, object>({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}),
   insert: () => {}, remove: () => {}, setText: () => {}, setElementText: () => {}, patchProp: () => {},
@@ -58,4 +58,26 @@ describe('scrape query ownership', () => {
     cleanup.length = 0
     expect(signal?.aborted).toBe(true)
   })
+})
+
+it('discovers newly registered videos without selecting them or replacing the current selection', async () => {
+  let items = [{ path: '/target/one.mkv', type: 'movie', tmdbId: 1, state: 'pending', season: -1, episodes: [] }]
+  vi.stubGlobal('fetch', vi.fn(async (path: string) => new Response(JSON.stringify(path === '/api/scrape/works/movie/1' ? items : { items: [{ type: 'movie', tmdbId: 1, total: items.length }], nextCursor: '' }))))
+  const { state, client } = fixture()
+  await settle()
+  state.openWork(state.works.value[0]!)
+  await settle()
+  state.toggle(state.current.value[0]!)
+  expect(state.selected.value).toEqual(['/target/one.mkv'])
+  items = [...items, { ...items[0]!, path: '/target/two.mkv' }]
+  await client.invalidateQueries({ queryKey: ['scrape'] })
+  await settle()
+  expect(state.current.value).toHaveLength(2)
+  expect(state.selected.value).toEqual(['/target/one.mkv'])
+  items = items.map(item => item.path.endsWith('one.mkv') ? { ...item, state: 'queued' } : item)
+  await client.invalidateQueries({ queryKey: ['scrape'] })
+  await settle()
+  expect(state.selected.value).toEqual([])
+  state.toggle(state.current.value[0]!)
+  expect(state.selected.value).toEqual([])
 })

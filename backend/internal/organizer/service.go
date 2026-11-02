@@ -20,7 +20,6 @@ type Service struct {
 	factory     matching.Factory
 	runner      RunnerFactory
 	revision    func(string) (int, error)
-	finish      func(Run)
 }
 
 type Dependencies struct {
@@ -35,13 +34,12 @@ type Dependencies struct {
 	Factory     matching.Factory
 	Runner      RunnerFactory
 	Revision    func(string) (int, error)
-	Finish      func(Run)
 }
 
 func New(d Dependencies) *Service {
 	return &Service{coordinator: d.Coordinator, store: d.Store, settings: d.Settings, previews: d.Previews,
 		access: d.Access, workspaces: d.Workspaces, mappings: d.Mappings, sources: d.Sources,
-		factory: d.Factory, runner: d.Runner, revision: d.Revision, finish: d.Finish}
+		factory: d.Factory, runner: d.Runner, revision: d.Revision}
 }
 
 func (a *Service) ScrapeRecords(page int) (RunPage, error) {
@@ -108,7 +106,30 @@ func (a *Service) ScrapeWork(kind string, id int) ([]model.MediaMapping, error) 
 	if err != nil {
 		return nil, err
 	}
-	return a.checkScrapeAvailability(items)
+	items, err = a.checkScrapeAvailability(items)
+	if err != nil {
+		return nil, err
+	}
+	a.coordinator.mu.Lock()
+	defer a.coordinator.mu.Unlock()
+	lane := a.coordinator.lanes["scrape"]
+	for i := range items {
+		for _, r := range lane.pending {
+			for _, m := range r.Mappings {
+				if m.Path == items[i].Path {
+					items[i].State = "queued"
+				}
+			}
+		}
+		if lane.active != nil {
+			for _, m := range lane.active.Mappings {
+				if m.Path == items[i].Path {
+					items[i].State = "running"
+				}
+			}
+		}
+	}
+	return items, nil
 }
 
 func (a *Service) Record(id string) (Run, error) {
@@ -120,30 +141,57 @@ func (a *Service) Record(id string) (Run, error) {
 }
 func (a *Service) Records(page int) (RunPage, error) { return a.store.RunsByPurpose(page, "organize") }
 func (a *Service) Cancel(id string) error {
-	a.coordinator.mu.Lock()
-	defer a.coordinator.mu.Unlock()
-	if a.coordinator.running != id || a.coordinator.cancel == nil {
-		return errors.New("任务未在运行")
+	c := a.coordinator
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, lane := range c.lanes {
+		if lane.active != nil && lane.active.ID == id {
+			lane.cancel()
+			return nil
+		}
+		for i, r := range lane.pending {
+			if r.ID == id {
+				if err := a.store.CancelQueued([]string{id}); err != nil {
+					return err
+				}
+				lane.pending = append(lane.pending[:i], lane.pending[i+1:]...)
+				c.signalLocked()
+				return nil
+			}
+		}
 	}
-	a.coordinator.cancel()
-	return nil
+	return errors.New("任务未在运行或排队")
 }
 func (a *Service) CancelBatch(id string) error {
-	a.coordinator.mu.Lock()
-	defer a.coordinator.mu.Unlock()
-	if a.coordinator.batch != id || a.coordinator.batchCancel == nil {
-		return errors.New("批次未在运行")
+	c := a.coordinator
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	lane := c.lanes["organize"]
+	ids := []string{}
+	for _, r := range lane.pending {
+		if r.BatchID == id {
+			ids = append(ids, r.ID)
+		}
 	}
-	a.coordinator.batchCancel()
+	active := lane.active != nil && lane.active.BatchID == id
+	if len(ids) == 0 && !active {
+		return errors.New("批次未在运行或排队")
+	}
+	if err := a.store.CancelQueued(ids); err != nil {
+		return err
+	}
+	pending := lane.pending[:0]
+	for _, r := range lane.pending {
+		if r.BatchID != id {
+			pending = append(pending, r)
+		}
+	}
+	lane.pending = pending
+	if active {
+		lane.cancel()
+	}
+	c.signalLocked()
 	return nil
-}
-func (a *Service) LatestBatch() (*Batch, error) {
-	id, err := a.store.LatestBatchID()
-	if err != nil || id == "" {
-		return nil, err
-	}
-	b, err := a.ReadBatch(id)
-	return &b, err
 }
 func (a *Service) ReadBatch(id string) (Batch, error) {
 	runs, err := a.store.BatchSummaries(id)
@@ -154,8 +202,21 @@ func (a *Service) ReadBatch(id string) (Batch, error) {
 	if len(runs) == 0 {
 		return b, errors.New("批次不存在")
 	}
-	a.coordinator.mu.Lock()
-	b.Active = a.coordinator.batch == id
-	a.coordinator.mu.Unlock()
-	return b, nil
+	b.State = "completed"
+	for _, r := range runs {
+		if r.State == "running" {
+			b.State = "running"
+			b.Active = true
+			break
+		}
+		if r.State == "queued" {
+			b.State = "queued"
+			b.Active = true
+		}
+		if !b.Active && r.State != "completed" && r.State != "undone" {
+			b.State = r.State
+		}
+	}
+	b.Position, err = a.store.BatchPosition(id)
+	return b, err
 }

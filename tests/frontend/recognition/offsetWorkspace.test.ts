@@ -5,14 +5,14 @@ import { useWorkspace } from '../../../frontend/src/features/workspace/useWorksp
 import type { BatchPreview, PreviewRow, Recognition, RecognitionItem } from '../../../frontend/src/model'
 import { clearToasts, toasts } from '../../../frontend/src/app/toast'
 
-const mocks = vi.hoisted(() => ({ cancelQueries: vi.fn(async () => {}), setQueryData: vi.fn(), fetchQuery: vi.fn() }))
+const mocks = vi.hoisted(() => ({ cancelQueries: vi.fn(async () => { }), setQueryData: vi.fn(), fetchQuery: vi.fn() }))
 vi.mock('../../../frontend/src/app/runtime', async () => {
   const { ref } = await import('vue')
-  return { useRuntime: () => ({ batch: ref(null), executing: ref(false), client: mocks }) }
+  return { useRuntime: () => ({ queue: ref(null), refreshQueue: async () => { }, refreshRecords: async () => { }, executing: ref(false), client: mocks }) }
 })
 const renderer = createRenderer<object, object>({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}),
-  insert: () => {}, remove: () => {}, setText: () => {}, setElementText: () => {}, patchProp: () => {},
+  insert: () => { }, remove: () => { }, setText: () => { }, setElementText: () => { }, patchProp: () => { },
   parentNode: () => null, nextSibling: () => null,
 })
 const cleanup: (() => void)[] = []
@@ -27,10 +27,12 @@ async function fixture() {
   app.use(VueQueryPlugin, { queryClient: client })
   app.mount({})
   cleanup.push(() => { app.unmount(); client.clear() })
-  const item: RecognitionItem = { path: '/source/a.mkv', group: 'tv:1', state: 'review', reason: '', selected: false, removed: false,
+  const item: RecognitionItem = {
+    path: '/source/a.mkv', group: 'tv:1', state: 'review', reason: '', selected: false, removed: false,
     size: 1, mtime: '1', season: 1, episodes: [1],
     metadata: { title: 'Show', year: null, season: 1, episodes: [1], tmdbId: 1, mediaType: 'tv', releaseTag: null },
-    entry: { type: 'tv', tmdbId: 1, title: 'Show', originalTitle: '', year: 0, overview: '', posterPath: '' }, candidates: [] }
+    entry: { type: 'tv', tmdbId: 1, title: 'Show', originalTitle: '', year: 0, overview: '', posterPath: '' }, candidates: []
+  }
   state.task.value = { id: 'workspace', revision: 3, state: 'completed', paths: ['/source'], items: [item], completed: 1, total: 1, error: '', created: '' }
   await settle()
   return state
@@ -43,9 +45,11 @@ describe('workspace offset save integration', () => {
       if (url === '/api/batches/preview') {
         if (fail) return response({ message: 'preview failed' }, 500)
         const input = JSON.parse(options.body as string)
-        return response({ id: `plan-${input.duplicatePolicy}`, duplicatePolicy: input.duplicatePolicy, mode: input.mode, groups: [], issues: [], rows: [
-          { source: '/source/a.mkv', target: '/target/a.mkv', season: 1, episodes: [1], artifacts: [], issues: [], action: skipAll ? 'skip' : 'overwrite' },
-        ], required: 1 })
+        return response({
+          id: `plan-${input.duplicatePolicy}`, duplicatePolicy: input.duplicatePolicy, mode: input.mode, groups: [], issues: [], rows: [
+            { source: '/source/a.mkv', target: '/target/a.mkv', season: 1, episodes: [1], artifacts: [], issues: [], action: skipAll ? 'skip' : 'overwrite' },
+          ], required: 1
+        })
       }
       return response(null)
     })
@@ -83,10 +87,12 @@ describe('workspace offset save integration', () => {
     const row = (source: string, episode: number): PreviewRow => ({ source, target: `/target/${source}`, season: 1, episodes: [episode], artifacts: [], issues: [], action: 'create' })
     const first = Array.from({ length: 32 }, (_, i) => row(`z/${32 - i}.mkv`, 32 - i))
     const second = [row('a/10.mkv', 10), row('a/2.mkv', 2)]
-    state.preview.value = { id: 'preview', title: '', mode: 'copy', duplicatePolicy: 'skip', rows: [...first, ...second], required: 0, issues: [], groups: [
-      { id: 'first', title: '', mode: 'copy', duplicatePolicy: 'skip', rows: first, required: 0, issues: [], type: 'tv', tmdbId: 1 },
-      { id: 'second', title: '', mode: 'copy', duplicatePolicy: 'skip', rows: second, required: 0, issues: [], type: 'tv', tmdbId: 2 },
-    ] }
+    state.preview.value = {
+      id: 'preview', title: '', mode: 'copy', duplicatePolicy: 'skip', rows: [...first, ...second], required: 0, issues: [], groups: [
+        { id: 'first', title: '', mode: 'copy', duplicatePolicy: 'skip', rows: first, required: 0, issues: [], type: 'tv', tmdbId: 1 },
+        { id: 'second', title: '', mode: 'copy', duplicatePolicy: 'skip', rows: second, required: 0, issues: [], type: 'tv', tmdbId: 2 },
+      ]
+    }
     const before = JSON.stringify(state.preview.value)
     expect(state.previewRows.value.map(row => row.source)).toEqual(Array.from({ length: 30 }, (_, i) => `z/${i + 1}.mkv`))
     state.previewPage.value = 2
@@ -169,7 +175,7 @@ describe('workspace offset save integration', () => {
       // Simulate a fresh server snapshot rather than retaining object references.
       state.task.value = JSON.parse(JSON.stringify(stored))
     }
-    expect(submitted).toEqual([[[10], [11, 12]], [[10], [11, 12]], [[11], [12, 13]], [[1], [2, 3]]])
+    expect(submitted).toEqual([[[10], [11, 12]], [[11], [12, 13]], [[1], [2, 3]]])
 
     state.task.value!.items[0]!.episodes = [20]
     state.openOffset()
@@ -178,7 +184,7 @@ describe('workspace offset save integration', () => {
     state.offsetEditor.selectAll(true)
     expect(state.offsetEditor.rows.value.map(row => row.episodes)).toEqual([[10], [11, 12]])
   })
-  it('submits a full revision-bound workspace edit, invalidates preview and updates query cache', async () => {
+  it('submits revision-bound changed-file edits, invalidates preview and updates query cache', async () => {
     let posted: any
     const fetch = vi.fn(async (url: string, options: RequestInit) => {
       if (url.startsWith('/api/episodes')) return response([{ number: 10, season: 1 }])
@@ -245,4 +251,65 @@ it('aborts a pending preview when the workspace is disposed and ignores its resp
   await pending
   expect(state.preview.value).toBeNull()
   expect(toasts.value).toHaveLength(0)
+})
+
+it('keeps unsubmitted files editable while another file is queued and submits only editable changes', async () => {
+  const fetch = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      const input = JSON.parse(options.body as string)
+      return response({ ...state.task.value, revision: 4, items: state.task.value!.items.map(item => ({ ...item, group: input.items.find((edit: RecognitionItem) => edit.path === item.path)?.group ?? item.group })) })
+    }
+    return response(null)
+  })
+  vi.stubGlobal('fetch', fetch)
+  const state = await fixture()
+  const original = state.task.value!.items[0]!
+  original.execution = { runId: 'queued', state: 'queued', locked: true, completed: false, manualReview: false }
+  state.task.value!.items.push({ ...JSON.parse(JSON.stringify(original)), path: '/source/b.mkv', execution: undefined, group: 'other' })
+  state.runtime.executing.value = true
+  expect(state.locked.value).toBe(false)
+  await state.selectFile(original)
+  expect(fetch.mock.calls.some(([, options]) => options?.method === 'PUT')).toBe(false)
+  state.task.value!.items[1]!.group = 'changed'
+  await state.save()
+  const payload = JSON.parse(fetch.mock.calls.find(([, options]) => options?.method === 'PUT')![1]!.body as string)
+  expect(payload.items).toHaveLength(1)
+  expect(payload.items[0].path).toBe('/source/b.mkv')
+  expect(payload.items[0].group).toBe('changed')
+})
+
+
+it('saves a season draft against the current file after unrelated queue progress replaces the snapshot', async () => {
+  let snapshot: Recognition | null = null
+  let posted: any
+  vi.stubGlobal('fetch', vi.fn(async (_url: string, options: RequestInit) => {
+    if (options.method === 'PUT') {
+      posted = JSON.parse(options.body as string)
+      return response({ ...snapshot!, revision: 4, items: snapshot!.items.map(item => ({ ...item, season: posted.items[0].season, episodes: posted.items[0].episodes })) })
+    }
+    return response(snapshot)
+  }))
+  const state = await fixture()
+  await state.openEdit(state.task.value!.items[0]!)
+  state.editSeason.value = 2
+  state.editEpisodes.value = '3'
+  snapshot = JSON.parse(JSON.stringify(state.task.value))
+  // Polling replaces objects but leaves the user edit revision unchanged.
+  state.task.value = JSON.parse(JSON.stringify(snapshot))
+  await state.saveEdit()
+  expect(posted.items[0]).toMatchObject({ path: '/source/a.mkv', season: 2, episodes: [3] })
+  expect(state.task.value!.items[0]).toMatchObject({ season: 2, episodes: [3] })
+})
+
+it('rejects a season draft if the file was queued after the dialog opened', async () => {
+  const fetch = vi.fn(async () => response(null))
+  vi.stubGlobal('fetch', fetch)
+  const state = await fixture()
+  await state.openEdit(state.task.value!.items[0]!)
+  state.task.value = JSON.parse(JSON.stringify(state.task.value))
+  state.task.value!.items[0]!.execution = { runId: 'submitted', state: 'queued', locked: true, completed: false, manualReview: false }
+  state.editSeason.value = 2
+  await state.saveEdit()
+  expect(fetch.mock.calls.some(([, options]) => (options as RequestInit | undefined)?.method === 'PUT')).toBe(false)
+  expect(toasts.value.some(item => item.tone === 'error' && item.message.includes('已提交整理'))).toBe(true)
 })

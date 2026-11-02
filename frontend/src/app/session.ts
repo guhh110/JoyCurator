@@ -37,7 +37,6 @@ export async function clearSession() {
   queryClient.clear()
   clearToasts()
   session.username = ''
-  localStorage.removeItem('joycurator-active')
 }
 export function safeRedirect(value: unknown): string {
   return typeof value === 'string' &&

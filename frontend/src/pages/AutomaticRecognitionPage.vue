@@ -115,6 +115,7 @@ const {
   chooseSource,
   removeSource,
   stateCounts,
+  fileLocked,
 } = workspace
 const previewState = workspace.previewState
 const fileStates = ['ready', 'review', 'unmatched', 'failed', 'pending']
@@ -144,8 +145,8 @@ const workType = (group: Group) =>
       description="自动识别并按作品分组，手动确认作品与季集，统一预览整理。"
     />
     <QueryState
-      v-if="taskQuery.error.value || runtime.batchQuery.error.value"
-      :error="taskQuery.error.value || runtime.batchQuery.error.value"
+      v-if="taskQuery.error.value || runtime.queueQuery.error.value"
+      :error="taskQuery.error.value || runtime.queueQuery.error.value"
       @retry="poll"
     />
     <div v-if="loading && !task" class="pane empty auto-initial-loading">
@@ -372,7 +373,7 @@ const workType = (group: Group) =>
                   :checked="group.files.some((file) => file.selected)"
                   :disabled="
                     locked ||
-                    !group.files.some((file) => file.state === 'ready')
+                    !group.files.some((file) => file.state === 'ready' && !fileLocked(file))
                   "
                   @change="selectGroup(group.id)"
                 />
@@ -434,13 +435,13 @@ const workType = (group: Group) =>
                 </div>
                 <div class="auto-work-actions">
                 <button v-if="current.entry?.type === 'tv'" class="button small"
-                  :disabled="locked || groupSeasonsLoading || !groupSeasons.length" @click="openOffset">
+                  :disabled="locked || groupSeasonsLoading || !groupSeasons.length || current.files.every(fileLocked)" @click="openOffset">
                   <ArrowLeftRight :size="14" />批量修正季集
                 </button>
                 <button
                   class="button small"
                   :class="{ primary: !current.entry }"
-                  :disabled="locked"
+                  :disabled="locked || current.files.every(fileLocked)"
                   @click="openSearch"
                 >
                   <Search :size="14" />{{
@@ -485,13 +486,13 @@ const workType = (group: Group) =>
                   v-for="file in visibleFiles"
                   :key="file.path"
                   class="auto-file"
-                  :class="{ off: file.state !== 'ready' }"
+                  :class="{ off: file.state !== 'ready' || fileLocked(file) }"
                 >
                   <input
                     type="checkbox"
                     :aria-label="`选择文件 ${name(file.path)}`"
                     :checked="file.selected"
-                    :disabled="locked || file.state !== 'ready'"
+                    :disabled="locked || fileLocked(file) || file.state !== 'ready'"
                     @change="selectFile(file)"
                   />
                   <div class="auto-file-main">
@@ -514,7 +515,7 @@ const workType = (group: Group) =>
                       ><span>{{ bytes(file.size) }}</span>
                     </p>
                     <p class="auto-reason tiny">
-                      {{ file.reason || '等待识别' }}
+                      {{ file.execution?.locked ? `任务 ${file.execution.runId} · ${file.execution.manualReview ? '需人工核对' : file.execution.state === 'queued' ? '排队中' : '执行中'}` : file.reason || '等待识别' }}
                     </p>
                   </div>
                   <div class="auto-file-actions">
@@ -532,7 +533,7 @@ const workType = (group: Group) =>
                     <button
                       v-if="file.entry?.type === 'tv'"
                       class="icon-button"
-                      :disabled="locked"
+                      :disabled="locked || fileLocked(file)"
                       aria-label="修正季集"
                       title="修正季集"
                       @click="openEdit(file)"
@@ -540,7 +541,7 @@ const workType = (group: Group) =>
                       <Pencil :size="15" /></button
                     ><button
                       class="icon-button"
-                      :disabled="locked"
+                      :disabled="locked || fileLocked(file)"
                       aria-label="调整分组"
                       title="调整分组"
                       @click="openTransfer(file)"
@@ -548,7 +549,7 @@ const workType = (group: Group) =>
                       <ArrowLeftRight :size="15" /></button
                     ><button
                       class="icon-button danger-hover"
-                      :disabled="locked"
+                      :disabled="locked || fileLocked(file)"
                       aria-label="移出工作区"
                       title="移出工作区"
                       @click="removeFile(file)"

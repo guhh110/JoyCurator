@@ -24,4 +24,37 @@ B/op 是一次完整样本的累计分配，不是峰值常驻内存。样本使
 python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|BenchmarkWorkspace2000|BenchmarkPreview1000|BenchmarkRunHistory' -benchtime=1x -count=3 ./internal/infra/sqlite ./internal/app
 ```
 
-基准集中位于 `tests/backend/app/performance_test.go` 和 `tests/backend/infra/sqlite/performance_test.go`。前端另外通过请求计数与虚拟时钟验证：活动任务和详情共享请求，任务完成后停止轮询，空闲记录页没有周期请求，分页搜索切换不保留上一组结果，页面销毁会取消未完成的查询和预览。
+基准集中位于 `tests/backend/app/performance_test.go` 和 `tests/backend/infra/sqlite/performance_test.go`。前端另外通过请求计数与虚拟时钟验证：活动摘要统一通过 `/queue` 发现，完整详情按需请求，任务完成后停止轮询，空闲记录页没有周期请求，分页搜索切换不保留上一组结果，页面销毁会取消未完成的查询和预览。
+
+
+## 队列工作区状态投影
+
+多批队列增加 `BenchmarkFileExecutionProjection1000`：一个运行任务、1000 个视频操作和映射，读取文件关联任务及锁定／完成状态。SQL 一次物化视频状态再关联映射，避免对每个文件重复展开整组操作。固定本地样本单次测得 13.26 ms/op、647168 B/op、30053 allocs/op（相同 Apple M4／Go 环境，`-benchtime=1x`，不含建库与写入）；此数据仅记录投影成本，不构成与上一版的统计比较，也不包含媒体复制。
+
+```sh
+python3 tests/run_backend.py test -run '^$' -bench BenchmarkFileExecutionProjection1000 -benchtime=1x ./internal/infra/sqlite
+```
+
+## 全面关系化存储样本
+
+2026-11-02，Apple M4／macOS arm64／Go 1.24.2，当前关系表实现，连续三次 `-benchtime=1x` 取中位数。样本初始化仍不计入时间，使用隔离临时库、固定 Provider 和小型本地文件，不接触已有媒体数据。上文表格是较早架构重构阶段的记录，不能代替本轮实际结果。
+
+| 样本 | 当前耗时 | 累计分配 B/op |
+| --- | ---: | ---: |
+| 2000 文件提取与完整历史写入 | 7928.94 ms | 2096.571 MB |
+| 2000 文件完整工作区识别 | 10335.08 ms | 3026.518 MB |
+| 1000 文件预览 | 389.45 ms | 33.428 MB |
+| 历史列表与批次摘要 | 0.184 ms | 55,576 B |
+| 1000 文件执行状态投影 | 1.902 ms | 726,800 B |
+| 单操作检查点，任务共 10 项 | 0.211 ms | 6,232 B |
+| 单操作检查点，任务共 1000 项 | 0.264 ms | 6,232 B |
+| 更新十条工作区条目，总共 10 条 | 0.937 ms | 31,368 B |
+| 更新十条工作区条目，总共 2000 条 | 1.101 ms | 31,368 B |
+
+单操作和十条工作区检查点的分配量不随总条目数增长；触发器回归同时保证未变化的操作／文件行不会被更新或删除。操作检查点包含摘要及指定操作，工作区检查点包含摘要及指定十条文件，两个样本都包含事务提交。文件状态投影直接关联操作与映射表，历史列表只读取摘要列。作品、规则、尝试、事件与有序集合全部拆表后，完整历史写入和端到端识别成本高于上文的 JSON 快照样本，这是当前实现的性能代价。
+
+工作区基准保持原来的 5 ms 轮询频率、2000 个文件和每批三次 Provider 调用，仅将基准等待上限改为 60 秒；普通功能测试仍使用 5 秒上限。该轮询频率高于产品的约 1.2 秒，会把反复组装完整工作区的读取成本计入端到端样本。各业务对象的多表读取使用事务快照，写入在事务内复用固定 SQL 的预编译语句。
+
+```sh
+python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|BenchmarkWorkspace2000|BenchmarkRunHistory|BenchmarkPreview1000|BenchmarkFileExecutionProjection1000|BenchmarkRunCheckpoint|BenchmarkWorkspaceCheckpoint' -benchtime=1x -count=3 ./internal/infra/sqlite ./internal/app
+```

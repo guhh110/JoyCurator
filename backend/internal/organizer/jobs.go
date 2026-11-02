@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -12,12 +13,11 @@ import (
 )
 
 func (a *Service) Resume(id string, undo bool) (Run, error) {
-	a.coordinator.mu.Lock()
-	defer a.coordinator.mu.Unlock()
 	r, err := a.store.Run(id)
 	if err != nil {
 		return r, err
 	}
+	original := r
 	if runtime.GOOS == "windows" {
 		return r, errors.New("Windows 暂不支持执行或撤销文件操作")
 	}
@@ -91,58 +91,50 @@ func (a *Service) Resume(id string, undo bool) (Run, error) {
 			}
 		}
 	}
-	r.State = "running"
+	a.coordinator.mu.Lock()
+	defer a.coordinator.mu.Unlock()
+	current, err := a.store.Run(id)
+	if err != nil {
+		return Run{}, err
+	}
+	if !reflect.DeepEqual(original, current) {
+		return Run{}, errors.New("任务状态已更新，请刷新记录")
+	}
+	if undo {
+		settings, e := a.settings.Load()
+		if e != nil {
+			return Run{}, e
+		}
+		r.Version = settings.Version
+	}
+	r.State = "queued"
 	r.Error = ""
 	r.Undo = undo
 	r.Completed = 0
 	r.Total = len(r.Ops)
-	return a.launch(r)
-}
-
-// launch is called under mu. The worker owns its Run value; readers use SQLite
-// snapshots, never the worker's counters or operation pointers.
-func (a *Service) launch(r Run) (Run, error) {
-	if a.coordinator.closed {
-		return Run{}, errors.New("服务正在关闭")
-	}
-	if a.coordinator.running != "" || a.coordinator.batch != "" {
-		return Run{}, ErrBusy
-	}
-	if err := a.store.SaveRun(r); err != nil {
+	if err = a.enqueueLocked([]Run{r}); err != nil {
 		return Run{}, err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	a.coordinator.running = r.ID
-	a.coordinator.cancel = cancel
-	a.coordinator.wg.Add(1)
-	go a.work(ctx, cancel, r)
-	summary := r
-	summary.Ops = nil
-	summary.Mappings = nil
-	return summary, nil
+	return summary(r), nil
 }
-func (a *Service) work(ctx context.Context, cancel context.CancelFunc, r Run) {
-	defer a.coordinator.wg.Done()
-	defer cancel()
-	defer func() {
-		a.coordinator.mu.Lock()
-		a.coordinator.running = ""
-		a.coordinator.cancel = nil
-		a.coordinator.mu.Unlock()
-	}()
+
+func (a *Service) work(ctx context.Context, r Run) Run {
 	s, err := a.settings.Load()
 	if err != nil {
 		r.State = "failed"
 		r.Error = err.Error()
-		_ = a.store.SaveRun(r)
-		return
+		return r
 	}
 	client, err := a.factory(s, nil)
 	if err != nil {
 		r.State = "failed"
 		r.Error = err.Error()
-		_ = a.store.SaveRun(r)
-		return
+		return r
+	}
+	if err = a.persistProgress(&r); err != nil {
+		r.State = "failed"
+		r.Error = err.Error()
+		return r
 	}
 	engine := a.runner(client.Image)
 	failures := []string{}
@@ -164,7 +156,7 @@ func (a *Service) work(ctx context.Context, cancel context.CancelFunc, r Run) {
 			if op.Kind == "video" {
 				blocked[op.Owner] = true
 			}
-			if saveErr := a.store.SaveRun(r); saveErr != nil {
+			if saveErr := a.store.SaveCheckpoint(r, []int{i}, nil, nil); saveErr != nil {
 				failures = append(failures, saveErr.Error())
 				break
 			}
@@ -172,14 +164,14 @@ func (a *Service) work(ctx context.Context, cancel context.CancelFunc, r Run) {
 		}
 		if !r.Undo && blocked[op.Owner] {
 			op.Error = "视频未完成，本项待重试"
-			if err = a.store.SaveRun(r); err != nil {
+			if err = a.persistProgress(&r, i); err != nil {
 				failures = append(failures, err.Error())
 				break
 			}
 			continue
 		}
 		op.Error = ""
-		save := func() error { return a.store.SaveRun(r) }
+		save := func() error { return a.persistProgress(&r, i) }
 		if r.Undo {
 			shared, e := a.store.Shared(r.ID, op.Target, op.Identity)
 			if e != nil {
@@ -205,7 +197,7 @@ func (a *Service) work(ctx context.Context, cancel context.CancelFunc, r Run) {
 		} else {
 			r.Completed++
 		}
-		if err = a.store.SaveRun(r); err != nil {
+		if err = a.persistProgress(&r, i); err != nil {
 			failures = append(failures, "无法保存记录："+err.Error())
 			break
 		}
@@ -227,59 +219,11 @@ func (a *Service) work(ctx context.Context, cancel context.CancelFunc, r Run) {
 		r.State = "completed"
 		r.Error = ""
 	}
-	if r.Purpose == "organize" && !r.Undo {
-		for index := range r.Mappings {
-			mapping := r.Mappings[index]
-			mapping.RunID = r.ID
-			current, lookupErr := a.store.Mapping(mapping.Path)
-			if lookupErr != nil {
-				r.State, r.Error = "failed", "刮削待办读取失败："+lookupErr.Error()
-				continue
-			}
-			if current != nil && current.RunID == r.ID {
-				r.Mappings[index] = *current
-				continue
-			}
-			if mapping.Identity != "" {
-				info, statErr := a.access.Stat(mapping.Path)
-				if statErr != nil || !info.Mode().IsRegular() || fsops.Identity(info) != mapping.Identity || info.Size() != mapping.Size || info.ModTime().UnixNano() != mapping.MTime {
-					r.State, r.Error = "failed", "跳过的视频已变化，无法登记刮削待办："+mapping.Path
-					_ = a.store.SaveRun(r)
-					continue
-				}
-				if e := a.store.SaveMapping(mapping); e != nil {
-					r.State, r.Error = "failed", "刮削待办保存失败："+e.Error()
-					_ = a.store.SaveRun(r)
-				} else {
-					r.Mappings[index] = mapping
-				}
-				continue
-			}
-			for _, op := range r.Ops {
-				if op.Kind == "video" && op.Target == mapping.Path && op.Status == "completed" {
-					info, statErr := a.access.Stat(mapping.Path)
-					if statErr != nil || !info.Mode().IsRegular() || fsops.Identity(info) != op.Identity {
-						r.State, r.Error = "failed", "目标视频已变化，无法登记刮削待办："+mapping.Path
-						break
-					}
-					mapping.Identity, mapping.Size, mapping.MTime = op.Identity, info.Size(), info.ModTime().UnixNano()
-					mapping.State = "pending"
-					if e := a.store.SaveMapping(mapping); e != nil {
-						r.State, r.Error = "failed", "刮削待办保存失败："+e.Error()
-						_ = a.store.SaveRun(r)
-					} else {
-						r.Mappings[index] = mapping
-					}
-				}
-			}
-		}
-	}
 	if r.Purpose == "organize" && r.Undo && r.State == "undone" {
 		for _, mapping := range r.Mappings {
 			mapping.RunID = r.ID
 			if e := a.store.DeleteMapping(mapping); e != nil {
 				r.State, r.Error = "failed", "撤销登记失败："+e.Error()
-				_ = a.store.SaveRun(r)
 			}
 		}
 	}
@@ -314,14 +258,8 @@ func (a *Service) work(ctx context.Context, cancel context.CancelFunc, r Run) {
 			}
 			if e := a.store.UpdateMappingState(mapping, state, r.ID); e != nil {
 				r.State, r.Error = "failed", "刮削待办保存失败："+e.Error()
-				_ = a.store.SaveRun(r)
 			}
 		}
 	}
-	if r.Purpose == "organize" && r.RecognitionID != "" && !r.Undo {
-		a.finish(r)
-	}
-	_ = a.store.SaveRun(r)
+	return r
 }
-
-// JSON records keep artifact ownership with the batch, without another table.

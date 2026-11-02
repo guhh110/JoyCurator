@@ -49,7 +49,7 @@ export function useScrape() {
   const current = computed(() => active.value && detail.data.value?.every(item => item.type === active.value?.type && item.tmdbId === active.value?.tmdbId) ? detail.data.value : [])
   watch(() => detail.data.value, items => {
     if (active.value && items) {
-      const available = selected.value.filter(path => items.some(item => item.path === path && item.state !== 'unavailable'))
+      const available = selected.value.filter(path => items.some(item => item.path === path && !['unavailable', 'queued', 'running'].includes(item.state)))
       if (available.length !== selected.value.length) {
         selected.value = available
         preview.value = null
@@ -67,7 +67,7 @@ export function useScrape() {
   const bulkReady = (items: MediaMapping[], completed: boolean) => items.filter(item => completed ? item.state === 'completed' : item.state === 'pending' || item.state === 'failed').length
   const artifactCounts = computed(() => preview.value ? artifactSummary(preview.value) : null)
   const filteredArtifacts = computed(() => (preview.value?.artifacts ?? []).filter(path => path.toLocaleLowerCase().includes(artifactSearch.value.trim().toLocaleLowerCase())))
-  const stateNames: Record<MediaMapping['state'], string> = { pending: '待刮削', completed: '已完成', failed: '失败', unavailable: '视频不可用' }
+  const stateNames: Record<MediaMapping['state'], string> = { pending: '待刮削', completed: '已完成', failed: '失败', unavailable: '视频不可用', queued: '排队中', running: '刮削中' }
   const tabs: { key: ScrapeStateFilter; label: string }[] = [
     { key: 'all', label: '全部' }, { key: 'pending', label: '待办' }, { key: 'failed', label: '失败' },
     { key: 'completed', label: '已完成' }, { key: 'unavailable', label: '不可用' },
@@ -102,7 +102,7 @@ export function useScrape() {
     selected.value = next; preview.value = null
   }
   function toggle(item: MediaMapping) {
-    if (item.state === 'unavailable' || (item.state === 'completed' && stateFilter.value !== 'completed') || busy.value) return
+    if (['unavailable', 'queued', 'running'].includes(item.state) || (item.state === 'completed' && stateFilter.value !== 'completed') || busy.value) return
     if (selected.value.includes(item.path)) selected.value = selected.value.filter(path => path !== item.path)
     else if (selected.value.length >= 1000) { notify('单次最多选择 1000 个视频，请按季拆分刮削。', 'error'); return }
     else selected.value = [...selected.value, item.path]
@@ -129,8 +129,9 @@ export function useScrape() {
     if (!preview.value || preview.value.issues.length || busy.value) return
     busy.value = true
     try {
-      const run = await api<Run>('/scrape/execute', { id: preview.value.id })
-      runtime.startRun(run)
+      await api<Run>('/scrape/execute', { id: preview.value.id })
+      await runtime.refreshRecords()
+      notify('刮削任务已加入队列', 'success')
       selected.value = []; preview.value = null
       await Promise.all([client.invalidateQueries({ queryKey: ['scrape', 'works'] }), client.invalidateQueries({ queryKey: ['scrape', 'work'] })])
     } catch (e) { if ((e as Error).name !== 'AbortError') notify((e as Error).message, 'error') }

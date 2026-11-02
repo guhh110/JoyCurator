@@ -4,30 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
-	"joycurator/internal/organizer"
 	"joycurator/internal/recognition"
 )
 
-func TestWorkspaceRejectsUnknownFieldsWithoutRewritingData(t *testing.T) {
+func TestWorkspaceRejectsUnknownColumnsWithoutRewritingData(t *testing.T) {
 	store := openStore(t)
-	raw := `{"id":"invalid","revision":1,"state":"completed","items":[],"unexpectedField":true}`
-	if _, err := store.db.Exec("INSERT INTO recognitions(id,value) VALUES(?,?)", "invalid", raw); err != nil {
+	w := matching.Workspace{ID: "strict", State: "completed"}
+	if err := store.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Workspace("invalid"); err == nil || !strings.Contains(err.Error(), "unexpectedField") {
-		t.Fatal("unsupported data silently accepted", err)
+	if _, err := store.db.Exec("UPDATE recognitions SET unexpected_field=1 WHERE id='strict'"); err == nil {
+		t.Fatal("unknown column accepted")
 	}
-	if _, err := store.LatestWorkspace(); err == nil {
-		t.Fatal("unsupported latest workspace silently accepted")
-	}
-	var stored string
-	if err := store.db.QueryRow("SELECT value FROM recognitions WHERE id='invalid'").Scan(&stored); err != nil || stored != raw {
-		t.Fatal("invalid data was rewritten", stored, err)
+	current, err := store.Workspace(w.ID)
+	if err != nil || current.Revision != w.Revision {
+		t.Fatal(current, err)
 	}
 }
 
@@ -42,18 +37,6 @@ func openStore(t testing.TB) *Store {
 	}
 	t.Cleanup(func() { store.Close() })
 	return store
-}
-
-func TestBatchTransactionRollsBackEveryQueuedRecord(t *testing.T) {
-	store := openStore(t)
-	runs := []organizer.Run{{ID: "duplicate", State: "queued", BatchID: "batch"}, {ID: "duplicate", State: "queued", BatchID: "batch"}}
-	if err := store.SaveBatch(runs); err == nil {
-		t.Fatal("duplicate primary key accepted")
-	}
-	var count int
-	if err := store.db.QueryRow("SELECT COUNT(*) FROM runs").Scan(&count); err != nil || count != 0 {
-		t.Fatal("partial transaction persisted", count, err)
-	}
 }
 
 func TestTraceSnapshotsPaginationAndCascade(t *testing.T) {
@@ -87,7 +70,7 @@ func TestTraceSnapshotsPaginationAndCascade(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err := store.db.QueryRow("SELECT COUNT(*) FROM extraction_steps WHERE trace_id=?", page[0].ID).Scan(&count); err != nil || count != 0 {
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM extraction_steps WHERE root=?", page[0].ID).Scan(&count); err != nil || count != 0 {
 		t.Fatal(count, err)
 	}
 	if err := store.StartTrace(recognition.Trace{ID: "active", Path: "/file", Root: "/", Status: "running"}); err != nil {

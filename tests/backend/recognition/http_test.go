@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"joycurator/internal/app"
+	"joycurator/internal/infra/sqlite"
+	"joycurator/internal/model"
 	r "joycurator/internal/recognition"
 )
 
@@ -184,7 +186,7 @@ func TestHTTPConfigurationSimulationPersistenceAndHistory(t *testing.T) {
 	}
 	defer db.Close()
 	var steps int
-	if err = db.QueryRow("SELECT COUNT(*) FROM extraction_steps WHERE trace_id=?", traceID).Scan(&steps); err != nil || steps != 0 {
+	if err = db.QueryRow("SELECT COUNT(*) FROM extraction_steps WHERE root=?", traceID).Scan(&steps); err != nil || steps != 0 {
 		t.Fatal("orphan steps", steps, err)
 	}
 }
@@ -214,7 +216,7 @@ func TestHistoryPaginationRestartInterruptionAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.app = nil
-	db, err := sql.Open("sqlite", filepath.Join(s.base, "data", "joycurator.db"))
+	db, err := sqlite.Open(filepath.Join(s.base, "data"), model.Settings{SourceRoot: s.source, TargetRoot: s.target, Version: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +225,7 @@ func TestHistoryPaginationRestartInterruptionAndCleanup(t *testing.T) {
 		if i == 22 {
 			state = "running"
 		}
-		_, err = db.Exec("INSERT INTO extraction_traces(id,path,root,workspace_id,status,started_at) VALUES(?,?,?,?,?,?)", time.Unix(int64(i), 0).Format(time.RFC3339), "/Film.mkv", "/", "", state, time.Now().Format(time.RFC3339))
+		err = db.StartTrace(r.Trace{ID: time.Unix(int64(i), 0).Format(time.RFC3339), Path: "/Film.mkv", Root: "/", Status: state, StartedAt: time.Now().Format(time.RFC3339)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -289,7 +291,7 @@ func (s *service) importFile(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec("UPDATE config SET token='test-token'"); err != nil {
+	if _, err = db.Exec("UPDATE config SET f_token='test-token'"); err != nil {
 		t.Fatal(err)
 	}
 	title := ""

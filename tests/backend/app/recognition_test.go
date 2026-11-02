@@ -22,8 +22,11 @@ func seedRecognitionCache(t *testing.T, a *App, path, body string) {
 	}
 }
 func waitRecognition(t testing.TB, a *App, id string) matching.Workspace {
+	return waitRecognitionWithin(t, a, id, 5*time.Second)
+}
+func waitRecognitionWithin(t testing.TB, a *App, id string, timeout time.Duration) matching.Workspace {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		task, err := a.dependencies.Workspace.Read(id)
 		if err != nil {

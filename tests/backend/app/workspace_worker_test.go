@@ -15,6 +15,9 @@ import (
 
 type workspaceStore struct{ value matching.Workspace }
 
+func (s *workspaceStore) FileExecutions(string) (map[string]matching.FileExecution, error) {
+	return map[string]matching.FileExecution{}, nil
+}
 func (s *workspaceStore) Workspace(string) (matching.Workspace, error) { return s.value, nil }
 func (s *workspaceStore) SaveWorkspace(w *matching.Workspace) error {
 	w.Revision++
@@ -74,4 +77,8 @@ func TestCancelledWorkerPersistsTaskAndReleasesRegistration(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (s *workspaceStore) CheckpointWorkspace(w *matching.Workspace, positions []int) error {
+	return s.SaveWorkspace(w)
 }

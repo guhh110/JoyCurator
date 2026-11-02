@@ -337,11 +337,6 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 	if runtime.GOOS == "windows" {
 		return Run{}, errors.New("Windows 暂不支持执行刮削")
 	}
-	a.coordinator.mu.Lock()
-	defer a.coordinator.mu.Unlock()
-	if a.coordinator.closed || a.coordinator.running != "" || a.coordinator.batch != "" {
-		return Run{}, ErrBusy
-	}
 	p := a.previews.get(id)
 	if p == nil || p.Purpose != "scrape" || time.Now().After(p.Expires) {
 		return Run{}, errors.New("刮削预览已过期")
@@ -374,20 +369,99 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 			return Run{}, errors.New("刮削映射已变化，请重新预览")
 		}
 	}
-	for _, op := range p.Ops {
-		info, e := a.access.Stat(op.Target)
-		if op.Replace {
-			if e != nil || !info.Mode().IsRegular() || fsops.Identity(info) != op.ReplaceIdentity || info.Size() != op.ReplaceSize || info.ModTime().UnixNano() != op.ReplaceMTime {
-				return Run{}, errors.New("刮削目标已变化，请重新预览")
-			}
-		} else if !errors.Is(e, os.ErrNotExist) {
-			return Run{}, errors.New("刮削目标已变化，请重新预览")
-		}
+	r := Run{ID: model.Key(), Title: p.Title, Mode: "scrape", State: "queued", Created: time.Now().Format(time.RFC3339), Ops: append([]Work(nil), p.Ops...), Total: len(p.Ops), Purpose: "scrape", Mappings: append([]model.MediaMapping(nil), p.Mappings...), Version: p.Version}
+	if e = a.validateScrapeRun(r, s); e != nil {
+		return Run{}, e
 	}
-	r := Run{ID: model.Key(), Title: p.Title, Mode: "scrape", State: "running", Created: time.Now().Format(time.RFC3339), Ops: p.Ops, Total: len(p.Ops), Purpose: "scrape", Mappings: p.Mappings, Version: p.Version}
-	result, err := a.launch(r)
+	a.coordinator.mu.Lock()
+	defer a.coordinator.mu.Unlock()
+	if a.previews.get(id) != p {
+		return Run{}, errors.New("预览已过期或已提交")
+	}
+	current, e := a.settings.Load()
+	if e != nil {
+		return Run{}, e
+	}
+	if current.Version != p.Version {
+		return Run{}, errors.New("设置已变化，请重新预览")
+	}
+	err := a.enqueueLocked([]Run{r})
 	if err == nil {
 		a.previews.remove(id)
 	}
-	return result, err
+	return summary(r), err
+}
+
+func (a *Service) validateScrapeRun(r Run, s model.Settings) error {
+	for _, op := range r.Ops {
+		if !withinMedia(s.TargetRoot, op.Target) {
+			return errors.New("刮削目标超出当前媒体目录")
+		}
+	}
+	if r.Undo {
+		return nil
+	}
+	for _, m := range r.Mappings {
+		current, err := a.mappings.Mapping(m.Path)
+		if err != nil {
+			return err
+		}
+		if current == nil || current.RunID != m.RunID || current.Identity != m.Identity || current.Type != m.Type || current.TMDBID != m.TMDBID || current.Season != m.Season || !slices.Equal(current.Episodes, m.Episodes) {
+			return errors.New("刮削映射已变化，请重新预览")
+		}
+		info, err := a.access.Stat(m.Path)
+		if !withinMedia(s.TargetRoot, m.Path) || err != nil || !info.Mode().IsRegular() || fsops.Identity(info) != m.Identity || info.Size() != m.Size || info.ModTime().UnixNano() != m.MTime {
+			return errors.New("目标视频已变化，请重新预览：" + m.Path)
+		}
+	}
+	pending := []Work{}
+	for i, op := range r.Ops {
+		if op.Status == "completed" {
+			if err := (&Engine{FS: a.access}).Check(context.Background(), op.Target, op.Identity, op.Hash); err != nil {
+				return err
+			}
+			continue
+		}
+		if op.Status != "pending" {
+			continue
+		}
+		info, statErr := a.access.Stat(op.Target)
+		valid := false
+		if op.Replace {
+			valid = statErr == nil && info.Mode().IsRegular() && fsops.Identity(info) == op.ReplaceIdentity && info.Size() == op.ReplaceSize && info.ModTime().UnixNano() == op.ReplaceMTime
+		} else {
+			valid = errors.Is(statErr, os.ErrNotExist)
+		}
+		if !valid {
+			reused, reuseErr := a.reuseScrapeArtifact(&op)
+			if reuseErr != nil {
+				return reuseErr
+			}
+			if !reused {
+				return errors.New("刮削目标已变化，请重新预览：" + op.Target)
+			}
+			r.Ops[i] = op
+		} else {
+			pending = append(pending, op)
+		}
+	}
+	return a.validateOps(pending)
+}
+
+// Reuse is limited to another recorded, unchanged artifact with the exact same
+// intended content. External file changes still invalidate the queued preview.
+func (a *Service) reuseScrapeArtifact(op *Work) (bool, error) {
+	previous, err := a.store.ScrapeArtifact(op.Target)
+	if err != nil {
+		return false, err
+	}
+	if previous == nil || previous.Kind != op.Kind || previous.URL != op.URL || previous.ConvertJPEG != op.ConvertJPEG || !bytes.Equal(previous.Content, op.Content) {
+		return false, nil
+	}
+	if err := (&Engine{FS: a.access}).Check(context.Background(), op.Target, previous.Identity, previous.Hash); err != nil {
+		return false, err
+	}
+	op.Operation = Operation{Kind: op.Kind, Mode: op.Mode, Target: op.Target, URL: op.URL, Content: op.Content, ConvertJPEG: op.ConvertJPEG, Status: "completed", Identity: previous.Identity, Hash: previous.Hash}
+	op.Reused = true
+	return true, nil
 }

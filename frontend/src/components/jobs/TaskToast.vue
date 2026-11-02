@@ -1,45 +1,33 @@
 <script setup lang="ts">
-import { Clock3, CircleCheck, LoaderCircle, X } from '@lucide/vue'
+import { computed } from 'vue'
+import { LoaderCircle, Clock3 } from '@lucide/vue'
+import { RouterLink } from 'vue-router'
 import { useRuntime } from '../../app/runtime'
-import { states } from '../../features/records/presentation'
-const { active, activeId, inspect, recordAction } = useRuntime()
+const {queue, inspect, recordAction, actionBusy} = useRuntime()
+const lanes = computed(() => queue.value ? [
+  {purpose:'organize',name:'文件整理',to:'/records',...queue.value.organize},
+  {purpose:'scrape',name:'媒体刮削',to:'/scrape/records',...queue.value.scrape},
+].filter(lane => lane.current || lane.queued) : [])
 </script>
 <template>
-  <div
-    v-if="active"
-    class="task-toast"
-    :class="{ finished: active.state !== 'running' }"
-  >
-    <LoaderCircle
-      v-if="active.state === 'running'"
-      class="spin purple"
-      :size="19"
-    /><CircleCheck
-      v-else-if="active.state === 'completed' || active.state === 'undone'"
-      :size="19"
-      class="green"
-    /><Clock3 v-else :size="19" />
-    <div>
-      <strong
-        >{{ active.undo ? '撤销' : active.purpose === 'scrape' ? '刮削' : '整理' }}{{ states[active.state] }}</strong
-      ><span
-        >{{ active.title }} · {{ active.completed }}/{{ active.total }} 项</span
-      >
+  <div v-if="lanes.length" class="task-toast queue-toast">
+    <div v-for="lane in lanes" :key="lane.purpose" class="queue-lane">
+      <LoaderCircle v-if="lane.current" class="spin purple" :size="18" /><Clock3 v-else :size="18" />
+      <div class="queue-copy"><strong>{{ lane.name }} · {{ lane.current ? lane.current.undo ? '撤销中' : '进行中' : '等待中' }}</strong>
+        <span v-if="lane.current">{{ lane.current.title }} · {{ lane.current.completed }}/{{ lane.current.total }} 项</span>
+        <span v-if="lane.queued">等待 {{ lane.queued }} 个任务<span v-if="lane.queuedBatches"> · {{ lane.queuedBatches }} 个批次</span></span>
+        <span v-if="lane.waitReason">{{ lane.waitReason }}</span>
+      </div>
+      <button v-if="lane.current" class="text-button" @click="inspect(lane.current)">详情</button>
+      <button v-if="lane.current" class="text-button" :disabled="actionBusy" @click="recordAction(lane.current,'cancel')">取消</button>
+      <RouterLink class="text-button" :to="lane.to">记录</RouterLink>
     </div>
-    <button
-      v-if="active.state === 'running'"
-      class="text-button"
-      @click="recordAction(active, 'cancel')"
-    >
-      取消</button
-    ><button v-else class="text-button" @click="inspect(active)">查看</button
-    ><button
-      v-if="active.state !== 'running'"
-      class="icon-button"
-      aria-label="关闭任务提示"
-      @click="activeId = ''"
-    >
-      <X :size="15" />
-    </button>
   </div>
 </template>
+<style scoped>
+.queue-toast {display:grid;gap:12px;max-width:min(620px,calc(100vw - 24px));}
+.queue-lane {display:flex;align-items:center;gap:10px;min-width:0;}
+.queue-copy {display:grid;gap:3px;flex:1;min-width:0;}
+.queue-copy strong {font-size:12px;}
+.queue-copy span {font-size:11px;color:var(--muted);overflow-wrap:anywhere;}
+</style>

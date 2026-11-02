@@ -47,10 +47,14 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 
 架构约束按 recognition、matching、organizer 三模块检查。预览缓存、识别事务回滚、摘要读取、连接与限速共享及前端空闲停止轮询均有集中回归测试。
 
+队列测试集中于 `backend/organizer/queue_test.go`、`coordinator_test.go`、`backend/infra/sqlite/queue_test.go` 与 `backend/app/queue_test.go`、`scrape_queue_test.go`。可控 worker 覆盖多批 FIFO、失败继续、等待／运行取消、批次隔离、队尾重试、双通道重叠、第一集登记后立即刮削、撤销资源等待及重启续跑；SQLite 触发器验证入队、完成与视频映射登记的事务回滚。工作区测试覆盖稀疏修正、锁定文件拒绝、并行导入及执行不增加编辑 revision；HTTP 测试覆盖队列和分页批次的新响应格式。前端 runtime 与工作区测试覆盖双通道发现、进度缓存失效、停止空闲轮询和后台刷新时的编辑草稿。
+
 固定性能样本：2000 文件规则提取和历史写入、1000 文件工作区预览、1000 条历史（每条 100 项操作）的列表和批次摘要查询。运行：
 
 ```sh
 python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|BenchmarkWorkspace2000|BenchmarkRunHistory|BenchmarkPreview1000' -benchtime=1x ./internal/infra/sqlite ./internal/app
 ```
 
-基准不访问公网，不操作已有用户数据，设置及样本创建不计入计时。结果与测量边界见 [性能记录](../docs/PERFORMANCE.md)。
+队列工作区另有 `BenchmarkFileExecutionProjection1000`，测量 1000 文件任务状态投影。基准不访问公网，不操作已有用户数据，设置及样本创建不计入计时。结果与测量边界见 [性能记录](../docs/PERFORMANCE.md)。
+
+存储关系化回归位于 `backend/infra/sqlite/relational_test.go`：覆盖独立作品／规则快照、NULL 与特别篇、有序集合、递归撤销与 BLOB、空规则链重启、严格动态 JSON、旧格式／损坏结构拒绝且不改写、跨记录恢复回滚，以及触发器保护未变化条目。`BenchmarkRunCheckpoint`（10／1000 操作）和 `BenchmarkWorkspaceCheckpoint`（10／2000 条目，更新固定十条）测量增量写入成本。

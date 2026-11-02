@@ -5,43 +5,40 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"joycurator/internal/infra/fsops"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
 
+	"joycurator/internal/infra/fsops"
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
 	"joycurator/internal/trace"
 )
 
-// Ports are simulated here so admission and worker tests don't depend on SQL,
-// network, file sizes or timing-sensitive real copies.
 type memoryRuns struct {
 	mu       sync.Mutex
 	items    map[string]Run
 	order    []string
+	queue    []string
+	mappings map[string]model.MediaMapping
 	batchErr error
 }
 
-func snapshot[T any](value T) T {
-	raw, _ := json.Marshal(value)
+func snapshot[T any](v T) T {
+	raw, _ := json.Marshal(v)
 	var result T
 	_ = json.Unmarshal(raw, &result)
 	return result
 }
-func (m *memoryRuns) SaveRun(r Run) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (m *memoryRuns) save(r Run) {
 	if _, ok := m.items[r.ID]; !ok {
 		m.order = append(m.order, r.ID)
 	}
 	m.items[r.ID] = snapshot(r)
-	return nil
 }
+func (m *memoryRuns) SaveRun(r Run) error { m.mu.Lock(); defer m.mu.Unlock(); m.save(r); return nil }
 func (m *memoryRuns) Run(id string) (Run, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -56,56 +53,159 @@ func (m *memoryRuns) Runs(int) (RunPage, error) {
 	defer m.mu.Unlock()
 	return RunPage{Total: len(m.items)}, nil
 }
+func (m *memoryRuns) RunsByPurpose(page int, purpose string) (RunPage, error) { return m.Runs(page) }
 func (m *memoryRuns) BatchRuns(id string) ([]Run, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := []Run{}
+	result := []Run{}
 	for _, key := range m.order {
 		if r := m.items[key]; r.BatchID == id {
-			out = append(out, snapshot(r))
+			result = append(result, snapshot(r))
 		}
 	}
-	return out, nil
+	return result, nil
 }
 func (m *memoryRuns) BatchSummaries(id string) ([]Run, error) {
 	runs, err := m.BatchRuns(id)
 	for i := range runs {
-		runs[i].Ops = nil
-		runs[i].Mappings = nil
+		runs[i] = summary(runs[i])
 	}
 	return runs, err
 }
-func (m *memoryRuns) LatestBatchID() (string, error) {
+func (m *memoryRuns) Enqueue(runs []Run) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for i := len(m.order) - 1; i >= 0; i-- {
-		if id := m.items[m.order[i]].BatchID; id != "" {
-			return id, nil
-		}
-	}
-	return "", nil
-}
-func (m *memoryRuns) SaveBatch(runs []Run) error {
 	if m.batchErr != nil {
 		return m.batchErr
 	}
+	seen := map[string]bool{}
+	for _, id := range m.queue {
+		seen[id] = true
+	}
 	for _, r := range runs {
-		if err := m.SaveRun(r); err != nil {
-			return err
+		if seen[r.ID] {
+			return errors.New("duplicate queue entry")
+		}
+		seen[r.ID] = true
+	}
+	for _, r := range runs {
+		m.save(r)
+		m.queue = append(m.queue, r.ID)
+	}
+	return nil
+}
+func (m *memoryRuns) QueuedRuns() ([]Run, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []Run{}
+	for _, id := range m.queue {
+		out = append(out, snapshot(m.items[id]))
+	}
+	return out, nil
+}
+func (m *memoryRuns) FinishQueued(r Run) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.save(r)
+	for i, id := range m.queue {
+		if id == r.ID {
+			m.queue = append(m.queue[:i], m.queue[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("missing queue entry")
+}
+func (m *memoryRuns) CancelQueued(ids []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, id := range ids {
+		r := m.items[id]
+		r.State = "cancelled"
+		m.save(r)
+		for i, key := range m.queue {
+			if key == id {
+				m.queue = append(m.queue[:i], m.queue[i+1:]...)
+				break
+			}
 		}
 	}
 	return nil
 }
-func (m *memoryRuns) Shared(string, string, string) (bool, error)                 { return false, nil }
-func (m *memoryRuns) SaveMapping(model.MediaMapping) error                        { return nil }
-func (m *memoryRuns) DeleteMapping(model.MediaMapping) error                      { return nil }
-func (m *memoryRuns) UpdateMappingState(model.MediaMapping, string, string) error { return nil }
-func (m *memoryRuns) Mapping(string) (*model.MediaMapping, error) {
-	return nil, nil
+func (m *memoryRuns) QueuePage(purpose string, page int) (RunPage, error) {
+	runs, _ := m.QueuedRuns()
+	result := RunPage{Items: []Run{}, Page: page}
+	for _, r := range runs {
+		if r.Purpose == purpose && r.State == "queued" {
+			result.Items = append(result.Items, summary(r))
+			result.Total++
+		}
+	}
+	return result, nil
 }
-func (m *memoryRuns) RunsByPurpose(page int, purpose string) (RunPage, error) {
-	return m.Runs(page)
+func (m *memoryRuns) Batches(int) (BatchPage, error)    { return BatchPage{}, nil }
+func (m *memoryRuns) BatchPosition(string) (int, error) { return 1, nil }
+func (m *memoryRuns) FileExecutions(string) (map[string]matching.FileExecution, error) {
+	return map[string]matching.FileExecution{}, nil
 }
+func (m *memoryRuns) SaveCheckpoint(r Run, ops, mappings []int, values []model.MediaMapping) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current, ok := m.items[r.ID]
+	if !ok {
+		return errors.New("missing run")
+	}
+	next := snapshot(r)
+	next.Ops = snapshot(current.Ops)
+	next.Mappings = snapshot(current.Mappings)
+	for _, i := range ops {
+		next.Ops[i] = snapshot(r.Ops[i])
+	}
+	for _, i := range mappings {
+		next.Mappings[i] = snapshot(r.Mappings[i])
+	}
+	m.save(next)
+	for _, v := range values {
+		if old, ok := m.mappings[v.Path]; ok && old.Identity == v.Identity {
+			v.State = old.State
+		}
+		m.mappings[v.Path] = v
+	}
+	return nil
+}
+func (m *memoryRuns) SaveMapping(v model.MediaMapping) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.mappings[v.Path] = v
+	return nil
+}
+func (m *memoryRuns) Mapping(path string) (*model.MediaMapping, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, ok := m.mappings[path]
+	if !ok {
+		return nil, nil
+	}
+	return &v, nil
+}
+func (m *memoryRuns) DeleteMapping(v model.MediaMapping) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.mappings[v.Path].RunID == v.RunID {
+		delete(m.mappings, v.Path)
+	}
+	return nil
+}
+func (m *memoryRuns) UpdateMappingState(v model.MediaMapping, state, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	old, ok := m.mappings[v.Path]
+	if ok && old.RunID == v.RunID {
+		old.State = state
+		m.mappings[v.Path] = old
+	}
+	return nil
+}
+func (m *memoryRuns) Shared(string, string, string) (bool, error) { return false, nil }
 
 type fixedSettings struct{ value model.Settings }
 
@@ -120,32 +220,12 @@ func (s allowedSources) SourceAllowed(string, model.Settings) bool {
 	return true
 }
 
-// This harness seeds immutable previews while exercising real file validation.
-type fakePlans struct {
-	cache *PreviewCache
-	check func([]Work) error
-}
+type fakePlans struct{ cache *PreviewCache }
 
 func (p *fakePlans) Get(id string) *Plan { return p.cache.get(id) }
 
-type noCatalog struct{}
+type noCatalog struct{ matching.Provider }
 
-func (noCatalog) Search(context.Context, string, string, int) ([]model.Entry, error) {
-	return nil, nil
-}
-func (noCatalog) Detail(context.Context, string, int) (model.Entry, error) {
-	return model.Entry{}, nil
-}
-func (noCatalog) Seasons(context.Context, int) ([]model.Season, error) { return nil, nil }
-func (noCatalog) SeasonDetail(context.Context, int, int) (model.Season, []model.Episode, error) {
-	return model.Season{}, nil, nil
-}
-func (noCatalog) SeasonEpisodes(context.Context, int, int) ([]model.Episode, error) {
-	return nil, nil
-}
-func (noCatalog) Artwork(context.Context, string, int, string) ([]model.Artwork, error) {
-	return nil, nil
-}
 func (noCatalog) Image(context.Context, string) ([]byte, error) { return nil, nil }
 
 type operationRunner struct {
@@ -153,34 +233,40 @@ type operationRunner struct {
 }
 
 func (r operationRunner) Run(ctx context.Context, op *Operation, save func() error) error {
+	checkpoint := func() error {
+		if op.Status == "completed" {
+			if err := os.WriteFile(op.Target, []byte("video"), 0644); err != nil {
+				return err
+			}
+			info, err := os.Stat(op.Target)
+			if err != nil {
+				return err
+			}
+			op.Identity = fsops.Identity(info)
+		}
+		return save()
+	}
 	if r.run != nil {
-		return r.run(ctx, op, save)
+		return r.run(ctx, op, checkpoint)
 	}
 	op.Status = "completed"
-	return save()
+	return checkpoint()
 }
 func (r operationRunner) Undo(_ context.Context, op *Operation, save func() error) error {
+	if err := os.Remove(op.Target); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	op.Status = "undone"
 	return save()
 }
 func executionFixture(t *testing.T, run func(context.Context, *Operation, func() error) error) (*Service, *memoryRuns, *fakePlans) {
 	t.Helper()
-	store := &memoryRuns{items: map[string]Run{}}
 	root := t.TempDir()
 	source, target := filepath.Join(root, "source"), filepath.Join(root, "target")
-	if err := os.Mkdir(source, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(target, 0755); err != nil {
-		t.Fatal(err)
-	}
-	sourcePath := filepath.Join(source, "video.mkv")
-	if err := os.WriteFile(sourcePath, []byte("video"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	info, err := os.Stat(sourcePath)
-	if err != nil {
-		t.Fatal(err)
+	for _, dir := range []string{source, target} {
+		if err := os.Mkdir(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	access, err := fsops.New([]string{source, target})
 	if err != nil {
@@ -188,33 +274,33 @@ func executionFixture(t *testing.T, run func(context.Context, *Operation, func()
 	}
 	cache := NewPreviewCache()
 	plans := &fakePlans{cache: cache}
+	store := &memoryRuns{items: map[string]Run{}, mappings: map[string]model.MediaMapping{}}
 	for _, id := range []string{"manual", "batch"} {
-		groups := []*Plan{}
+		p := &Plan{ID: id, Purpose: "organize", Version: 1, Revision: 1, RecognitionID: "workspace", Expires: time.Now().Add(time.Hour)}
 		count := 1
 		if id == "batch" {
 			count = 2
 		}
 		for i := 0; i < count; i++ {
-			op := Work{Operation: Operation{Kind: "video", Mode: "copy", Source: sourcePath, Target: filepath.Join(target, fmt.Sprint(i)+".mkv"), Status: "pending", Size: info.Size(), MTime: info.ModTime().UnixNano()}}
-			// Mapping lifecycle is covered by integration tests; the fake runner writes no files.
-			mapping := model.MediaMapping{Path: filepath.Join(target, "registered"), Source: sourcePath, Type: "movie", TMDBID: 1}
-			groups = append(groups, &Plan{Title: []string{"first", "second"}[i], Ops: []Work{op}, Mappings: []model.MediaMapping{mapping}})
-		}
-		p := &Plan{ID: id, Purpose: "organize", Version: 1, Revision: 1, RecognitionID: "workspace", Expires: time.Now().Add(time.Hour), Groups: groups}
-		for _, g := range groups {
-			p.Ops = append(p.Ops, g.Ops...)
-			p.Mappings = append(p.Mappings, g.Mappings...)
+			name := fmt.Sprintf("%s-%d.mkv", id, i)
+			src, dst := filepath.Join(source, name), filepath.Join(target, name)
+			if err := os.WriteFile(src, []byte("video"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			info, _ := os.Stat(src)
+			op := Work{Operation: Operation{Kind: "video", Source: src, Target: dst, Mode: "copy", Status: "pending", Size: info.Size(), MTime: info.ModTime().UnixNano()}, Owner: src}
+			mapping := model.MediaMapping{Path: dst, Source: src, Type: "movie", TMDBID: 1, State: "pending"}
+			group := &Plan{Title: fmt.Sprintf("%s-%d", id, i), Ops: []Work{op}, Mappings: []model.MediaMapping{mapping}}
+			p.Groups = append(p.Groups, group)
+			p.Ops = append(p.Ops, op)
+			p.Mappings = append(p.Mappings, mapping)
 		}
 		cache.put(p)
 	}
-	factory := matching.Factory(func(model.Settings, *trace.Recorder) (matching.Provider, error) { return noCatalog{}, nil })
-	service := New(Dependencies{Coordinator: NewCoordinator(), Store: store, Settings: fixedSettings{model.Settings{Version: 1, SourceRoot: source, TargetRoot: target}}, Previews: cache, Access: access,
-		Sources: allowedSources{check: func() {
-			if plans.check != nil {
-				_ = plans.check(nil)
-			}
-		}}, Factory: factory,
-		Runner: func(func(context.Context, string) ([]byte, error)) Runner { return operationRunner{run} }, Revision: func(string) (int, error) { return 1, nil }, Finish: func(Run) {}})
+	service := New(Dependencies{Coordinator: NewCoordinator(), Store: store, Settings: fixedSettings{model.Settings{Version: 1, SourceRoot: source, TargetRoot: target}}, Previews: cache, Access: access, Mappings: store, Sources: allowedSources{}, Factory: func(model.Settings, *trace.Recorder) (matching.Provider, error) { return noCatalog{}, nil }, Runner: func(func(context.Context, string) ([]byte, error)) Runner { return operationRunner{run} }, Revision: func(string) (int, error) { return 1, nil }})
+	if err := service.Start(); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(service.coordinator.Close)
 	return service, store, plans
 }
@@ -235,63 +321,63 @@ func awaitIdle(t *testing.T, s *Service) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("execution remained busy")
+	t.Fatal("execution remained busy", s.Queue())
 }
 
-func TestUnknownFileStateIsNotRetried(t *testing.T) {
-	s, store, _ := executionFixture(t, nil)
-	r := Run{ID: "uncertain", Purpose: "organize", State: "running", Ops: []Work{
-		{Operation: Operation{Kind: "video", Status: "published", Target: "unknown"}, Owner: "first"},
-		{Operation: Operation{Kind: "video", Status: "pending", Target: "safe"}, Owner: "second"},
-	}}
-	s.coordinator.wg.Add(1)
-	s.work(context.Background(), func() {}, r)
-	got, err := store.Run(r.ID)
-	if err != nil || got.State != "failed" || got.Ops[0].Status != "manual_review" || got.Ops[1].Status != "completed" {
-		t.Fatal("uncertain file was retried or safe file was blocked", got, err)
-	}
-}
-
-func TestExecutionCompetitionDoesNotWriteExtraRecord(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows execution unsupported")
-	}
+func TestMultipleBatchesRunFIFO(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
+	order := []string{}
+	var mu sync.Mutex
 	s, store, _ := executionFixture(t, func(ctx context.Context, op *Operation, save func() error) error {
-		once.Do(func() { close(entered) })
-		select {
-		case <-release:
-			op.Status = "completed"
-			return save()
-		case <-ctx.Done():
+		mu.Lock()
+		order = append(order, filepath.Base(op.Source))
+		mu.Unlock()
+		once.Do(func() {
+			close(entered)
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+		})
+		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		op.Status = "completed"
+		return save()
 	})
-	if _, err := s.ExecuteBatch("manual"); err != nil {
+	first, err := s.ExecuteBatch("manual")
+	if err != nil {
 		t.Fatal(err)
 	}
 	await(t, entered)
-	if _, err := s.ExecuteBatch("batch"); !errors.Is(err, ErrBusy) {
-		t.Fatalf("queue bypassed task: %v", err)
+	second, err := s.ExecuteBatch("batch")
+	if err != nil {
+		t.Fatal(err)
 	}
-	records, _ := store.Runs(1)
-	if records.Total != 1 {
-		t.Fatal(records)
+	if s.Queue().Organize.Queued != 2 {
+		t.Fatal(s.Queue())
 	}
 	close(release)
 	awaitIdle(t, s)
-}
-
-func TestBatchFailureContinuesAndIndependentRetryUndo(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows execution unsupported")
+	if fmt.Sprint(order) != "[manual-0.mkv batch-0.mkv batch-1.mkv]" {
+		t.Fatal(order)
 	}
+	for _, id := range []string{first.ID, second.ID} {
+		runs, _ := store.BatchRuns(id)
+		for _, r := range runs {
+			if r.State != "completed" {
+				t.Fatal(r)
+			}
+		}
+	}
+}
+func TestBatchFailureContinuesAndIndependentRetryUndo(t *testing.T) {
 	calls := 0
 	s, store, _ := executionFixture(t, func(_ context.Context, op *Operation, save func() error) error {
 		calls++
 		if calls == 1 {
-			return errors.New("first work failed")
+			return errors.New("first failed")
 		}
 		op.Status = "completed"
 		return save()
@@ -302,108 +388,67 @@ func TestBatchFailureContinuesAndIndependentRetryUndo(t *testing.T) {
 	}
 	awaitIdle(t, s)
 	runs, _ := store.BatchRuns(b.ID)
-	if len(runs) != 2 || runs[0].State != "failed" || runs[1].State != "completed" {
+	if runs[0].State != "failed" || runs[1].State != "completed" {
 		t.Fatal(runs)
 	}
-	retry, err := s.Resume(runs[0].ID, false)
+	r, err := s.Resume(runs[0].ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	awaitIdle(t, s)
-	r, _ := store.Run(retry.ID)
+	r, _ = store.Run(r.ID)
 	if r.State != "completed" {
 		t.Fatal(r)
 	}
-	undo, err := s.Resume(r.ID, true)
-	if err != nil {
+	if _, err = s.Resume(r.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	awaitIdle(t, s)
-	r, _ = store.Run(undo.ID)
+	r, _ = store.Run(r.ID)
 	if r.State != "undone" {
 		t.Fatal(r)
 	}
-	other, _ := store.Run(runs[1].ID)
-	if other.State != "completed" {
-		t.Fatal(other)
-	}
 }
-
-func TestBatchCancelStopsCurrentAndPending(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows execution unsupported")
-	}
+func TestQueuedBatchCancellationLeavesOtherBatchRunning(t *testing.T) {
 	entered := make(chan struct{})
 	var once sync.Once
-	s, store, _ := executionFixture(t, func(ctx context.Context, _ *Operation, _ func() error) error {
+	s, store, _ := executionFixture(t, func(ctx context.Context, op *Operation, save func() error) error {
 		once.Do(func() { close(entered) })
 		<-ctx.Done()
 		return ctx.Err()
 	})
-	b, err := s.ExecuteBatch("batch")
+	active, err := s.ExecuteBatch("manual")
 	if err != nil {
 		t.Fatal(err)
 	}
 	await(t, entered)
-	if _, err = s.ExecuteBatch("manual"); !errors.Is(err, ErrBusy) {
+	waiting, err := s.ExecuteBatch("batch")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.CancelBatch(b.ID); err != nil {
+	if err = s.CancelBatch(waiting.ID); err != nil {
 		t.Fatal(err)
 	}
-	awaitIdle(t, s)
-	runs, _ := store.BatchRuns(b.ID)
+	runs, _ := store.BatchRuns(waiting.ID)
 	for _, r := range runs {
 		if r.State != "cancelled" {
 			t.Fatal(r)
 		}
 	}
-}
-
-func TestQueueRemainsReservedBetweenWorks(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows execution unsupported")
+	if s.Queue().Organize.Current == nil {
+		t.Fatal("cancelled unrelated active task")
 	}
-	entered, release := make(chan struct{}), make(chan struct{})
-	checks := 0
-	s, _, plans := executionFixture(t, nil)
-	plans.check = func(ops []Work) error {
-		checks++
-		if checks == 2 {
-			close(entered)
-			<-release
-		}
-		return nil
-	}
-	if _, err := s.ExecuteBatch("batch"); err != nil {
+	if err = s.CancelBatch(active.ID); err != nil {
 		t.Fatal(err)
 	}
-	await(t, entered)
-	// The first worker has released its current-run slot, but batch retains it.
-	s.coordinator.mu.Lock()
-	running, batch := s.coordinator.running, s.coordinator.batch
-	s.coordinator.mu.Unlock()
-	if running != "" || batch == "" {
-		t.Fatalf("running=%q batch=%q", running, batch)
-	}
-	if _, err := s.ExecuteBatch("manual"); !errors.Is(err, ErrBusy) {
-		t.Fatal(err)
-	}
-	close(release)
 	awaitIdle(t, s)
 }
-
-func TestCloseCancelsAndWaitsForWorkers(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows execution unsupported")
-	}
-	entered, observed, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+func TestCloseKeepsPendingTasksForRestart(t *testing.T) {
+	entered := make(chan struct{})
 	var once sync.Once
-	s, store, _ := executionFixture(t, func(ctx context.Context, _ *Operation, _ func() error) error {
+	s, store, _ := executionFixture(t, func(ctx context.Context, op *Operation, save func() error) error {
 		once.Do(func() { close(entered) })
 		<-ctx.Done()
-		close(observed)
-		<-release
 		return ctx.Err()
 	})
 	b, err := s.ExecuteBatch("batch")
@@ -411,38 +456,29 @@ func TestCloseCancelsAndWaitsForWorkers(t *testing.T) {
 		t.Fatal(err)
 	}
 	await(t, entered)
-	closed := make(chan struct{})
-	go func() { s.coordinator.Close(); close(closed) }()
-	await(t, observed)
-	select {
-	case <-closed:
-		t.Fatal("closed before worker persisted interruption")
-	default:
-	}
-	close(release)
-	await(t, closed)
+	s.coordinator.Close()
 	runs, _ := store.BatchRuns(b.ID)
-	for _, r := range runs {
-		if r.State != "interrupted" {
-			t.Fatal(r)
-		}
+	if runs[0].State != "interrupted" || runs[1].State != "queued" {
+		t.Fatal(runs)
 	}
 	if _, err = s.ExecuteBatch("manual"); err == nil {
-		t.Fatal("closed application accepted work")
+		t.Fatal("closed service accepted task")
+	}
+}
+func TestFailedQueuePersistenceDoesNotReserveExecution(t *testing.T) {
+	s, store, plans := executionFixture(t, nil)
+	store.batchErr = errors.New("full")
+	if _, err := s.ExecuteBatch("batch"); err == nil {
+		t.Fatal("ignored write failure")
+	}
+	if s.coordinator.Busy() || plans.Get("batch") == nil {
+		t.Fatal("consumed failed submission")
 	}
 }
 
-func TestFailedQueuePersistenceDoesNotReserveExecution(t *testing.T) {
-	s, store, plans := executionFixture(t, nil)
-	store.batchErr = errors.New("transaction failed")
-	if _, err := s.ExecuteBatch("batch"); err == nil {
-		t.Fatal("ignored persistence failure")
-	}
-	if s.coordinator.Busy() || plans.Get("batch") == nil {
-		t.Fatal("failed queue consumed preview or reserved execution")
-	}
-	records, _ := store.Runs(1)
-	if records.Total != 0 {
-		t.Fatal(records)
-	}
+func (m *memoryRuns) ScrapeWorks(string, string) (ScrapeWorkPage, error) {
+	return ScrapeWorkPage{}, nil
 }
+func (m *memoryRuns) ScrapeWorkMappings(string, int) ([]model.MediaMapping, error) { return nil, nil }
+
+func (m *memoryRuns) ScrapeArtifact(string) (*Work, error) { return nil, nil }

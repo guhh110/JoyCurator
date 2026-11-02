@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func BenchmarkPreview1000(b *testing.B) {
@@ -66,7 +67,7 @@ func BenchmarkWorkspace2000(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		task = waitRecognition(b, a, task.ID)
+		task = waitRecognitionWithin(b, a, task.ID, 60*time.Second)
 		if task.State != "completed" || len(task.Items) != 2000 {
 			b.Fatal(task.State, len(task.Items), task.Error)
 		}

@@ -27,7 +27,7 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 	indexes := map[string]int{}
 	count := 0
 	for _, item := range task.Items {
-		if !item.Selected || item.Removed {
+		if !item.Selected || item.Removed || item.Execution != nil && (item.Execution.Locked || item.Execution.Completed) {
 			continue
 		}
 		if item.State != "ready" || item.Entry == nil {
@@ -81,6 +81,12 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 		if err := a.validateOps(plan.Ops); err != nil {
 			plan.Issues = append(plan.Issues, err.Error())
 		}
+	}
+	a.coordinator.mu.Lock()
+	reservationErr := a.checkReservationsLocked([]Run{{Purpose: "organize", RecognitionID: plan.RecognitionID, Mappings: plan.Mappings, Ops: plan.Ops}})
+	a.coordinator.mu.Unlock()
+	if reservationErr != nil {
+		plan.Issues = append(plan.Issues, reservationErr.Error())
 	}
 	a.previews.put(plan)
 	return plan, nil

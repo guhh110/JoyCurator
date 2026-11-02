@@ -53,8 +53,11 @@ func TestBatchDuplicatePolicySkipAndOverwrite(t *testing.T) {
 					t.Fatal("skip modified existing video")
 				}
 				current, _ := a.dependencies.Workspace.Read(task.ID)
-				if current.Items[0].Removed || !current.Items[0].Selected {
-					t.Fatal("skip removed source from workspace")
+				if !current.Items[0].Removed || current.Items[0].Selected || current.Items[0].Execution == nil || !current.Items[0].Execution.Completed {
+					t.Fatal("registered skip remains in organize selection", current.Items[0])
+				}
+				if _, err := os.Stat(current.Items[0].Path); err != nil {
+					t.Fatal("skip modified source on disk", err)
 				}
 			} else {
 				if len(batch.Runs) != 2 {
@@ -83,7 +86,7 @@ func TestDuplicatePoliciesDoNotAllowInBatchCollisions(t *testing.T) {
 			s.Rules.MovieFolder, s.Rules.TVFolder = "collision", "collision"
 			s.Rules.MovieFile, s.Rules.TVFile = "video.{ext}", "video.{ext}"
 			s.Version++
-			if _, err := testDB(t, a).Exec("UPDATE config SET value=?", jsonText(s)); err != nil {
+			if err := a.store.SaveSettings(s); err != nil {
 				t.Fatal(err)
 			}
 			target := filepath.Join(root, "target", "collision", "video.mkv")
@@ -228,6 +231,10 @@ func TestAllSkippedBatchRegistersMappings(t *testing.T) {
 		t.Fatal(plan, err)
 	}
 	if runtime.GOOS != "windows" {
+		duplicate, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{RecognitionID: task.ID, Revision: task.Revision, Mode: "move", DuplicatePolicy: "skip"})
+		if err != nil {
+			t.Fatal(err)
+		}
 		batch, executeErr := a.dependencies.Organizer.ExecuteBatch(plan.ID)
 		if executeErr != nil || len(batch.Runs) == 0 {
 			t.Fatalf("registration batch rejected: %+v %v", batch, executeErr)
@@ -236,6 +243,9 @@ func TestAllSkippedBatchRegistersMappings(t *testing.T) {
 			if done(t, a, run).State != "completed" {
 				t.Fatal("skipped mapping not completed")
 			}
+		}
+		if _, err = a.dependencies.Organizer.ExecuteBatch(duplicate.ID); err == nil {
+			t.Fatal("completed skip resubmitted through old preview")
 		}
 		mappings, e := a.store.Mappings()
 		if e != nil || len(mappings) != len(plan.Mappings) {

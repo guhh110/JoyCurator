@@ -9,7 +9,9 @@ import (
 type WorkspaceStore interface {
 	Workspace(string) (matching.Workspace, error)
 	SaveWorkspace(*matching.Workspace) error
+	CheckpointWorkspace(*matching.Workspace, []int) error
 	LatestWorkspace() (*matching.Workspace, error)
+	FileExecutions(string) (map[string]matching.FileExecution, error)
 }
 type SettingsReader interface {
 	Load() (model.Settings, error)

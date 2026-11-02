@@ -33,7 +33,8 @@ func fixture(t testing.TB) (*App, string) {
 	}
 	t.Cleanup(func() { _ = a.Close() })
 	s, _ := a.dependencies.Config.Load()
-	if _, err = testDB(t, a).Exec("UPDATE config SET value=?,token=?", jsonText(s), "fixture-secret"); err != nil {
+	s.Token = "fixture-secret"
+	if err = a.store.SaveSettings(s); err != nil {
 		t.Fatal(err)
 	}
 	seed := func(path, value string) {
@@ -226,7 +227,7 @@ func TestStalePlanAndSourceChangesRejected(t *testing.T) {
 	}
 	s, _ := a.dependencies.Config.Load()
 	s.Version++
-	_, _ = testDB(t, a).Exec("UPDATE config SET value=?", jsonText(s))
+	_ = a.store.SaveSettings(s)
 	if _, err = a.dependencies.Organizer.ExecuteBatch(p.ID); err == nil {
 		t.Fatal("stale settings accepted")
 	}
@@ -386,7 +387,12 @@ func TestInterruptedRunCanResumeAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := organizer.Run{ID: model.Key(), Title: p.Title, Mode: p.Mode, State: "running", Ops: p.Ops, Total: len(p.Ops), Purpose: "organize", Mappings: p.Mappings}
+	r := organizer.Run{ID: model.Key(), Title: p.Title, Mode: p.Mode, State: "running", Ops: p.Ops, Total: len(p.Ops), Purpose: "organize", Mappings: p.Mappings, Version: p.Version, RecognitionID: p.RecognitionID}
+	queued := r
+	queued.State = "queued"
+	if err = a.store.Enqueue([]organizer.Run{queued}); err != nil {
+		t.Fatal(err)
+	}
 	if err = a.store.SaveRun(r); err != nil {
 		t.Fatal(err)
 	}

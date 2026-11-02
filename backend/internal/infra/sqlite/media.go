@@ -1,9 +1,9 @@
 package sqlite
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -30,16 +30,13 @@ func (a *Store) ScrapeWorks(search, cursor string) (organizer.ScrapeWorkPage, er
 		}
 		cursorKind, cursorID = parts[0], id
 	}
-	rows, err := a.db.Query(`SELECT json_extract(value,'$.type') kind,
-	 CAST(json_extract(value,'$.tmdbId') AS INTEGER) id,
-	 MIN(path) representative, COUNT(*) total,
-	 SUM(CASE WHEN json_extract(value,'$.state')='pending' THEN 1 ELSE 0 END) pending,
-	 SUM(CASE WHEN json_extract(value,'$.state')='failed' THEN 1 ELSE 0 END) failed,
-	 SUM(CASE WHEN json_extract(value,'$.state')='completed' THEN 1 ELSE 0 END) completed
-	 FROM media_mappings
-	 WHERE (json_extract(value,'$.type')>? OR (json_extract(value,'$.type')=? AND CAST(json_extract(value,'$.tmdbId') AS INTEGER)>?))
-	 AND (?='' OR instr(lower(CAST(json_extract(value,'$.tmdbId') AS TEXT)),lower(?))>0 OR instr(lower(path),lower(?))>0)
-	 GROUP BY kind,id ORDER BY kind,id LIMIT 51`, cursorKind, cursorKind, cursorID, search, search, search)
+	rows, err := a.db.Query(`SELECT f_type kind,f_tmdbid id,MIN(f_path) representative,COUNT(*) total,
+ SUM(CASE WHEN f_state='pending' THEN 1 ELSE 0 END) pending,
+ SUM(CASE WHEN f_state='failed' THEN 1 ELSE 0 END) failed,
+ SUM(CASE WHEN f_state='completed' THEN 1 ELSE 0 END) completed
+ FROM media_mappings WHERE (f_type>? OR (f_type=? AND f_tmdbid>?))
+ AND (?='' OR instr(lower(CAST(f_tmdbid AS TEXT)),lower(?))>0 OR instr(lower(f_path),lower(?))>0)
+ GROUP BY f_type,f_tmdbid ORDER BY f_type,f_tmdbid LIMIT 51`, cursorKind, cursorKind, cursorID, search, search, search)
 	if err != nil {
 		return page, err
 	}
@@ -62,97 +59,95 @@ func (a *Store) ScrapeWorkMappings(kind string, id int) ([]model.MediaMapping, e
 	if (kind != "movie" && kind != "tv") || id <= 0 {
 		return nil, errors.New("作品无效")
 	}
-	rows, err := a.db.Query("SELECT value FROM media_mappings WHERE json_extract(value,'$.type')=? AND json_extract(value,'$.tmdbId')=? ORDER BY path", kind, id)
+	return snapshotRead(a.db, func(q queryer) ([]model.MediaMapping, error) {
+		return readMappings(q, "WHERE f_type=? AND f_tmdbid=? ORDER BY f_path", kind, id)
+	})
+}
+func (a *Store) SaveMapping(v model.MediaMapping) error {
+	return transaction(a.db, func(tx queryer) error { return saveMapping(tx, v) })
+}
+func saveMapping(q queryer, v model.MediaMapping) error {
+	previous, err := mapping(q, v.Path)
+	if err != nil {
+		return err
+	}
+	if previous != nil {
+		if previous.RunID != v.RunID {
+			var newer bool
+			if err = q.QueryRow("SELECT incoming.sequence>previous.sequence FROM runs incoming,runs previous WHERE incoming.id=? AND previous.id=?", v.RunID, previous.RunID).Scan(&newer); err != nil {
+				return err
+			}
+			if !newer {
+				return errors.New("目标视频已有更新的整理映射：" + v.Path)
+			}
+		}
+		if previous.Identity == v.Identity && previous.Type == v.Type && previous.TMDBID == v.TMDBID && previous.Season == v.Season && slices.Equal(previous.Episodes, v.Episodes) {
+			v.State = previous.State
+		}
+	}
+	return writeMediaMappings(q, v.Path, v.Path, "", 0, v)
+}
+func readMappings(q queryer, where string, args ...any) ([]model.MediaMapping, error) {
+	rows, err := q.Query("SELECT "+columnsMediaMappings+" FROM media_mappings "+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	out := []model.MediaMapping{}
+	for rows.Next() {
+		v, e := scanMediaMappings(rows)
+		if e != nil {
+			rows.Close()
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	// Fetch the selected episode sets in one query, irrespective of page size.
+	rows, err = q.Query("SELECT e.owner,e.value FROM mapping_episodes e JOIN media_mappings m ON m.id=e.owner WHERE m.id IN (SELECT id FROM media_mappings "+where+") ORDER BY e.owner,e.position", args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []model.MediaMapping{}
+	index := map[string]int{}
+	for i := range out {
+		index[out[i].Path] = i
+		out[i].Episodes = []int{}
+	}
 	for rows.Next() {
-		var raw string
-		var item model.MediaMapping
-		if err := rows.Scan(&raw); err != nil {
+		var owner string
+		var n int
+		if err = rows.Scan(&owner, &n); err != nil {
 			return nil, err
 		}
-		if err := decode(raw, &item); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
+		out[index[owner]].Episodes = append(out[index[owner]].Episodes, n)
 	}
-	return items, rows.Err()
+	return out, rows.Err()
 }
-
-func (a *Store) SaveMapping(item model.MediaMapping) error {
-	result, err := a.db.Exec(`INSERT INTO media_mappings(path,value) VALUES(?,?)
-	 ON CONFLICT(path) DO UPDATE SET value=excluded.value
-	 WHERE json_extract(media_mappings.value,'$.runId')=json_extract(excluded.value,'$.runId')
-	 OR EXISTS (SELECT 1 FROM runs incoming, runs previous
-	    WHERE incoming.id=json_extract(excluded.value,'$.runId')
-	    AND previous.id=json_extract(media_mappings.value,'$.runId')
-	    AND incoming.rowid > previous.rowid)`, item.Path, jsonText(item))
-	if err != nil {
-		return err
-	}
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if changed == 0 {
-		return errors.New("目标视频已有更新的整理映射：" + item.Path)
-	}
-	return nil
-}
-
-func (a *Store) Mappings() ([]model.MediaMapping, error) {
-	rows, err := a.db.Query("SELECT value FROM media_mappings ORDER BY path")
+func mapping(q queryer, path string) (*model.MediaMapping, error) {
+	items, err := readMappings(q, "WHERE id=?", path)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	items := []model.MediaMapping{}
-	for rows.Next() {
-		var raw string
-		var item model.MediaMapping
-		if err = rows.Scan(&raw); err != nil {
-			return nil, err
-		}
-		if err = decode(raw, &item); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
-func (a *Store) DeleteMapping(item model.MediaMapping) error {
-	_, err := a.db.Exec("DELETE FROM media_mappings WHERE path=? AND json_extract(value,'$.runId')=? AND json_extract(value,'$.identity')=?", item.Path, item.RunID, item.Identity)
-	return err
-}
-
-func (a *Store) UpdateMappingState(item model.MediaMapping, state, runID string) error {
-	_, err := a.db.Exec(`UPDATE media_mappings SET value=json_set(value,'$.state',?)
-	 WHERE path=? AND json_extract(value,'$.runId')=? AND json_extract(value,'$.identity')=?
-	 AND NOT EXISTS (
-	   SELECT 1 FROM runs newer, json_each(newer.value,'$.mappings') mapped
-	   WHERE json_extract(newer.value,'$.purpose')='scrape'
-	   AND json_extract(newer.value,'$.state')<>'undone'
-	   AND json_extract(mapped.value,'$.path')=?
-	   AND newer.rowid > (SELECT rowid FROM runs WHERE id=?))`, state, item.Path, item.RunID, item.Identity, item.Path, runID)
-	return err
-}
-
-func (a *Store) Mapping(path string) (*model.MediaMapping, error) {
-	var raw string
-	var item model.MediaMapping
-	err := a.db.QueryRow("SELECT value FROM media_mappings WHERE path=?", path).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
+	if len(items) == 0 {
 		return nil, nil
 	}
-	if err == nil {
-		err = decode(raw, &item)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &item, nil
+	return &items[0], nil
+}
+func (a *Store) Mappings() ([]model.MediaMapping, error) {
+	return snapshotRead(a.db, func(q queryer) ([]model.MediaMapping, error) { return readMappings(q, "ORDER BY f_path") })
+}
+func (a *Store) Mapping(path string) (*model.MediaMapping, error) {
+	return snapshotRead(a.db, func(q queryer) (*model.MediaMapping, error) { return mapping(q, path) })
+}
+func (a *Store) DeleteMapping(v model.MediaMapping) error {
+	_, err := a.db.Exec("DELETE FROM media_mappings WHERE id=? AND f_run_id=? AND f_identity=?", v.Path, v.RunID, v.Identity)
+	return err
+}
+func (a *Store) UpdateMappingState(v model.MediaMapping, state, runID string) error {
+	_, err := a.db.Exec(`UPDATE media_mappings SET f_state=? WHERE id=? AND f_run_id=? AND f_identity=? AND NOT EXISTS(SELECT 1 FROM runs newer JOIN run_mappings m ON m.root=newer.id WHERE newer.f_purpose='scrape' AND newer.f_state<>'undone' AND m.f_path=? AND newer.sequence>(SELECT sequence FROM runs WHERE id=?))`, state, v.Path, v.RunID, v.Identity, v.Path, runID)
+	return err
 }

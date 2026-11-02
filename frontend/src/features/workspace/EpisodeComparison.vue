@@ -44,7 +44,7 @@ function submit() {
         <div class="comparison-main">
           <strong>{{ row.episode.name || `第 ${row.episode.number} 集` }}</strong>
           <template v-if="row.files.length">
-            <button v-for="file in row.files" :key="file.path" class="comparison-file" :title="file.path" :disabled="locked" @click="emit('edit', file)">{{ name(file.path) }}</button>
+            <button v-for="file in row.files" :key="file.path" class="comparison-file" :title="file.path" :disabled="locked || file.execution?.locked || file.execution?.completed" @click="emit('edit', file)">{{ name(file.path) }}</button>
           </template>
           <p v-else class="muted tiny">{{ row.episode.airDate || '暂无播出日期' }} · 缺少文件</p>
         </div>
@@ -55,7 +55,7 @@ function submit() {
   </div>
   <Modal v-if="assigning" title="关联单集文件" @close="assigning = null">
     <p class="muted">将所选文件修正为第 {{ season }} 季第 {{ assigning.number }} 集。原季集对应关系会被替换；合并集请在文件的「修正季集」中填写。</p>
-    <Select v-model="path" label="选择要关联的文件" placeholder="选择本作品中的文件" :options="files.map(file => ({ value: file.path, label: name(file.path) }))" :disabled="locked" />
+    <Select v-model="path" label="选择要关联的文件" placeholder="选择本作品中的文件" :options="files.filter(file => !file.execution?.locked && !file.execution?.completed).map(file => ({ value: file.path, label: name(file.path) }))" :disabled="locked" />
     <template #footer><span /><button class="button primary" :disabled="locked || !path" @click="submit">关联此文件</button></template>
   </Modal>
 </template>

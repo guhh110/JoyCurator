@@ -29,9 +29,11 @@ export function useWorkspace() {
   const runtime = useRuntime()
   const { act: perform, busy, message: error, success: notice } = useAction()
   const active = ref(true)
-  const batch = runtime.batch
+  const queue = runtime.queue
   // A mutable edit draft; taskQuery remains the authoritative server snapshot.
   const task = ref<Recognition | null>(null)
+  let baseline: ReturnType<typeof recognitionEdits> = []
+  function acceptTask(value: Recognition) { task.value = JSON.parse(JSON.stringify(value)); baseline = recognitionEdits(value.items) }
   const browser = ref(false)
   const filter = ref('all'),
     query = ref(''),
@@ -46,9 +48,7 @@ export function useWorkspace() {
   const locked = computed(
     () =>
       busy.value ||
-      recognizing.value ||
-      !!batch.value?.active ||
-      runtime.executing.value,
+      recognizing.value,
   )
   const groups = computed(() => recognitionGroups(task.value?.items || []))
   const { source, sources, scoped, chooseSource, removeSource } = useWorkspaceSources({ task, groups, act, invalidatePreview: () => { preview.value = null }, changeFilter })
@@ -88,7 +88,7 @@ export function useWorkspace() {
   const selected = computed(
     () =>
       task.value?.items.filter(
-        (file) => file.selected && !file.removed && file.state === 'ready',
+        (file) => file.selected && !file.removed && file.state === 'ready' && !file.execution?.locked && !file.execution?.completed,
       ) || [],
   )
   const pendingCount = computed(
@@ -100,7 +100,7 @@ export function useWorkspace() {
   const readyCount = computed(
     () =>
       task.value?.items.filter(
-        (file) => !file.removed && file.state === 'ready',
+        (file) => !file.removed && file.state === 'ready' && !file.execution?.locked && !file.execution?.completed,
       ).length || 0,
   )
   const runStates: Record<string, string> = {
@@ -129,7 +129,7 @@ export function useWorkspace() {
     enabled: computed(() => active.value && !busy.value),
     staleTime: 1000,
     refetchInterval: (query) =>
-      query.state.data?.state === 'running' || batch.value?.active
+      query.state.data?.state === 'running' || queue.value?.active
         ? 1200
         : false,
   })
@@ -146,7 +146,7 @@ export function useWorkspace() {
         !task.value ||
         (task.value.id === value.id && value.revision >= task.value.revision)
       )
-        task.value = JSON.parse(JSON.stringify(value))
+        acceptTask(value)
     },
     { immediate: true },
   )
@@ -162,28 +162,33 @@ export function useWorkspace() {
     })
   }
   const previewState = useWorkspacePreview({ task, busy, act, notice, runtime })
-  const { preview, mode, previewPage, previewRows, duplicatePolicy, previewReady, prepare, changeDuplicatePolicy, execute, cancelBatch } = previewState
+  const { preview, mode, previewPage, previewRows, duplicatePolicy, previewReady, prepare, changeDuplicatePolicy, execute } = previewState
   async function save(items?: RecognitionItem[]) {
     if (!task.value) return
     preview.value = null
     const original = task.value
+    const changes = recognitionEdits(items ?? original.items).filter(edit => {
+      const file = original.items.find(item => item.path === edit.path)
+      return !file?.execution?.locked && !file?.execution?.completed && JSON.stringify(baseline.find(item => item.path === edit.path)) !== JSON.stringify(edit)
+    })
+    if (!changes.length) return
     try {
       const value = await api<Recognition>(
         `/recognitions/${original.id}`,
         {
           revision: original.revision,
-          items: recognitionEdits(items ?? original.items),
+          items: changes,
         },
         'PUT',
       )
-      if (alive) task.value = value
+      if (alive) acceptTask(value)
     } catch (e) {
       // Reload the authoritative snapshot after a rejected edit (including edits
       // made from another tab), so an optimistic checkbox cannot look saved.
       const value = await api<Recognition>(
         `/recognitions/${original.id}`,
       ).catch(() => null)
-      if (alive && value) task.value = value
+      if (alive && value) acceptTask(value)
       throw e
     }
   }
@@ -223,7 +228,8 @@ export function useWorkspace() {
         id: freshImport.value ? '' : task.value?.id || '',
       })
       if (!alive) return
-      task.value = value
+      acceptTask(value)
+      await runtime.refreshQueue()
       preview.value = null
       source.value = ''
       focus.value = ''
@@ -234,7 +240,7 @@ export function useWorkspace() {
   async function poll() {
     const [result] = await Promise.all([
       taskQuery.refetch(),
-      runtime.batchQuery.refetch(),
+      runtime.queueQuery.refetch(),
     ])
     if (
       result.data &&
@@ -242,15 +248,12 @@ export function useWorkspace() {
       (!task.value || result.data.id === task.value.id) &&
       result.data.revision >= (task.value?.revision ?? 0)
     )
-      task.value = JSON.parse(JSON.stringify(result.data))
+      acceptTask(result.data)
   }
   async function retry() {
     await act(async () => {
       if (task.value)
-        task.value = await api<Recognition>(
-          `/recognitions/${task.value.id}/retry`,
-          {},
-        )
+        acceptTask(await api<Recognition>(`/recognitions/${task.value.id}/retry`, {}))
       preview.value = null
     })
   }
@@ -260,7 +263,9 @@ export function useWorkspace() {
       await poll()
     })
   }
+  function fileLocked(file: RecognitionItem) { return !!file.execution?.locked || !!file.execution?.completed }
   async function selectFile(file: RecognitionItem) {
+    if (fileLocked(file)) return
     await act(async () => {
       file.selected = !file.selected
       await save()
@@ -270,7 +275,7 @@ export function useWorkspace() {
     await act(async () => {
       for (const group of filtered.value)
         for (const file of group.files)
-          file.selected = value && file.state === 'ready'
+          if (!fileLocked(file)) file.selected = value && file.state === 'ready'
       await save()
     })
   }
@@ -278,13 +283,14 @@ export function useWorkspace() {
     await act(async () => {
       const group = scoped.value.find((g) => g.id === id)
       if (!group) return
-      const ready = group.files.filter((file) => file.state === 'ready')
+      const ready = group.files.filter((file) => file.state === 'ready' && !fileLocked(file))
       const value = !ready.every((file) => file.selected)
       for (const file of ready) file.selected = value
       await save()
     })
   }
   async function removeFile(file: RecognitionItem) {
+    if (fileLocked(file)) return
     if (!await confirmAction({
       title: '移出文件？',
       description: `将「${file.path.split('/').pop()}」移出整理工作区？磁盘上的文件不会被删除。`,
@@ -301,15 +307,17 @@ export function useWorkspace() {
   async function moveGroup() {
     await act(async () => {
       if (!transfer.value) return
+      const file = task.value?.items.find(item => item.path === transfer.value!.path)
+      if (!file || fileLocked(file)) throw new Error('文件已提交整理或不在当前工作区')
       const target = groups.value.find(
         (group) => group.id === transferGroup.value,
       )
-      transfer.value.group =
+      file.group =
         target?.id ||
         `custom:${Date.now()}:${Math.random().toString(16).slice(2)}`
-      transfer.value.entry = target?.entry || null
-      transfer.value.selected = !!target?.entry
-      const id = transfer.value.group
+      file.entry = target?.entry || null
+      file.selected = !!target?.entry
+      const id = file.group
       await save()
       transfer.value = null
       focus.value = id
@@ -321,6 +329,7 @@ export function useWorkspace() {
     filePage.value = 1
   }
   function openTransfer(file: RecognitionItem) {
+    if (fileLocked(file)) return
     transfer.value = file
     transferGroup.value = 'new'
   }
@@ -351,7 +360,7 @@ export function useWorkspace() {
     busy,
     error,
     notice,
-    batch,
+    queue,
     task,
     preview,
     browser,
@@ -388,6 +397,7 @@ export function useWorkspace() {
     recognizing,
     locked,
     groups,
+    fileLocked,
     source,
     sources,
     filtered,
@@ -428,7 +438,6 @@ export function useWorkspace() {
     moveGroup,
     prepare,
     execute,
-    cancelBatch,
     chooseGroup,
     openTransfer,
     closeSearch,

@@ -25,8 +25,41 @@ type WorkspaceService struct {
 func NewWorkspace(store WorkspaceStore, settings SettingsReader, factory matching.Factory, extract *recognition.Service, files WorkspaceFiles, c *organizer.Coordinator) *WorkspaceService {
 	return &WorkspaceService{store, settings, factory, extract, files, c}
 }
-func (a *WorkspaceService) Read(id string) (matching.Workspace, error) { return a.store.Workspace(id) }
-func (a *WorkspaceService) Latest() (*matching.Workspace, error)       { return a.store.LatestWorkspace() }
+func (a *WorkspaceService) Read(id string) (matching.Workspace, error) {
+	task, err := a.store.Workspace(id)
+	if err != nil {
+		return task, err
+	}
+	return a.project(task)
+}
+func (a *WorkspaceService) project(task matching.Workspace) (matching.Workspace, error) {
+	states, err := a.store.FileExecutions(task.ID)
+	if err != nil {
+		return task, err
+	}
+	for i := range task.Items {
+		item := &task.Items[i]
+		if state, ok := states[item.Path]; ok {
+			copy := state
+			item.Execution = &copy
+			if state.Locked || state.Completed {
+				item.Selected = false
+			}
+			if state.Completed {
+				item.Removed = true
+			}
+		}
+	}
+	return task, nil
+}
+func (a *WorkspaceService) Latest() (*matching.Workspace, error) {
+	task, err := a.store.LatestWorkspace()
+	if err != nil || task == nil {
+		return task, err
+	}
+	value, err := a.project(*task)
+	return &value, err
+}
 func (a *WorkspaceService) Revision(id string) (int, error) {
 	w, err := a.Read(id)
 	return w.Revision, err
@@ -37,9 +70,6 @@ func (a *WorkspaceService) Start(paths []string, retryID string) (matching.Works
 	defer a.coordinator.Unlock()
 	if a.coordinator.ClosingLocked() {
 		return matching.Workspace{}, errors.New("服务正在关闭")
-	}
-	if a.coordinator.BusyLocked() {
-		return matching.Workspace{}, organizer.ErrBusy
 	}
 	if a.coordinator.RecognitionActiveLocked() {
 		return matching.Workspace{}, errors.New("已有识别任务运行中，请等待完成或取消")

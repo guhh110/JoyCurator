@@ -65,7 +65,7 @@ export function useSeasonComparison(options: {
     comparisonSeason.value = season
   }
   async function assignEpisode(file: RecognitionItem, number: number) {
-    if (locked.value || !current.value?.files.includes(file)) return
+    if (locked.value || file.execution?.locked || file.execution?.completed || !current.value?.files.includes(file)) return
     if (!episodeQuery.data.value?.some(episode => episode.number === number)) return
     const season = comparisonSeason.value
     await act(async () => {

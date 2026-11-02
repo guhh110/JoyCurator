@@ -21,7 +21,7 @@ func (a *Service) validateOps(ops []Work) error {
 		}
 		if op.Source != "" {
 			info, err := a.access.Stat(op.Source)
-			if err != nil || !info.Mode().IsRegular() || info.Size() != op.Size || info.ModTime().UnixNano() != op.MTime {
+			if err != nil || !info.Mode().IsRegular() || info.Size() != op.Size || info.ModTime().UnixNano() != op.MTime || op.SourceIdentity != "" && fsops.Identity(info) != op.SourceIdentity {
 				return errors.New("文件已变化，请重新预览：" + filepath.Base(op.Source))
 			}
 		}
@@ -63,6 +63,36 @@ func (a *Service) validateOps(ops []Work) error {
 	for dev, n := range needed {
 		if n > free[dev] {
 			return errors.New("目标磁盘空间不足")
+		}
+	}
+	return nil
+}
+
+// A cross-device move undo copies the surviving target back to its source.
+// Leave per-file recovery errors to the worker, but reserve enough free space
+// for all copies before starting any of them.
+func (a *Service) validateUndoSpace(ops []Work) error {
+	needed, free := map[uint64]int64{}, map[uint64]int64{}
+	for _, op := range ops {
+		if op.Status != "completed" || op.Mode != "move" {
+			continue
+		}
+		info, err := a.access.Stat(op.Target)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		available, device, err := a.access.CheckTarget(op.Source)
+		if err != nil {
+			return err
+		}
+		if a.access.Device(info) != device {
+			needed[device] += info.Size()
+			free[device] = available
+		}
+	}
+	for device, size := range needed {
+		if size > free[device] {
+			return errors.New("来源磁盘空间不足，无法撤销移动")
 		}
 	}
 	return nil

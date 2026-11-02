@@ -8,16 +8,21 @@ import (
 )
 
 type Store interface {
-	SaveRun(Run) error
+	SaveCheckpoint(Run, []int, []int, []model.MediaMapping) error
 	Run(string) (Run, error)
 	BatchSummaries(string) ([]Run, error)
-	LatestBatchID() (string, error)
-	SaveBatch([]Run) error
+	Enqueue([]Run) error
+	QueuedRuns() ([]Run, error)
+	FinishQueued(Run) error
+	CancelQueued([]string) error
+	QueuePage(string, int) (RunPage, error)
+	Batches(int) (BatchPage, error)
+	BatchPosition(string) (int, error)
+	FileExecutions(string) (map[string]matching.FileExecution, error)
 	Shared(string, string, string) (bool, error)
-	SaveMapping(model.MediaMapping) error
+	ScrapeArtifact(string) (*Work, error)
 	DeleteMapping(model.MediaMapping) error
 	UpdateMappingState(model.MediaMapping, string, string) error
-	Mapping(string) (*model.MediaMapping, error)
 	RunsByPurpose(int, string) (RunPage, error)
 }
 type Settings interface {

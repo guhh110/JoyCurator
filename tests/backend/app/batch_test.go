@@ -119,7 +119,7 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 		s.Rules.TVFolder = "collision"
 		s.Rules.TVFile = "video.{ext}"
 		s.Version++
-		_, _ = testDB(t, a).Exec("UPDATE config SET value=?", jsonText(s))
+		_ = a.store.SaveSettings(s)
 		plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
 		if err != nil {
 			t.Fatal(err)
@@ -179,15 +179,15 @@ func prepareQueuedBatch(t *testing.T, a *App, plan *organizer.Plan) organizer.Ba
 	t.Helper()
 	batch := organizer.Batch{ID: model.Key(), Runs: []organizer.Run{}, Active: true}
 	for _, group := range plan.Groups {
-		run := organizer.Run{ID: model.Key(), Title: group.Title, Mode: plan.Mode, State: "queued", Ops: group.Ops, Total: len(group.Ops), BatchID: batch.ID, Version: plan.Version}
-		if err := a.store.SaveRun(run); err != nil {
-			t.Fatal(err)
-		}
+		run := organizer.Run{ID: model.Key(), Title: group.Title, Mode: plan.Mode, State: "queued", Ops: group.Ops, Total: len(group.Ops), BatchID: batch.ID, Version: plan.Version, Purpose: "organize", Mappings: group.Mappings, RecognitionID: plan.RecognitionID}
 		batch.Runs = append(batch.Runs, run)
+	}
+	if err := a.store.Enqueue(batch.Runs); err != nil {
+		t.Fatal(err)
 	}
 	return batch
 }
-func TestRestartInterruptsQueuedRunsAndRecognition(t *testing.T) {
+func TestRestartResumesQueuedRunsAndInterruptsRecognition(t *testing.T) {
 	a, root, _, plan := batchFixture(t)
 	batch := prepareQueuedBatch(t, a, plan)
 	task := matching.Workspace{ID: model.Key(), State: "running", Items: []matching.Item{}}
@@ -200,12 +200,13 @@ func TestRestartInterruptsQueuedRunsAndRecognition(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer restarted.Close()
-	batch, err = restarted.dependencies.Organizer.ReadBatch(batch.ID)
+	batch = waitBatch(t, restarted, batch.ID)
+	err = nil
 	if err != nil || batch.Active {
 		t.Fatal(batch, err)
 	}
 	for _, run := range batch.Runs {
-		if run.State != "interrupted" {
+		if run.State != "completed" {
 			t.Fatal(run)
 		}
 	}

@@ -73,18 +73,19 @@ main.main
   → app.Open(dataDir, sourceRoot, targetRoot, secure)
     → 创建授权文件系统 fsops.FS
     → 打开 joycurator.db、启用 WAL / busy_timeout / foreign_keys
-    → 建表、写入首次默认设置
-    → sqlite.Open：原有表与历史中断恢复
+    → 新库事务建表并写入首次配置／当前格式标识；已有库先校验完整 schema
+    → sqlite.Open：队列一致性校验与事务中断恢复
     → 创建 organizer.Coordinator
     → recognition.New：读取并编译当前链
-    → 装配设置、目录、识别、规划、执行与 HTTP 服务
+    → 装配设置、目录、识别、预览与执行服务
     → 校验设置
-    → 将遗留 running / queued 整理任务及运行中识别标为 interrupted
+    → 校验 execution_queue 引用；原 running 任务及运行中识别标为 interrupted
+    → organizer.Start 按持久化序号恢复 queued，启动整理／刮削两个 worker
   → App.Handler(webui.Files())
   → http.Server.ListenAndServe
 ```
 
-退出时 HTTP 服务先停止接收请求，随后 `App.Close` 取消当前整理、识别与批次，等待后台工作结束，关闭 TMDB 空闲连接和数据库。
+退出时 HTTP 服务先停止接收请求，随后 `App.Close` 停止出队，取消整理、刮削与识别的活动任务，等待保存并保留未开始队列，关闭 TMDB 空闲连接和数据库。
 
 `App` 装配三个业务模块与 infra，并接入 HTTP、设置、认证和工作区流程；当前链属于 recognition，预览与执行统一属于 organizer，任务与后台生命周期由 organizer.Coordinator 管理。业务模块不直接依赖 SQL／HTTP，具体边界与调用链见 [后端架构](BACKEND.md)。
 
@@ -193,7 +194,7 @@ JavaScript 引擎使用 goja，每次调用创建独立 Runtime，不提供 Node
 RecognitionRules 编辑草稿 → PUT /api/extraction/rules
   → recognition.Service.Save
   → recognition.Compile：先全量验证
-  → recognition 的规则锁内通过 Store 保存 extraction_rules
+  → recognition 的规则锁内通过 Store 保存 rules 与 rule_examples
   → 替换 recognition.Service 的当前 Engine
   → 前端失效并重新读取 rules Query
 ```
@@ -288,7 +289,8 @@ AutomaticRecognitionPage → useWorkspace.start → POST /recognitions
   → rules.Target / ShowRoot 渲染分类与命名
   → 整理仅生成视频／字幕操作并登记目标视频映射；独立刮削预览生成 NFO／图片操作
   → 校验冲突、磁盘需求等 → PreviewCache
-确认 → POST /batches/execute {id} → 按作品执行 → runBatch → work
+确认 → POST /batches/execute {id} → Run 与队列同事务写入 → 返回排队回执
+  → organizer.drain 按序出队 → work
   → organizer.Engine.Run，逐步持久化操作状态
 ```
 
@@ -296,25 +298,29 @@ AutomaticRecognitionPage → useWorkspace.start → POST /recognitions
 
 `organizer` 将整理的视频／字幕和独立刮削的 NFO／图片分开记录，通过 `fsops` 完成受限目录内的读写、暂存与发布。视频／字幕采用无全文件哈希的快速路径；异常中断若状态不明，保留现场待人工确认。整理撤销只按路径处理，不核对内容或身份，可能误移／误删同路径外部文件；刮削仍保持内容与身份校验。覆盖没有备份，不能恢复旧内容。
 
-## 10. 多作品批次与执行互斥
+## 10. 多批队列、并行刮削与文件锁定
 
 ```text
 POST /batches/preview {recognitionId,revision,mode,duplicatePolicy}
-  → Organizer.BatchPreview：仅收集已选 ready 文件，按作品分组
-  → 每组 buildPreview
-  → 合并全部 ops，检查跨作品重复目标与合计空间
-  → 保存统一 Plan（绑定工作区 revision 与设置 version）
+  → Organizer.BatchPreview：只收集可编辑且已选 ready 文件，按作品分组
+  → buildPreview → 检查全部目标、合计空间与已排队任务的预留
+  → PreviewCache：绑定 workspace revision、settings version、源／目标身份
 POST /batches/execute {id}
-  → Organizer.ExecuteBatch：重验预览、revision、设置、来源与目标
-  → 事务写入每作品一条 queued Run，带 batchId
-  → 占用批次执行槽 → runBatch 顺序调用 work
+  → 校验预览与文件，锁内复核快照
+  → Enqueue 事务写入逐作品 Run 和 execution_queue 序号 → 立即返回
+organize drain → 一次取得全部访问占用 → 再校验配置、授权、文件与空间
+  → work / Engine：逐阶段持久化
+  → 视频 completed 并核验身份 → SaveRunMappings 同事务保存检查点＋映射
+  → 释放该视频写占用 → scrape drain 可立即消费；整理继续后续视频
 ```
 
-批次不是单独的数据库表，`batchId` 将 `runs` 中的作品记录关联起来，`readBatch` 重建批次视图。每部作品启动前重新校验配置版本、授权来源和操作条件；某部失败继续下一部。
+`Coordinator` 持有 organize/scrape 各一个 worker，整理批次连续 FIFO；单部失败、取消或完成均推进后续任务。新建、重试和撤销都进入对应通道，重试追加队尾，不按 Run 的历史创建时间排序。批次由 `runs.batchId` 关联，不新增批次表；持久化顺序与任务引用由 `execution_queue` 管理。
 
-`organizer.Coordinator` 管当前单任务和整个队列的互斥占用，避免两部作品之间的空隙被其他执行抢占。刮削、重试、撤销和另一批次共享执行限制；队列结束前不允许设置变更。
+跨通道的读写冲突进入等待，启动时一次获得全部所需资源，不持有部分锁，`GET /queue` 显示等待原因。整理覆盖／撤销不能破坏刮削正在读的视频；共享图片和 NFO 撤销仍检查其他记录引用。已排队／运行的整理来源和全部目标不能重复提交；已入队任务不受 15 分钟预览有效期限制。
 
-批次取消作用于当前任务和尚未开始项；已完成记录保留。每部作品独立重试／撤销。撤销按操作逆序执行，公共 NFO／图片的共享所有权通过记录判断，不能盲删。重启后 queued/running 均标为 interrupted，不自动恢复执行。
+工作区只提交变更文件，revision 检查继续保留。`FileExecutions` 按 Run 投影文件关联任务、锁定、完成与人工核对状态；后台执行不保存工作区或增加 revision，识别增量保存也不持久化该投影。未提交文件继续导入、修正、选择和预览；已提交文件不能修改或重复提交，移出包含锁定文件的来源被拒绝。已登记完成视频退出整理选择；失败／取消后尚未完成的视频释放编辑，状态不明的视频保留锁定。整理最后保存或重试不会把同一身份视频的已完成刮削状态重置为待办。
+
+批次取消只作用于该批当前与未开始项；单条取消支持等待与运行态。关闭停止出队并等待活动任务保存；重启将原 running 置为 interrupted 并移出队列，不自动重试，原 queued 按序重验并续跑。队列引用或状态不一致明确报错，不自动重建。设置在任一通道活动、排队或识别未结束时禁止保存。
 
 ## 11. 数据保存在哪里
 
@@ -323,12 +329,14 @@ POST /batches/execute {id}
 | 管理员与会话 | SQLite administrators / sessions | 密码 bcrypt、会话 Token 存 SHA256 哈希 |
 | 设置与 TMDB 凭据 | SQLite config | 对外只返回凭据存在标志 |
 | TMDB 响应 | SQLite tmdb_cache | 带过期时间，正常响应缓存 24 小时 |
-| 当前提取规则链 | SQLite extraction_rules | 单行 JSON，保存即替换 |
+| 当前提取规则链 | SQLite rule_chain / rules / rule_examples | 关系表，保存即替换，空链重启不填充 |
 | 提取执行与步骤 | SQLite extraction_traces / extraction_steps | 长期保留，人工清理 |
-| 自动识别工作区 | SQLite recognitions | JSON，含 revision、修正、候选、traceId |
-| 整理／撤销记录与队列 | SQLite runs | JSON，操作恢复信息与可选 batchId |
+| 自动识别工作区 | SQLite recognitions / workspace_items 等 | 摘要、路径、季集和作品快照拆表，含 revision 与 traceId |
+| 整理／刮削／撤销记录 | SQLite runs / operations / run_mappings 等 | 摘要、检查点与映射快照拆表，操作内容使用 BLOB |
+| 执行顺序与任务引用 | SQLite execution_queue | 自增 position、唯一 run_id、purpose；与 Run 原子入队 |
+| 已登记媒体 | SQLite media_mappings | 视频身份、映射归属和刮削状态；逐视频原子登记 |
 | 尚未执行的预览 | organizer.PreviewCache 内存 | 过期或重启失效 |
-| 活动任务引用 | 浏览器 localStorage | 跨刷新恢复；退出清空 |
+| 双通道活动摘要 | `/queue` ＋ TanStack Query | 挂载／聚焦从服务端发现，不保存浏览器任务 ID |
 | 查询响应缓存 | TanStack Query 内存 | 按 key 隔离，退出清空 |
 | 规则编辑草稿、调试结果 | 页面内存 | 未保存编辑离开规则页会丢失 |
 
@@ -370,11 +378,11 @@ main.ts
 ### 查询、写入与缓存
 
 - `app/query.ts`：唯一 QueryClient、默认策略和公共 keys。
-- `app/runtime.ts`：登录后共享设置 Query、当前批次轮询、活动手动任务及详情 Query、本地文件／作品、重试撤销操作。
+- `app/runtime.ts`：登录后共享设置和双通道队列 Query、按需详情 Query、取消／重试／撤销操作。
 - `api.ts`：带同源 Cookie 的 JSON 请求、ApiError、AbortSignal、401 事件、会话 epoch。
 - 查询函数通过 `signal` 传给 API，读取按 key 去重；写入使用 mutation，成功后失效相关查询。
 - GET 临时错误最多重试一次，4xx 不自动重试；写请求不自动重试。不要对整理确认增加自动重试。
-- 运行中的任务约每 1.2 秒观察一次；识别页失活后停止该页的识别轮询，布局的批次／活动任务观察继续。
+- 运行中的任务约每 1.2 秒观察一次；识别页失活后停止该页的识别轮询，布局的双通道队列观察继续；空闲后所有任务与片库定时轮询停止。
 - 可编辑规则、设置、工作区从 Query 数据复制为本地草稿，避免直接修改只读共享缓存。
 - 自动识别草稿用工作区 ID 与 revision 防止旧查询覆盖新修正；任何新写请求都不能忽略 revision 处理。
 - `clearSession` 取消查询、清空缓存与本地工作区，并使此前 API 响应失效。新请求不可绕过统一 API，否则会破坏旧会话隔离。
@@ -432,7 +440,7 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 - `tests/frontend/recognition/`：规则模型、调试取消、工作区行为与脚本展示。
 - `tests/frontend/app/`：路由、登录跳转、侧边导航、Query 去重／取消／失效、会话隔离。
 
-交付检查包含 `make check`（前端 9 个测试文件、47 个用例）、`make build` 及 production 构建标签测试；浏览器验证了三工具页、历史详情刷新、手机抽屉与宽度、手动导入／查询／作品映射及切页保留状态。浏览器验证使用隔离测试目录，没有用真实收藏执行整理。
+交付检查包含 `make check`、`make build` 及 production 构建标签测试。队列回归使用可控 worker 和隔离目录，覆盖多批 FIFO、失败继续、队尾重试、双通道重叠、逐视频登记、资源等待、文件级修正和重启续跑；不使用真实收藏数据。
 
 ## 16. 后续修改建议与当前取舍
 
@@ -443,9 +451,9 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 5. 轨迹长期保留、没有自动清理，较大目录会持续增加数据库体积；当前只支持手动清理已结束记录。
 6. 当前规则保存不做多编辑者版本冲突控制，后保存者替换当前链；工作区修正和设置则分别有 revision/version。
 7. 规则编辑草稿只在页面内存中，离开后不恢复。需要保存草稿时应新增明确机制，不能复用“当前生效链”。
-8. 批次执行和恢复信息持久化，预览不持久化；服务重启只标中断，不自动继续危险的文件操作。
+8. 批次执行和恢复信息持久化，预览不持久化；服务重启区分原运行与等待状态：运行项中断后需人工重试，等待项按序重验后自动续跑。
 9. 前端已按路由与 feature 分开，既有大表单与业务样式仍有继续细分空间；新增逻辑应遵循现有职责，不回填到应用外壳。
 
 建议接手顺序：先读本节总体链路，再读 `recognition/model.go → engine.go → scripts`，然后 `recognition → matching → organizer`，配合 `infra/sqlite` 和 `app/http*.go`，最后结合前端 `routes.ts → runtime.ts → 对应 feature` 追一条实际路径。
 
-本轮规范化保留持久化格式，只增加查询索引。模型所有者、构造依赖、摘要读取及事务语义以 [后端架构](BACKEND.md) 为准；性能样本见 [性能记录](PERFORMANCE.md)。
+当前持久化模型已全面关系化，只有脚本动态值和上游缓存保留 JSON/BLOB。旧 JSON 表格式不能直接启动；先校验 schema 再恢复，明确报错，不重置或迁移用户数据。逐操作和工作区批次更新使用增量检查点；执行检查点与媒体登记同事务提交。模型所有者、构造依赖、摘要读取及事务语义以 [后端架构](BACKEND.md) 为准；性能样本见 [性能记录](PERFORMANCE.md)。

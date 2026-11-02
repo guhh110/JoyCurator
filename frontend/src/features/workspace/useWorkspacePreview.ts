@@ -12,7 +12,6 @@ export function useWorkspacePreview(options: {
   act: (fn: () => Promise<void>) => Promise<void>
 }) {
   const { task, busy, notice, runtime, act } = options
-  const batch = runtime.batch
   let generation = 0
   let request: AbortController | null = null
   function abandon() { generation++; request?.abort(); request = null; preview.value = null }
@@ -62,18 +61,13 @@ export function useWorkspacePreview(options: {
     if (!previewReady.value) return
     await act(async () => {
       if (!preview.value) return
-      const value = await api<Batch>('/batches/execute', {
+      await api<Batch>('/batches/execute', {
         id: preview.value.id,
       })
-      runtime.acceptBatch(value)
+      await runtime.refreshRecords()
       preview.value = null
       notice.value = '已加入整理队列，每部作品分别记录，可独立重试或撤销。'
     })
   }
-  async function cancelBatch() {
-    await act(async () => {
-      if (batch.value) await api(`/batches/${batch.value.id}/cancel`, {})
-    })
-  }
-  return { pending: busy, preview, mode, previewPage, previewRows, duplicatePolicy, previewReady, prepare, changeDuplicatePolicy, execute, cancelBatch }
+  return { pending: busy, preview, mode, previewPage, previewRows, duplicatePolicy, previewReady, prepare, changeDuplicatePolicy, execute }
 }

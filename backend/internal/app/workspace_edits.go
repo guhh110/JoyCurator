@@ -7,13 +7,12 @@ import (
 	"slices"
 
 	"joycurator/internal/matching"
-	"joycurator/internal/organizer"
 )
 
 func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Update) (matching.Workspace, error) {
 	// Network validation happens outside the application mutex. Revision is
 	// checked again when committing so two browser tabs cannot lose edits.
-	task, err := a.Read(id)
+	task, err := a.store.Workspace(id)
 	if err != nil {
 		return task, err
 	}
@@ -23,8 +22,12 @@ func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Up
 	if task.Revision != in.Revision {
 		return task, errors.New("识别结果已更新，请重新加载")
 	}
-	if len(in.Items) != len(task.Items) {
+	if len(in.Items) == 0 || len(in.Items) > len(task.Items) {
 		return task, errors.New("文件列表已变化，请重新加载")
+	}
+	states, err := a.store.FileExecutions(id)
+	if err != nil {
+		return task, err
 	}
 	s, err := a.settings.Load()
 	if err != nil {
@@ -45,11 +48,17 @@ func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Up
 		edits[edit.Path] = edit
 	}
 	memo := matching.NewResolver(client)
+	changes := map[string]matching.Item{}
+	matched := 0
 	for i := range task.Items {
 		item := &task.Items[i]
 		edit, ok := edits[item.Path]
 		if !ok {
-			return task, errors.New("文件列表已变化")
+			continue
+		}
+		matched++
+		if state := states[item.Path]; state.Locked || state.Completed {
+			return task, errors.New("文件已由任务 " + state.RunID + " 占用或整理完成：" + item.Path)
 		}
 		if !edit.Removed && edit.Selected && !a.files.SourceAllowed(item.Path, s) {
 			return task, errors.New("文件已不在当前源目录内，请重新导入")
@@ -90,48 +99,38 @@ func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Up
 			item.Group = matching.EntryGroup(*item.Entry)
 		}
 		item.Removed, item.Selected = edit.Removed, edit.Selected && item.State == "ready" && !edit.Removed
+		changes[item.Path] = *item
 	}
 	a.coordinator.Lock()
 	defer a.coordinator.Unlock()
-	if a.coordinator.BusyLocked() {
-		return task, organizer.ErrBusy
-	}
-	current, err := a.Read(id)
+	current, err := a.store.Workspace(id)
 	if err != nil {
 		return task, err
 	}
 	if current.Revision != in.Revision {
 		return current, errors.New("识别结果已更新，请重新加载")
 	}
-	err = a.store.SaveWorkspace(&task)
-	return task, err
-}
-func (a *WorkspaceService) FinishRun(run organizer.Run) {
-	completed := map[string]bool{}
-	for _, op := range run.Ops {
-		if op.Kind == "video" && op.Status == "completed" {
-			completed[op.Source] = true
-		}
+	if matched != len(in.Items) {
+		return current, errors.New("文件列表已变化")
 	}
-	if len(completed) == 0 {
-		return
-	}
-	a.coordinator.Lock()
-	defer a.coordinator.Unlock()
-	task, err := a.Read(run.RecognitionID)
+	states, err = a.store.FileExecutions(id)
 	if err != nil {
-		return
+		return current, err
 	}
-	changed := false
-	for i := range task.Items {
-		if completed[task.Items[i].Path] && !task.Items[i].Removed {
-			task.Items[i].Removed, task.Items[i].Selected = true, false
-			changed = true
+	for path := range changes {
+		if state := states[path]; state.Locked || state.Completed {
+			return current, errors.New("文件已由任务 " + state.RunID + " 占用或整理完成：" + path)
 		}
 	}
-	if changed {
-		_ = a.store.SaveWorkspace(&task)
+	for i := range current.Items {
+		if value, ok := changes[current.Items[i].Path]; ok {
+			current.Items[i] = value
+		}
 	}
+	if err = a.store.SaveWorkspace(&current); err != nil {
+		return current, err
+	}
+	return a.project(current)
 }
 
 // sourceOwner returns the added path that owns file: the longest added path
@@ -153,11 +152,7 @@ func sourceOwner(file string, roots []string) string {
 func (a *WorkspaceService) RemoveSource(id, path string, revision int) (matching.Workspace, error) {
 	a.coordinator.Lock()
 	defer a.coordinator.Unlock()
-	if a.coordinator.BusyLocked() {
-		task, _ := a.Read(id)
-		return task, organizer.ErrBusy
-	}
-	task, err := a.Read(id)
+	task, err := a.store.Workspace(id)
 	if err != nil {
 		return task, err
 	}
@@ -173,6 +168,15 @@ func (a *WorkspaceService) RemoveSource(id, path string, revision int) (matching
 	})
 	if index < 0 {
 		return task, errors.New("来源不在当前识别任务中")
+	}
+	states, err := a.store.FileExecutions(id)
+	if err != nil {
+		return task, err
+	}
+	for _, item := range task.Items {
+		if sourceOwner(item.Path, task.Paths) == target && states[item.Path].Locked {
+			return task, errors.New("来源包含任务 " + states[item.Path].RunID + " 占用的文件")
+		}
 	}
 	roots := slices.Clone(task.Paths)
 	items := task.Items[:0:0]
@@ -190,6 +194,8 @@ func (a *WorkspaceService) RemoveSource(id, path string, revision int) (matching
 			task.Completed++
 		}
 	}
-	err = a.store.SaveWorkspace(&task)
-	return task, err
+	if err = a.store.SaveWorkspace(&task); err != nil {
+		return task, err
+	}
+	return a.project(task)
 }

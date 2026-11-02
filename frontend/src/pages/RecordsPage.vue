@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { useRecords } from '../features/records/queries'
+import { useRecords, useBatches } from '../features/records/queries'
 import {
   ChevronRight,
   Folder,
@@ -11,6 +11,7 @@ import {
 import { pageNumber } from '../app/routing'
 import { useRuntime } from '../app/runtime'
 import { date, modeNames, states } from '../features/records/presentation'
+import QueueRecords from '../features/records/QueueRecords.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import Pagination from '../components/ui/Pagination.vue'
@@ -18,6 +19,8 @@ const route = useRoute(),
   router = useRouter(),
   runtime = useRuntime()
 const page = computed(() => pageNumber(route.query.page))
+const batchPage = ref(1)
+const batches = useBatches(batchPage)
 const recordsQuery = useRecords(page, 'organize')
 const records = computed(() => recordsQuery.data.value?.items ?? [])
 function changePage(value: number) {
@@ -35,7 +38,19 @@ function changePage(value: number) {
           刷新记录
         </button></template
       ></PageHeader
-    ><QueryState
+    >
+    <QueueRecords purpose="organize" />
+    <details class="pane" style="padding:16px;margin-bottom:16px">
+      <summary>整理批次 · {{ batches.data.value?.total ?? 0 }}</summary>
+      <QueryState :loading="batches.isPending.value" :error="batches.error.value" @retry="batches.refetch()">
+        <div v-for="batch in batches.data.value?.items" :key="batch.id" style="display:flex;align-items:center;gap:12px;padding:10px 0">
+          <span style="flex:1">{{ batch.runs.length }} 部作品 · {{ states[batch.state] ?? batch.state }}<template v-if="batch.position"> · 队列第 {{ batch.position }} 批</template></span>
+          <button v-if="batch.active" class="button small" :disabled="runtime.actionBusy.value" @click="runtime.cancelBatch(batch.id)">取消批次</button>
+        </div>
+        <Pagination v-if="(batches.data.value?.total ?? 0)>20" :page="batchPage" :total="batches.data.value?.total ?? 0" @change="batchPage=$event" />
+      </QueryState>
+    </details>
+    <QueryState
       :loading="recordsQuery.isPending.value"
       :error="recordsQuery.error.value"
       @retry="recordsQuery.refetch()"

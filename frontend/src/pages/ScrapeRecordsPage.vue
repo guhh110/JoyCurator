@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRecords } from '../features/records/queries'
 import { ArrowRight, Clock3, FileImage, RotateCcw, Layers3 } from '@lucide/vue'
 import { useRuntime } from '../app/runtime'
+import QueueRecords from '../features/records/QueueRecords.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import { date, states } from '../features/records/presentation'
@@ -15,6 +16,7 @@ const action = runtime.recordAction
 <template>
   <section aria-label="刮削记录">
     <PageHeader title="刮削记录" eyebrow="SCRAPE JOURNAL" description="单独查看、重试和撤销 NFO/图片任务。" />
+    <QueueRecords purpose="scrape" />
     <QueryState :loading="records.isPending.value" :error="records.error.value" @retry="records.refetch()">
       <div v-if="!records.data.value?.items.length" class="pane records-empty"><span class="empty-icon"><FileImage :size="32" :stroke-width="1.5" /></span><span class="eyebrow">THE JOURNAL IS CLEAR</span><h2>还没有刮削记录</h2><p>开始刮削后，每次任务的进度、失败项与撤销入口都会保留在这里。</p><RouterLink class="button primary" to="/scrape">前往媒体刮削 <ArrowRight :size="15" /></RouterLink></div>
       <template v-else>
@@ -22,7 +24,7 @@ const action = runtime.recordAction
         <article v-for="run in records.data.value?.items" :key="run.id" class="pane scrape-record">
           <div class="record-emblem"><FileImage :size="22" :stroke-width="1.6" /></div>
           <div class="record-body"><div class="record-title"><strong>{{ run.title }}</strong><span class="record-state" :class="run.state">{{ states[run.state] ?? run.state }}</span></div><div class="record-meta"><span><Clock3 :size="13" />{{ date(run.created) }}</span><span>{{ run.completed }} / {{ run.total }} 项已处理</span><span v-if="run.undo">撤销任务</span></div><p v-if="run.error" class="record-error">{{ run.error }}</p></div>
-          <div class="scrape-record-actions"><button class="text-button" @click="runtime.inspect(run)">查看详情 <ArrowRight :size="14" /></button><button v-if="run.state === 'running'" class="button small" :disabled="busy" @click="action(run,'cancel')">取消</button><button v-if="['failed','cancelled','interrupted'].includes(run.state) && !run.undo" class="button small" :disabled="busy" @click="action(run,'retry')"><RotateCcw :size="13" />重试</button><button v-if="!['running','queued','undone'].includes(run.state)" class="button small" :disabled="busy" @click="runtime.inspect(run)">撤销…</button></div>
+          <div class="scrape-record-actions"><button class="text-button" @click="runtime.inspect(run)">查看详情 <ArrowRight :size="14" /></button><button v-if="['running','queued'].includes(run.state)" class="button small" :disabled="busy" @click="action(run,'cancel')">取消</button><button v-if="['failed','cancelled','interrupted'].includes(run.state) && !run.undo" class="button small" :disabled="busy" @click="action(run,'retry')"><RotateCcw :size="13" />重试</button><button v-if="!['running','queued','undone'].includes(run.state)" class="button small" :disabled="busy" @click="runtime.inspect(run)">撤销…</button></div>
         </article>
       </template>
       <div v-if="(records.data.value?.total ?? 0)>20"><button class="button small" :disabled="page===1" @click="page--">上一页</button><button class="button small" :disabled="page*20>=(records.data.value?.total ?? 0)" @click="page++">下一页</button></div>

@@ -43,7 +43,7 @@ func (a *ConfigService) View() (any, error) {
 func (a *ConfigService) Update(input ConfigUpdate) error {
 	a.coordinator.Lock()
 	defer a.coordinator.Unlock()
-	if a.coordinator.BusyLocked() {
+	if a.coordinator.BusyLocked() || a.coordinator.RecognitionActiveLocked() {
 		return organizer.ErrBusy
 	}
 	old, err := a.Load()

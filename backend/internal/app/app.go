@@ -62,7 +62,13 @@ func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
 	})
 	organize := organizer.New(organizer.Dependencies{Coordinator: coordinator, Store: store, Settings: config,
 		Previews: previews, Access: access, Workspaces: workspace, Mappings: store, Sources: files, Factory: factory,
-		Runner: runner, Revision: workspace.Revision, Finish: workspace.FinishRun})
+		Runner: runner, Revision: workspace.Revision})
+	if err := organize.Start(); err != nil {
+		coordinator.Close()
+		pool.Close()
+		store.Close()
+		return nil, err
+	}
 	deps := Dependencies{Auth: auth.New(store), Secure: secure, Health: store.Ping, Config: config, Matching: match, Recognition: recognize, Workspace: workspace, Files: files, Organizer: organize}
 	return &App{store: store, coordinator: coordinator, tmdbPool: pool, dependencies: deps}, nil
 }

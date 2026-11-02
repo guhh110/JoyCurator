@@ -24,12 +24,10 @@ func TestSettingsRejectUnknownFields(t *testing.T) {
 	a, _ := fixture(t)
 	s, _ := a.dependencies.Config.Load()
 	raw := strings.TrimSuffix(jsonText(s), "}") + `,"unexpectedField":true}`
-	if _, err := testDB(t, a).Exec("UPDATE config SET value=?", raw); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.dependencies.Config.Load(); err == nil {
+	if err := testUpdateSettings(t, a, httptest.NewRecorder(), httptest.NewRequest("PUT", "/api/settings", strings.NewReader(raw))); err == nil {
 		t.Fatal("unknown settings field accepted")
 	}
+
 }
 
 func TestSourceBoundaryAndNestedTargetExclusion(t *testing.T) {

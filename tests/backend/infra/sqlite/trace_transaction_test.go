@@ -41,10 +41,15 @@ func TestTraceFinalizationRollsBackStepsAndSummaryTogether(t *testing.T) {
 }
 func TestRunSummariesSkipOperationDecodingButDetailsRemainStrict(t *testing.T) {
 	store := openStore(t)
-	raw := `{"id":"summary","purpose":"organize","state":"completed","batchId":"batch","ops":[{"unexpected":true}],"mappings":[]}`
-	if _, err := store.db.Exec("INSERT INTO runs VALUES(?,?)", "summary", raw); err != nil {
+	r := organizer.Run{ID: "summary", Purpose: "organize", State: "completed", BatchID: "batch", Ops: []organizer.Work{{Operation: organizer.Operation{Content: []byte("blob")}}}}
+	if err := store.SaveRun(r); err != nil {
 		t.Fatal(err)
 	}
+	// A broken undo reference affects detail reconstruction, never summary projection.
+	if _, err := store.db.Exec("PRAGMA foreign_keys=OFF; UPDATE operations SET undo_parent='missing'; PRAGMA foreign_keys=ON"); err != nil {
+		t.Fatal(err)
+	}
+
 	page, err := store.RunsByPurpose(1, "organize")
 	if err != nil || page.Total != 1 || len(page.Items) != 1 || page.Items[0].Ops != nil || page.Items[0].Mappings != nil {
 		t.Fatal(page, err)

@@ -17,7 +17,6 @@ const {
   detailTitle,
   detailQuery,
   undoing,
-  executing: running,
   actionBusy: busy,
   recordAction,
 } = runtime
@@ -67,13 +66,14 @@ const detail = computed(() => detailQuery.data.value)
           : '文件变化时会停止操作'
       }}</span>
       <div class="footer-buttons">
+        <button v-if="['queued', 'running'].includes(detail.state)" class="button" :disabled="busy" @click="recordAction(detail, 'cancel')">取消任务</button>
         <button
           v-if="
             ['failed', 'interrupted', 'cancelled'].includes(detail.state) &&
             !detail.undo
           "
           class="button"
-          :disabled="busy || running"
+          :disabled="busy"
           @click="recordAction(detail, 'retry')"
         >
           重试未完成项</button
@@ -88,7 +88,7 @@ const detail = computed(() => detailQuery.data.value)
             )
           "
           class="button"
-          :disabled="busy || running"
+          :disabled="busy"
           @click="undoing = detail"
         >
           <Undo2 :size="15" />{{

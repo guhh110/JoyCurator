@@ -13,15 +13,15 @@
 | `POST /login` | `{username,password}`，登录 |
 | `POST /logout` | 注销会话 |
 | `GET /settings` | 设置、授权 `roots`、凭据存在标志 `hasToken`；不返回 Token |
-| `PUT /settings` | 设置及当前 `version`，可选 `tmdbToken`；版本过期拒绝保存 |
+| `PUT /settings` | 设置及当前 `version`，可选 `tmdbToken`；版本过期、识别未结束或任一通道运行／排队时拒绝保存 |
 | `GET /browse?path=` | 默认仅浏览已配置源目录；目录设置选择器可用 `scope=roots` 浏览授权根目录，跳过隐藏文件和符号链接 |
 | `GET /search?type=&q=&year=` | 搜索 TMDB，`type` 为 `movie` 或 `tv` |
 | `GET /seasons?id=` | 作品的季列表 |
 | `GET /episodes?id=&season=` | 指定季的集列表，季号 0 为特别篇 |
 | `GET /scrape/works?q=&cursor=` | 刮削作品概览，按类型和 TMDB ID 稳定排序，每次最多 50 部；返回 `{items:[{type,tmdbId,representative,total,pending,failed,completed}],nextCursor}`。搜索匹配目标路径或 TMDB ID；不逐个检查视频是否可用 |
-| `GET /scrape/works/{kind}/{id}` | 指定电影或剧集的全部已登记目标视频及实时可用状态，返回 `MediaMapping[]`；不扫描旧媒体 |
+| `GET /scrape/works/{kind}/{id}` | 指定电影或剧集的全部已登记目标视频及实时可用状态，返回 `MediaMapping[]`；临时状态含 `queued/running/unavailable`，不扫描旧媒体 |
 | `POST /scrape/preview` | `{paths}`，仅接受已登记且可用的同一作品，单次 1–1000 个目标视频，返回产物、空间与冲突 |
-| `POST /scrape/execute` | `{id}`，确认刮削预览；提交时复核所选映射与文件 |
+| `POST /scrape/execute` | `{id}`，确认刮削预览；提交时复核所选映射与文件，返回持久化 `queued` Run 摘要 |
 | `GET /recognitions` | 最近的识别工作区，无记录时返回 `null` |
 | `POST /recognitions` | `{paths,id?}`，创建异步识别任务；提供 `id` 时补充现有工作区并保留修正 |
 | `GET /extraction/rules` | 当前链、默认链、完整脚本模板目录、目标及来源枚举 |
@@ -32,19 +32,21 @@
 | `GET /extraction/traces/{id}` | `{trace,metadata,steps}`，含执行时规则快照 |
 | `DELETE /extraction/traces/{id}` | 手动清理已结束轨迹及步骤，不修改工作区结果 |
 | `GET /recognitions/{id}` | 识别进度、候选、匹配依据、文件分组及选中状态 |
-| `PUT /recognitions/{id}` | `{revision,items}`，保存人工修正并校验作品与季集；拒绝过期版本 |
+| `PUT /recognitions/{id}` | `{revision,items}`，只提交变更文件，保存人工修正并校验作品与季集；拒绝过期版本及已锁定／完成文件 |
 | `POST /recognitions/{id}/cancel` | 取消识别，已完成结果保留 |
 | `POST /recognitions/{id}/retry` | 重试失败与未完成项，保留已处理文件的人工修正 |
+| `GET /queue` | `{revision,active,recognizing,organize,scrape}`；每通道返回 `{current,queued,queuedBatches,waitReason}`，`current` 为活动 Run 摘要或 `null`，等待时显示原因 |
+| `GET /queue/items?purpose=&page=` | `purpose=organize/scrape`，按实际出队顺序返回等待任务，固定每页 20 条 `{items,total,page}`；不含运行中任务 |
 | `POST /batches/preview` | `{recognitionId,revision,mode,duplicatePolicy}`，预览选中文件，统一检查跨作品目标冲突及空间；重复策略必填 `error/skip/overwrite` |
-| `POST /batches/execute` | `{id}`，确认批量预览，持久化逐作品队列，返回 `{id,runs,active}` |
-| `GET /batches` | 最近的自动整理批次，无记录时返回 `null` |
-| `GET /batches/{id}` | `{id,runs,active}`，逐作品状态与批次是否仍在执行 |
+| `POST /batches/execute` | `{id}`，确认批量预览，持久化逐作品队列，返回 `{id,runs,active,state,position}` |
+| `GET /batches?page=` | 分页批次列表，固定每页 20 批 `{items,total,page}`，空列表为 `[]` |
+| `GET /batches/{id}` | `{id,runs,active,state,position}`，持久化任务推导状态及队列批次位置；`position=0` 表示已无队列项 |
 | `POST /batches/{id}/cancel` | 取消当前作品及未启动队列项，已完成记录保留 |
-| `GET /runs?page=` | 整理批次，固定每页 20 条，返回 `{items,total,page}` |
-| `GET /runs/{id}` | 批次详情、逐文件状态和错误 |
-| `POST /runs/{id}/cancel` | 取消运行中的任务 |
+| `GET /runs?page=` | 整理任务摘要，固定每页 20 条，返回 `{items,total,page}` |
+| `GET /runs/{id}` | 整理任务详情、逐文件状态和错误 |
+| `POST /runs/{id}/cancel` | 取消排队中或运行中的任务 |
 | `POST /runs/{id}/retry` | 重试失败、取消或中断的整理 |
-| `POST /runs/{id}/undo` | 整批撤销；撤销中断后再次调用以继续 |
+| `POST /runs/{id}/undo` | 该作品逆序撤销；撤销中断后再次调用以继续 |
 
 工作区文件结构含 `path`、`size`、`mtime`、`metadata`、`season` 和 `episodes`。metadata 是规则直接提取的原始结果，季集映射可由用户另行修正。`mtime` 为纳秒时间戳字符串，避免 JavaScript 数值精度损失；未知季号为 `-1`，预览前由用户选择的季补全。
 
@@ -52,15 +54,19 @@
 
 任务状态为 `queued`、`running`、`completed`、`failed`、`cancelled`、`interrupted`、`undone`。前端轮询详情获取进度；服务重启后运行中的批次标为中断，操作的临时路径、文件身份与校验值仍持久化，便于重试或撤销。
 
-每次只运行一个整理或撤销任务。自动整理队列占用执行槽直到整批结束，期间禁止其他执行及设置变更；单部作品失败后继续下一部。每部作品的记录带可选 `batchId`，可独立重试、撤销。重启后运行中和排队中的记录均标为中断，不自动执行。
+整理与刮削各有一个执行通道，可同时运行。整理批次按提交顺序逐作品执行；失败、取消及完成都会推进队列。新任务、重试和撤销统一持久化入队，重试追加队尾。跨通道访问冲突等待资源，不持有部分访问锁。每部作品记录带可选 `batchId`，可独立取消、重试、撤销。关闭停止出队并等待当前任务保存；重启将原运行项标为 `interrupted`，已持久化等待项保留原序、复核后继续。队列数据不一致直接报错，不自动修复。
 
-工作区和修正、队列、整理记录保存在 SQLite；浏览器仅维护编辑草稿、视图状态与活动任务引用。两类预览共享内存缓存，15 分钟有效、合计最多 32 份，满额逐出最早预览，设置保存后全部失效。
+工作区和修正、队列、整理记录保存在 SQLite；浏览器仅维护编辑草稿与视图状态，活动任务以 `/queue` 为准。两类预览共享内存缓存，15 分钟有效、合计最多 32 份，满额逐出最早预览，设置保存后全部失效。有效期仅约束提交；Run 与队列位置同事务写入后立即返回回执，等待中的任务不再受预览有效期限制，开始时重验配置、授权、文件与空间。
 
 ## 自动识别工作区
 
 识别任务返回 `id`、`revision`、`state`、`paths`、`items`、`completed`、`total`、`error`、`created`。任务状态为 `running`、`completed`、`failed`、`cancelled`、`interrupted`。每个文件在扫描字段之外包含可选 `traceId`、`metadata`、`group`、`entry`、`candidates`、`state`、`reason`、`selected`、`removed`；文件状态为 `pending`、`ready`、`review`、`unmatched`、`failed`。只有 `ready` 的选中文件可进入预览。
 
-保存修正需提交完整文件列表；每项为 `{path,group,type,tmdbId,season,episodes,selected,removed}`。大小和修改时间由服务端保留，不接受前端修改。`tmdbId:0` 表示尚未选定作品。服务端校验季集，并自动取消无效文件的选择。预览绑定工作区版本，任何后续保存均要求重新预览。
+保存修正只提交变更文件，保留 revision 检查；每项为 `{path,group,type,tmdbId,season,episodes,selected,removed}`。大小和修改时间由服务端保留，不接受前端修改。`tmdbId:0` 表示尚未选定作品。服务端校验季集，并自动取消无效文件的选择。预览绑定工作区版本，人工保存或识别增量保存后要求重新预览。执行进度不修改编辑 revision，不使无关预览过期。
+
+工作区文件可带 `execution:{runId,state,locked,completed,manualReview}`，由持久化任务投影而来，不接受客户端写入。已提交文件不可修改作品、季集、分组或选择，也不可重复提交；完成并登记的视频不再参与整理选择。失败／取消后未完成文件释放编辑限制，状态不明文件继续锁定、需人工核对。移出来源接口 `POST /recognitions/{id}/sources/remove {path,revision}` 拒绝含锁定文件的来源并报告任务 ID。
+
+视频完成安全落盘及身份核验后，操作检查点与媒体映射同事务提交，随后即能手动选择刮削。跳过已有视频也先核验并登记；尚在发布或状态不明的视频不能刮削。整理最终保存、取消及重试不会重置同一身份视频的已完成刮削状态。
 
 识别不运行媒体探测；目录推断止于当前 `sourceRoot`。同批搜索去重、限制请求速率并复用 TMDB 缓存；年份回退及模糊候选需确认。缺少季号时，仅在唯一常规季且集数有效时自动补全。 TMDB ID 标记在提取后不再参与集数识别；同一 ID 在电影和剧集类型中均存在时，仅在片名／原名及已知年份唯一匹配时自动消歧，否则保留待确认。
 

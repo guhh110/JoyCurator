@@ -141,7 +141,7 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 		}
 		row.Target = target
 		mapping := model.MediaMapping{Path: target, Source: f.Path, Type: entry.Type, TMDBID: entry.TMDBID, Season: f.Season, Episodes: f.Episodes, State: "pending"}
-		add(&row, Operation{Kind: "video", Mode: mode, Source: f.Path, Target: target, Size: f.Size, MTime: f.MTime})
+		add(&row, Operation{Kind: "video", Mode: mode, Source: f.Path, Target: target, Size: f.Size, MTime: f.MTime, SourceIdentity: fsops.Identity(info)})
 		if row.Action == "skip" {
 			if existing, err := a.access.Stat(target); err == nil {
 				mapping.Identity, mapping.Size, mapping.MTime = fsops.Identity(existing), existing.Size(), existing.ModTime().UnixNano()
@@ -198,7 +198,7 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 					continue
 				}
 			}
-			add(&row, Operation{Kind: "subtitle", Mode: mode, Source: path, Target: targetStem + strings.TrimPrefix(base, stem) + ext, Size: stat.Size(), MTime: stat.ModTime().UnixNano()})
+			add(&row, Operation{Kind: "subtitle", Mode: mode, Source: path, Target: targetStem + strings.TrimPrefix(base, stem) + ext, Size: stat.Size(), MTime: stat.ModTime().UnixNano(), SourceIdentity: fsops.Identity(stat)})
 		}
 		plan.Rows = append(plan.Rows, row)
 	}

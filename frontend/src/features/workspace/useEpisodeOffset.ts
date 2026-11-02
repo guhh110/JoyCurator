@@ -52,7 +52,7 @@ export function useEpisodeOffset(options: {
     context.value?.tmdbId ?? 0, season.value, offset.value, episodes.value))
   const chosen = computed(() => rows.value.filter(row => row.selected))
   const overlaps = computed(() => chosen.value.some(row => row.overlaps.length))
-  const canApply = computed(() => !!context.value && !options.locked.value && !saving.value && !stale.value &&
+  const canApply = computed(() => !chosen.value.some(row => { const file = options.task.value?.items.find(file => file.path === row.file.path); return !file || file.execution?.locked || file.execution?.completed }) && !!context.value && !options.locked.value && !saving.value && !stale.value &&
     !loading.value && episodes.value !== null && Number.isSafeInteger(offset.value) &&
     context.value.seasons.some(item => item.number === season.value) && chosen.value.length > 0 &&
     chosen.value.every(row => !row.error) && (!overlaps.value || allowOverlap.value))
@@ -62,8 +62,10 @@ export function useEpisodeOffset(options: {
     const entry = files.find(file => file.entry?.type === 'tv')?.entry
     if (!task || !entry || options.locked.value || !seasons.length) return
     generation++
-    context.value = JSON.parse(JSON.stringify({ id: task.id, revision: task.revision, tmdbId: entry.tmdbId,
-      title: entry.title, posterPath: entry.posterPath, files: files.filter(file => !file.removed && file.entry?.type === 'tv' && file.entry.tmdbId === entry.tmdbId), seasons, paths: task.paths }))
+    context.value = JSON.parse(JSON.stringify({
+      id: task.id, revision: task.revision, tmdbId: entry.tmdbId,
+      title: entry.title, posterPath: entry.posterPath, files: files.filter(file => !file.removed && !file.execution?.locked && !file.execution?.completed && file.entry?.type === 'tv' && file.entry.tmdbId === entry.tmdbId), seasons, paths: task.paths
+    }))
     source.value = sources.value.includes(currentSource) ? currentSource : sources.value[0] ?? ''
     season.value = seasons.some(item => item.number === currentSeason) ? currentSeason : seasons[0]!.number
     offsetInput.value = '0'
@@ -119,7 +121,7 @@ export function useEpisodeOffset(options: {
     if (!canApply.value || !context.value || !options.task.value) return
     const snapshot = context.value
     const request = generation
-    const items = applyOffsetMappings(options.task.value.items, chosen.value.map(row => ({path: row.file.path, season: season.value, episodes: row.episodes})))
+    const items = applyOffsetMappings(options.task.value.items, chosen.value.map(row => ({ path: row.file.path, season: season.value, episodes: row.episodes })))
     saving.value = true
     error.value = ''
     try {
@@ -134,7 +136,9 @@ export function useEpisodeOffset(options: {
     }
   }
   onScopeDispose(close)
-  return { context, source, sources, season, offsetInput, offset, selected, rows, chosen, episodes,
+  return {
+    context, source, sources, season, offsetInput, offset, selected, rows, chosen, episodes,
     loading, saving, error, stale, allowOverlap, overlaps, canApply, open, close, select, selectAll,
-    retry: () => { retryKey.value++ }, apply }
+    retry: () => { retryKey.value++ }, apply
+  }
 }

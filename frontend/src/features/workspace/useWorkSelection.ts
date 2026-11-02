@@ -17,6 +17,7 @@ export function useWorkSelection(options: {
 }) {
   const { task, current, focus, filePage, runtime, act, save } = options
   let alive = true, searchRequest = 0, editRequest = 0
+  let editWorkspace = '', editRevision = 0
   onScopeDispose(() => { alive = false; searchRequest++; editRequest++ })
   const searchGroup = ref(''),
     searchQuery = ref(''),
@@ -33,7 +34,7 @@ export function useWorkSelection(options: {
   useToastFeedback(searchError)
   useToastFeedback(editError)
   function openSearch() {
-    if (!current.value) return
+    if (!current.value || current.value.files.every(file => file.execution?.locked || file.execution?.completed)) return
     searchGroup.value = current.value.id
     searchQuery.value =
       current.value.entry?.title || current.value.files[0]!.metadata.title || ''
@@ -81,7 +82,7 @@ export function useWorkSelection(options: {
   async function pick(entry: Entry) {
     await act(async () => {
       for (const file of task.value?.items || [])
-        if (file.group === searchGroup.value && !file.removed) {
+        if (file.group === searchGroup.value && !file.removed && !file.execution?.locked && !file.execution?.completed) {
           file.entry = entry
           file.group = `tmdb:${entry.type}:${entry.tmdbId}`
           file.selected = true
@@ -94,7 +95,10 @@ export function useWorkSelection(options: {
     })
   }
   async function openEdit(file: RecognitionItem) {
+    if (file.execution?.locked || file.execution?.completed) return
     editing.value = file
+    editWorkspace = task.value?.id ?? ''
+    editRevision = task.value?.revision ?? 0
     editSeason.value = file.season
     editEpisodes.value = file.episodes.join(',')
     editError.value = ''
@@ -130,9 +134,14 @@ export function useWorkSelection(options: {
       const eps = parseEpisodes(editEpisodes.value)
       await act(async () => {
         if (!editing.value) return
-        editing.value.season = editSeason.value
-        editing.value.episodes = eps
-        editing.value.selected = true
+        if (task.value?.id !== editWorkspace || task.value.revision !== editRevision)
+          throw new Error('工作区已更新，请关闭弹窗后重新打开')
+        const file = task.value.items.find(item => item.path === editing.value!.path)
+        if (!file || file.execution?.locked || file.execution?.completed)
+          throw new Error('文件已提交整理，请刷新后查看关联任务')
+        file.season = editSeason.value
+        file.episodes = eps
+        file.selected = true
         await save()
         editing.value = null
       })
