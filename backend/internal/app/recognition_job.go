@@ -16,6 +16,10 @@ import (
 func (a *WorkspaceService) recognize(ctx context.Context, cancel context.CancelFunc, task matching.Workspace, s model.Settings, client matching.Provider) {
 	defer cancel()
 	defer a.coordinator.FinishRecognition(task.ID)
+	if hasReidentification(task.Items) {
+		a.recognizeSelected(ctx, task, s, client)
+		return
+	}
 	dirty := []int{}
 	fullSave := true
 	persist := func() error {
@@ -78,33 +82,11 @@ func (a *WorkspaceService) recognize(ctx context.Context, cancel context.CancelF
 			scanned = append(scanned, item)
 			return nil
 		}
-		extracted, traceID, extractErr := a.extract.ExtractFile(ctx, path, s.SourceRoot, task.ID)
-		if extractErr != nil {
-			return extractErr
+		item, err := a.extractItem(ctx, path, info, s, task.ID)
+		if err != nil {
+			return err
 		}
-		p := extracted.Metadata
-		title, mediaType, year, tmdbID := "", "", 0, 0
-		if p.Title != nil {
-			title = *p.Title
-		}
-		if p.MediaType != nil {
-			mediaType = *p.MediaType
-		}
-		if p.Year != nil {
-			year = *p.Year
-		}
-		if p.TMDBID != nil {
-			tmdbID = *p.TMDBID
-		}
-		season := -1
-		if p.Season != nil {
-			season = *p.Season
-		}
-		group := fmt.Sprintf("query:%s:%s:%d:%d", mediaType, recognition.NormalizeTitle(title), year, tmdbID)
-		if title == "" && tmdbID == 0 {
-			group = "path:" + path
-		}
-		scanned = append(scanned, matching.Item{File: model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: season, Episodes: p.Episodes}, Metadata: p, Group: group, Candidates: []model.Entry{}, State: "pending", TraceID: traceID})
+		scanned = append(scanned, item)
 		return nil
 	})
 	if scanErr != nil {
@@ -171,4 +153,34 @@ func (a *WorkspaceService) recognize(ctx context.Context, cancel context.CancelF
 		}
 	}
 	_ = persist()
+}
+
+func (a *WorkspaceService) extractItem(ctx context.Context, path string, info fs.FileInfo, s model.Settings, workspace string) (matching.Item, error) {
+	extracted, traceID, err := a.extract.ExtractFile(ctx, path, s.SourceRoot, workspace)
+	if err != nil {
+		return matching.Item{}, err
+	}
+	p := extracted.Metadata
+	title, mediaType, year, tmdbID := "", "", 0, 0
+	if p.Title != nil {
+		title = *p.Title
+	}
+	if p.MediaType != nil {
+		mediaType = *p.MediaType
+	}
+	if p.Year != nil {
+		year = *p.Year
+	}
+	if p.TMDBID != nil {
+		tmdbID = *p.TMDBID
+	}
+	season := -1
+	if p.Season != nil {
+		season = *p.Season
+	}
+	group := fmt.Sprintf("query:%s:%s:%d:%d", mediaType, recognition.NormalizeTitle(title), year, tmdbID)
+	if title == "" && tmdbID == 0 {
+		group = "path:" + path
+	}
+	return matching.Item{File: model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: season, Episodes: p.Episodes}, Metadata: p, Group: group, Candidates: []model.Entry{}, State: "pending", TraceID: traceID}, nil
 }

@@ -30,11 +30,11 @@ func TestQueuedScrapeReusesOnlyUnchangedRecordedSharedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Both previews see an absent NFO. The second confirmation happens after the first publishes it.
-	first, err := a.dependencies.Organizer.ScrapePreview(context.Background(), []string{video})
+	first, err := a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: []string{video}, Content: "all"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := a.dependencies.Organizer.ScrapePreview(context.Background(), []string{video})
+	second, err := a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: []string{video}, Content: "all"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestQueuedScrapeReusesOnlyUnchangedRecordedSharedArtifacts(t *testing.T) {
 	if err != nil || stored.State != "completed" || !stored.Ops[0].Reused {
 		t.Fatal(stored, err)
 	}
-	third, err := a.dependencies.Organizer.ScrapePreview(context.Background(), []string{video})
+	third, err := a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: []string{video}, Content: "all"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,11 +101,11 @@ func TestTwoQueuedEpisodeScrapesReuseSharedNFOAtDispatch(t *testing.T) {
 	if err := service.Start(); err != nil {
 		t.Fatal(err)
 	}
-	first, err := service.ScrapePreview(context.Background(), paths[:1])
+	first, err := service.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: paths[:1], Content: "all"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := service.ScrapePreview(context.Background(), paths[1:])
+	second, err := service.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: paths[1:], Content: "all"})
 	if err != nil {
 		t.Fatal(err)
 	}

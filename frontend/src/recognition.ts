@@ -28,6 +28,7 @@ export const recognitionStates: Record<string, string> = {
   unmatched: '未匹配',
   failed: '失败',
   pending: '等待识别',
+  reidentifying: '等待重新识别',
 }
 export function recognitionGroups(items: RecognitionItem[]) {
   const groups = new Map<string, RecognitionItem[]>()
@@ -40,7 +41,7 @@ export function recognitionGroups(items: RecognitionItem[]) {
   return [...groups].map(([id, files]) => {
     const entry = files.find((file) => file.entry)?.entry || null
     const state =
-      ['failed', 'pending', 'review', 'unmatched', 'ready'].find((value) =>
+      ['failed', 'reidentifying', 'pending', 'review', 'unmatched', 'ready'].find((value) =>
         files.some((file) => file.state === value),
       ) || 'review'
     return {

@@ -2,11 +2,12 @@
 import { ref, watch, nextTick } from 'vue'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleAlert, Film, FolderOpen, Image as ImageIcon, Layers3, FileText, RefreshCw, Search } from '@lucide/vue'
 import { bytes } from '../api'
+import Select from '../components/ui/Select.vue'
 import EliText from '../components/ui/EliText.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import { useScrape } from '../features/scrape/useScrape'
-const { query, search, works, cursor, loadingMore, active, selected, expandedSeason, expandedEpisode, stateFilter, fileSearch, preview, artifactSearch, showArtifacts, busy, worksQuery, detail, current, counts, seasons, activeSeasonItems, activeEpisodeItems, hasMultipleVersionsInWork, bulkReady, artifactCounts, filteredArtifacts, stateNames, tabs, fileName, parentName, workTitle, episodeLabel, openWork, closeWork, loadMore, bulk, toggle, prepare, execute } = useScrape()
+const { content, onlyMissing, skippedArtifacts, query, search, works, cursor, loadingMore, active, selected, expandedSeason, expandedEpisode, stateFilter, fileSearch, preview, artifactSearch, showArtifacts, busy, worksQuery, detail, current, counts, seasons, activeSeasonItems, activeEpisodeItems, hasMultipleVersionsInWork, bulkReady, artifactCounts, filteredArtifacts, stateNames, tabs, fileName, parentName, workTitle, episodeLabel, openWork, closeWork, loadMore, bulk, toggle, prepare, execute } = useScrape()
 const previewElement = ref<HTMLElement | null>(null)
 watch(preview, async value => {
   if (!value) return
@@ -85,6 +86,10 @@ watch(preview, async value => {
                   </div>
                 </section>
               </div>
+              <div class="scrape-options" aria-label="刮削选项">
+                <label>刮削内容<Select v-model="content" :disabled="busy" label="刮削内容" :options="[{value:'all',label:'NFO＋图片'},{value:'nfo',label:'仅 NFO'},{value:'images',label:'仅图片'}]" /></label>
+                <label class="missing-option"><input v-model="onlyMissing" type="checkbox" :disabled="busy" />只补缺失（跳过同名已有文件）</label>
+              </div>
               <div class="selection-footer"><span><strong>{{ selected.length }}</strong> 个版本已选 · 筛选不影响整部/整季选择</span><button class="button primary" :disabled="!selected.length || busy" @click="prepare">预览刮削 <ArrowRight :size="15" /></button></div>
             </QueryState>
           </div>
@@ -93,17 +98,20 @@ watch(preview, async value => {
               <button class="preview-back" :disabled="busy" @click="preview = null"><ArrowLeft :size="15" />返回选择</button>
               <span class="eyebrow">03 / REVIEW</span>
               <h2>{{ preview.title }}</h2>
-              <p>{{ preview.targets.length }} 个视频版本 · {{ preview.artifacts.length }} 项文件 · 预计 {{ bytes(preview.required) }}</p>
+              <p>{{ preview.targets.length }} 个视频版本 · {{ preview.artifacts.length }} 项文件 · 跳过 {{ preview.skipped.length }} 项 · 预计 {{ bytes(preview.required) }}</p>
             </div>
             <div class="preview-body">
+              <p class="scrape-choice">{{ preview.content === 'nfo' ? '仅 NFO' : preview.content === 'images' ? '仅图片' : 'NFO＋图片' }} · {{ preview.onlyMissing ? '只补缺失' : '覆盖同名产物' }}</p>
+              <p v-if="!preview.artifacts.length && !preview.issues.length" class="scrape-choice">{{ preview.skipped.length ? '所选产物均已存在，无需执行。' : '没有可生成的所选产物，无需执行。' }}</p>
               <div class="summary-grid"><div><strong>{{ artifactCounts?.videoNfo }}</strong><span>版本 NFO</span></div><div><strong>{{ artifactCounts?.sharedNfo }}</strong><span>共享 NFO</span></div><div><strong>{{ artifactCounts?.videoImages }}</strong><span>单集封面</span></div><div><strong>{{ artifactCounts?.sharedImages }}</strong><span>作品/季度图片</span></div></div>
               <div v-if="preview.issues.length" class="preview-issues"><CircleAlert :size="17" /><div><strong>预览存在冲突</strong><p v-for="issue in preview.issues" :key="issue">{{ issue }}</p></div></div>
+              <details v-if="preview.skipped.length" class="artifact-details"><summary>跳过已有文件 <span>{{ preview.skipped.length }}</span><ChevronDown :size="16" /></summary><div class="artifact-inner"><div class="artifact-list"><div v-for="artifact in skippedArtifacts" :key="artifact" class="artifact-row"><EliText :text="artifact" ellipsis="start" /><span>保留</span></div></div></div></details>
               <details class="artifact-details" :open="showArtifacts" @toggle="showArtifacts = ($event.target as HTMLDetailsElement).open">
                 <summary>查看完整产物路径 <span>{{ preview.artifacts.length }}</span><ChevronDown :size="16" /></summary>
                 <div class="artifact-inner"><label class="search-field"><Search :size="14" /><input v-model="artifactSearch" aria-label="筛选产物路径" placeholder="筛选文件路径" /></label><p class="tiny muted">显示 {{ filteredArtifacts.length }} / {{ preview.artifacts.length }} 项</p><div class="artifact-list"><div v-for="artifact in filteredArtifacts" :key="artifact" class="artifact-row"><component :is="artifact.toLowerCase().endsWith('.nfo') ? FileText : ImageIcon" :size="15" /><EliText :text="artifact" ellipsis="start" /><Check :size="13" /></div></div></div>
               </details>
             </div>
-            <div class="preview-footer"><div class="overwrite-note"><RefreshCw :size="16" /><span>同名 NFO 与图片会无备份覆盖。撤销只能移除本次仍拥有的文件，<strong>无法恢复旧内容</strong>。</span></div><button class="button primary" :disabled="busy || !!preview.issues.length || !preview.artifacts.length" @click="execute">确认刮削 <ArrowRight :size="15" /></button></div>
+            <div class="preview-footer"><div class="overwrite-note"><RefreshCw :size="16" /><span><template v-if="preview.onlyMissing">仅创建预览中缺失的产物，已跳过的文件保持原样。撤销只影响本次生成的文件。</template><template v-else>同名所选产物会无备份覆盖。撤销只能移除本次仍拥有的文件，<strong>无法恢复旧内容</strong>。</template></span></div><button class="button primary" :disabled="busy || !!preview.issues.length || !preview.artifacts.length" @click="execute">确认刮削 <ArrowRight :size="15" /></button></div>
           </section>
         </template>
       </div>
@@ -144,6 +152,10 @@ watch(preview, async value => {
 .detail-empty { min-height:470px;display:grid;place-content:center;justify-items:center;gap:12px;text-align:center;background:radial-gradient(circle at 70% 20%,#e7f4ef,#fff 60%) }
 .empty-mark { display:grid;place-items:center;width:76px;height:76px;border-radius:18px;background:#dff0e9;color:var(--accent) }
 .detail-empty h2 { font-size:21px;color:var(--ink) }.detail-empty p { max-width:330px;color:var(--muted);font-size:12px }
+.scrape-options { display:flex; align-items:center; flex-wrap:wrap; gap:12px 20px; padding:14px 18px; border-top:1px solid var(--hairline); }
+.scrape-options label { display:flex; align-items:center; gap:8px; margin:0; font-size:12px; }
+.scrape-options .missing-option input { width:auto; margin:0; }
+.scrape-choice { margin:0; padding:12px 18px; font-size:12px; color:var(--muted); }
 .work-detail,.scrape-preview { padding:0;overflow:hidden }
 .detail-header { display:grid;gap:8px;padding:18px 20px;border-bottom:1px solid var(--hairline);background:linear-gradient(110deg,#ecf6f1,#fff 75%) }
 .back-button { display:none;align-items:center;gap:5px;justify-self:start;color:var(--accent);border:0;background:transparent;font-size:11px }

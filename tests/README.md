@@ -61,3 +61,6 @@ python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|Ben
 
 
 增补回归：`backend/infra/fsops/replace_test.go` 验证 Linux／macOS 独占覆盖及目标、暂存、hold 冲突；`backend/organizer/undo_identity_test.go` 验证等长外部替换、检查点期间变化和 NFO 覆盖撤销；`backend/infra/sqlite/trace_batch_test.go` 覆盖跨 SQL 批次顺序、独立规则快照及末尾事件失败回滚。`maintenance_test.go` 与 `app/maintenance_routes_test.go` 覆盖清理预览、固定截止、终态筛选、外键子表与缓存共同回滚、revision 不变及登录／同源约束。`run_filter_test.go` 覆盖筛选后分页、用途隔离及字面搜索；前端对应测试位于 `frontend/app/maintenance.test.ts`、`records.test.ts` 和 `recordPresentation.test.ts`。
+
+
+选择性重跑测试位于 `backend/app/reidentify_test.go`，覆盖工作区 revision、原子提交失败、未选条目禁止写入、人工特别篇映射与作品快照、旧历史独立、取消／匹配失败重试及关闭重启后范围保留。`backend/app/scrape_options_test.go` 覆盖内容过滤、仅 NFO 不查询作品图片、只补缺失保留外部文件、未受影响映射不变、全跳过拒绝空任务及撤销。前端范围选择与选项请求／过期响应测试分别在 `frontend/recognition/reidentify.test.ts` 和 `frontend/scrape/queries.test.ts`。

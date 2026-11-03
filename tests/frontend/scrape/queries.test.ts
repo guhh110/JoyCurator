@@ -81,3 +81,50 @@ it('discovers newly registered videos without selecting them or replacing the cu
   state.toggle(state.current.value[0]!)
   expect(state.selected.value).toEqual([])
 })
+
+
+it('submits scrape options, drops stale previews, and does not execute an empty plan', async () => {
+  const work = { type: 'movie', tmdbId: 1, total: 1 }
+  const item = { path: '/target/one.mkv', type: 'movie', tmdbId: 1, state: 'pending' }
+  const fetch = vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === '/api/scrape/preview') {
+      const request = JSON.parse(init!.body as string)
+      return new Response(JSON.stringify({ ...request, id: 'plan', title: 'Film', artifacts: [], skipped: ['/target/one.nfo'], issues: [] }))
+    }
+    return new Response(JSON.stringify(path.endsWith('/movie/1') ? [item] : { items: [work], nextCursor: '' }))
+  })
+  vi.stubGlobal('fetch', fetch)
+  const { state } = fixture(); await settle()
+  state.openWork(state.works.value[0]!); await settle(); state.toggle(state.current.value[0]!)
+  state.content.value = 'nfo'; state.onlyMissing.value = true
+  await state.prepare()
+  const call = fetch.mock.calls.find(call => call[0] === '/api/scrape/preview')!
+  expect(JSON.parse(call[1]!.body as string)).toEqual({ paths: ['/target/one.mkv'], content: 'nfo', onlyMissing: true })
+  expect(state.preview.value?.skipped).toEqual(['/target/one.nfo'])
+  await state.execute()
+  expect(fetch.mock.calls.some(call => call[0] === '/api/scrape/execute')).toBe(false)
+  state.content.value = 'images'
+  expect(state.preview.value).toBeNull()
+  expect(state.selected.value).toEqual(['/target/one.mkv'])
+})
+
+it('ignores an old preview response after scrape options change', async () => {
+  let resolve!: (value: Response) => void
+  let signal!: AbortSignal
+  vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === '/api/scrape/preview') {
+      signal = init!.signal as AbortSignal
+      return new Promise<Response>(done => { resolve = done })
+    }
+    return new Response(JSON.stringify(path.endsWith('/movie/1') ? [] : { items: [], nextCursor: '' }))
+  }))
+  const { state } = fixture(); await settle()
+  state.openWork({ type: 'movie', tmdbId: 1 } as any)
+  await settle(); state.selected.value = ['/target/one.mkv']
+  const pending = state.prepare(); await settle()
+  state.onlyMissing.value = true
+  expect(signal.aborted).toBe(true)
+  resolve(new Response(JSON.stringify({ id: 'old', artifacts: ['old.nfo'], skipped: [], issues: [] })))
+  await pending
+  expect(state.preview.value).toBeNull()
+})

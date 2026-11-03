@@ -4,6 +4,7 @@ import (
 	"context"
 	"joycurator/internal/infra/fsops"
 	"joycurator/internal/model"
+	"joycurator/internal/organizer"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -55,7 +56,7 @@ func TestScrapePreviewUsesEpisodeMetadataAndSharedArtwork(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	plan, err := a.dependencies.Organizer.ScrapePreview(context.Background(), paths)
+	plan, err := a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: paths, Content: "all"})
 	if err != nil || len(plan.Issues) > 0 {
 		t.Fatalf("scrape preview: %+v %v", plan, err)
 	}
@@ -110,7 +111,7 @@ func TestMovieScrapePreviewKeepsOnlyStandardArtwork(t *testing.T) {
 	if err := a.store.SaveMapping(model.MediaMapping{Path: path, Type: "movie", TMDBID: 1, Identity: fsops.Identity(stat), Size: stat.Size(), MTime: stat.ModTime().UnixNano(), RunID: "fixture"}); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := a.dependencies.Organizer.ScrapePreview(context.Background(), []string{path})
+	plan, err := a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: []string{path}, Content: "all"})
 	if err != nil || len(plan.Issues) != 0 {
 		t.Fatalf("movie scrape preview: %+v %v", plan, err)
 	}
@@ -134,7 +135,7 @@ func TestMovieScrapePreviewKeepsOnlyStandardArtwork(t *testing.T) {
 		t.Fatal("image space budget does not reflect three images", plan.Required)
 	}
 	seed(`{"posters":[{"file_path":"/same.jpg","iso_639_1":"en"}],"backdrops":[{"file_path":"/same.jpg","iso_639_1":null}],"logos":[]}`)
-	plan, err = a.dependencies.Organizer.ScrapePreview(context.Background(), []string{path})
+	plan, err = a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: []string{path}, Content: "all"})
 	if err != nil || len(plan.Issues) != 0 {
 		t.Fatalf("raw filename collision should not matter: %+v %v", plan, err)
 	}
@@ -147,7 +148,7 @@ func TestMovieScrapePreviewKeepsOnlyStandardArtwork(t *testing.T) {
 		t.Fatal("missing logo should leave just two images and one NFO", plan.Artifacts, plan.Required)
 	}
 	seed(`{"posters":[],"backdrops":[],"logos":[{"file_path":"/only-logo.jpg","iso_639_1":"en"}]}`)
-	plan, err = a.dependencies.Organizer.ScrapePreview(context.Background(), []string{path})
+	plan, err = a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: []string{path}, Content: "all"})
 	if err != nil || len(plan.Issues) != 0 || len(plan.Artifacts) != 2 {
 		t.Fatal("JPEG-only logo preview failed", plan, err)
 	}
@@ -193,10 +194,10 @@ func TestScrapeWorkUnavailableAndSameEpisodeVersions(t *testing.T) {
 	if err != nil || len(queue) != 3 || queue[0].State != "unavailable" || queue[0].Path != paths[2] {
 		t.Fatalf("missing video mapping disappeared: %+v %v", queue, err)
 	}
-	if _, err := a.dependencies.Organizer.ScrapePreview(context.Background(), paths); err == nil {
+	if _, err := a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: paths, Content: "all"}); err == nil {
 		t.Fatal("unavailable video was accepted")
 	}
-	plan, err := a.dependencies.Organizer.ScrapePreview(context.Background(), paths[:2])
+	plan, err := a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: paths[:2], Content: "all"})
 	if err != nil || len(plan.Issues) != 0 {
 		t.Fatalf("two versions preview: %+v %v", plan, err)
 	}

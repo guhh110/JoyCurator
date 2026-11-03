@@ -1,7 +1,7 @@
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { api } from '../../api'
-import type { MediaMapping, Run, ScrapePreview, ScrapeWork, ScrapeWorkPage } from '../../model'
+import type { MediaMapping, Run, ScrapeContent, ScrapePreview, ScrapeWork, ScrapeWorkPage } from '../../model'
 import { useRuntime } from '../../app/runtime'
 import { notify } from '../../app/toast'
 import { addSelection, artifactSummary, hasMultipleVersions, visibleEpisodes, type ScrapeStateFilter } from './selection'
@@ -16,6 +16,8 @@ export function useScrape() {
   const query = ref('')
   const active = ref<ScrapeWork | null>(null)
   const selected = ref<string[]>([])
+  const content = ref<ScrapeContent>('all')
+  const onlyMissing = ref(false)
   const expandedSeason = ref<number | null>(null)
   const expandedEpisode = ref('')
   const stateFilter = ref<ScrapeStateFilter>('all')
@@ -66,6 +68,8 @@ export function useScrape() {
   const hasMultipleVersionsInWork = (season: number, key: string) => hasMultipleVersions(current.value, season, key)
   const bulkReady = (items: MediaMapping[], completed: boolean) => items.filter(item => completed ? item.state === 'completed' : item.state === 'pending' || item.state === 'failed').length
   const artifactCounts = computed(() => preview.value ? artifactSummary(preview.value) : null)
+  const skippedArtifacts = computed(() => (preview.value?.skipped ?? []).filter(path => path.toLocaleLowerCase().includes(artifactSearch.value.trim().toLocaleLowerCase())))
+  watch([content, onlyMissing], () => { previewRequest?.abort(); preview.value = null }, { flush: 'sync' })
   const filteredArtifacts = computed(() => (preview.value?.artifacts ?? []).filter(path => path.toLocaleLowerCase().includes(artifactSearch.value.trim().toLocaleLowerCase())))
   const stateNames: Record<MediaMapping['state'], string> = { pending: '待刮削', completed: '已完成', failed: '失败', unavailable: '视频不可用', queued: '排队中', running: '刮削中' }
   const tabs: { key: ScrapeStateFilter; label: string }[] = [
@@ -112,12 +116,13 @@ export function useScrape() {
     if (!selected.value.length || busy.value) return
     const work = `${active.value?.type}:${active.value?.tmdbId}`
     const paths = [...selected.value]
+    const options = { content: content.value, onlyMissing: onlyMissing.value }
     busy.value = true
     try {
       previewRequest?.abort()
       previewRequest = new AbortController()
-      const result = await api<ScrapePreview>('/scrape/preview', { paths }, 'POST', { signal: previewRequest.signal })
-      if (!alive || `${active.value?.type}:${active.value?.tmdbId}` !== work || paths.join('\0') !== selected.value.join('\0')) return
+      const result = await api<ScrapePreview>('/scrape/preview', { paths, ...options }, 'POST', { signal: previewRequest.signal })
+      if (!alive || `${active.value?.type}:${active.value?.tmdbId}` !== work || paths.join('\0') !== selected.value.join('\0') || options.content !== content.value || options.onlyMissing !== onlyMissing.value) return
       preview.value = result
       showArtifacts.value = false
       artifactSearch.value = ''
@@ -126,7 +131,7 @@ export function useScrape() {
     finally { busy.value = false }
   }
   async function execute() {
-    if (!preview.value || preview.value.issues.length || busy.value) return
+    if (!preview.value || !preview.value.artifacts.length || preview.value.issues.length || busy.value) return
     busy.value = true
     try {
       await api<Run>('/scrape/execute', { id: preview.value.id })
@@ -138,5 +143,5 @@ export function useScrape() {
     finally { busy.value = false }
   }
 
-  return { query, search, works, cursor, loadingMore, active, selected, expandedSeason, expandedEpisode, stateFilter, fileSearch, preview, artifactSearch, showArtifacts, busy, worksQuery, detail, current, counts, seasons, activeSeasonItems, activeEpisodeItems, hasMultipleVersionsInWork, bulkReady, artifactCounts, filteredArtifacts, stateNames, tabs, fileName, parentName, workTitle, episodeLabel, openWork, closeWork, loadMore, bulk, toggle, prepare, execute }
+  return { content, onlyMissing, skippedArtifacts, query, search, works, cursor, loadingMore, active, selected, expandedSeason, expandedEpisode, stateFilter, fileSearch, preview, artifactSearch, showArtifacts, busy, worksQuery, detail, current, counts, seasons, activeSeasonItems, activeEpisodeItems, hasMultipleVersionsInWork, bulkReady, artifactCounts, filteredArtifacts, stateNames, tabs, fileName, parentName, workTitle, episodeLabel, openWork, closeWork, loadMore, bulk, toggle, prepare, execute }
 }

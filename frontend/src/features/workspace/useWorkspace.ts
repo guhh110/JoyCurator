@@ -23,6 +23,7 @@ import { useWorkspaceSources } from './useWorkspaceSources'
 import { useSeasonComparison } from './useSeasonComparison'
 import { useWorkSelection } from './useWorkSelection'
 import { useWorkspacePreview } from './useWorkspacePreview'
+import { useReidentification } from './useReidentification'
 import { useEpisodeOffset } from './useEpisodeOffset'
 
 export function useWorkspace() {
@@ -203,6 +204,23 @@ export function useWorkspace() {
       return saved
     },
   })
+  const reidentification = useReidentification({
+    task, locked,
+    commit: async (paths, id, revision) => {
+      let submitted = false
+      await act(async () => {
+        if (task.value?.id !== id || task.value.revision !== revision)
+          throw new Error('工作区已更新，请关闭弹窗后重新打开')
+        const value = await api<Recognition>(`/recognitions/${id}/reidentify`, { revision, paths })
+        if (alive) acceptTask(value)
+        preview.value = null
+        submitted = true
+        notice.value = `已开始重新识别 ${paths.length} 个文件，人工修正会保留`
+        await runtime.refreshQueue()
+      })
+      return submitted
+    },
+  })
   function openOffset() {
     if (!current.value || groupSeasonsLoading.value) return
     offsetEditor.open(current.value.files, groupSeasons.value, comparisonSeason.value, source.value)
@@ -340,12 +358,14 @@ export function useWorkspace() {
     transfer.value = null
     preview.value = null
     offsetEditor.close()
+    reidentification.close()
   })
   onUnmounted(() => {
     alive = false
   })
 
   return {
+    reidentification,
     previewState,
     runtime,
     busy,

@@ -57,7 +57,11 @@ func (a *Service) checkScrapeAvailability(items []model.MediaMapping) ([]model.M
 	return items, nil
 }
 
-func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapePlan, error) {
+func (a *Service) ScrapePreview(ctx context.Context, input ScrapePreviewRequest) (ScrapePlan, error) {
+	selected := input.Paths
+	if input.Content != "all" && input.Content != "nfo" && input.Content != "images" {
+		return ScrapePlan{}, errors.New("请选择刮削内容：all、nfo 或 images")
+	}
 	if len(selected) == 0 || len(selected) > 1000 {
 		return ScrapePlan{}, errors.New("请选择 1–1000 个目标视频")
 	}
@@ -105,11 +109,14 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 	if err != nil {
 		return ScrapePlan{}, err
 	}
-	plan := ScrapePlan{ID: model.Key(), Title: entry.Title, Type: kind, TMDBID: id, Targets: selected, Artifacts: []string{}, Issues: []string{}}
+	plan := ScrapePlan{Content: input.Content, OnlyMissing: input.OnlyMissing, Skipped: []string{}, ID: model.Key(), Title: entry.Title, Type: kind, TMDBID: id, Targets: selected, Artifacts: []string{}, Issues: []string{}}
 	ops := []Work{}
 	seen := map[string]Operation{}
 	remaining := map[uint64]int64{}
 	add := func(target, kind, url string, content []byte, owner string) {
+		if input.Content == "nfo" && kind != "nfo" || input.Content == "images" && kind != "image" {
+			return
+		}
 		key := strings.ToLower(target)
 		op := Operation{Target: target, Kind: kind, Mode: "copy", URL: url, Content: content, Status: "pending"}
 		if kind == "image" && strings.HasSuffix(strings.ToLower(target), ".jpg") && strings.HasSuffix(strings.ToLower(url), ".png") {
@@ -130,6 +137,10 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 		if statErr == nil {
 			if !info.Mode().IsRegular() {
 				plan.Issues = append(plan.Issues, "目标不是普通文件："+target)
+				return
+			}
+			if input.OnlyMissing {
+				plan.Skipped = append(plan.Skipped, target)
 				return
 			}
 			op.Replace = true
@@ -172,20 +183,24 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 	}
 	sort.Strings(dirs)
 	if kind == "movie" {
-		body, e := metadata.MovieNFO(entry)
-		if e != nil {
-			return plan, e
-		}
-		for _, item := range items {
-			add(strings.TrimSuffix(item.Path, filepath.Ext(item.Path))+".nfo", "nfo", "", body, item.Path)
+		if input.Content != "images" {
+			body, e := metadata.MovieNFO(entry)
+			if e != nil {
+				return plan, e
+			}
+			for _, item := range items {
+				add(strings.TrimSuffix(item.Path, filepath.Ext(item.Path))+".nfo", "nfo", "", body, item.Path)
+			}
 		}
 	} else {
-		body, e := metadata.ShowNFO(entry)
-		if e != nil {
-			return plan, e
-		}
-		for _, dir := range dirs {
-			add(filepath.Join(dir, "tvshow.nfo"), "nfo", "", body, showDirs[dir])
+		if input.Content != "images" {
+			body, e := metadata.ShowNFO(entry)
+			if e != nil {
+				return plan, e
+			}
+			for _, dir := range dirs {
+				add(filepath.Join(dir, "tvshow.nfo"), "nfo", "", body, showDirs[dir])
+			}
 		}
 		seasons := map[int]bool{}
 		for _, item := range items {
@@ -217,11 +232,13 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 					}
 					matched = append(matched, episode)
 				}
-				body, e := metadata.EpisodeNFO(entry, matched)
-				if e != nil {
-					return plan, e
+				if input.Content != "images" {
+					body, e := metadata.EpisodeNFO(entry, matched)
+					if e != nil {
+						return plan, e
+					}
+					add(strings.TrimSuffix(item.Path, filepath.Ext(item.Path))+".nfo", "nfo", "", body, item.Path)
 				}
-				add(strings.TrimSuffix(item.Path, filepath.Ext(item.Path))+".nfo", "nfo", "", body, item.Path)
 				for _, episode := range matched {
 					ext := strings.ToLower(filepath.Ext(episode.Still))
 					if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
@@ -229,10 +246,6 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 						break
 					}
 				}
-			}
-			body, e := metadata.SeasonNFO(entry, seasonInfo)
-			if e != nil {
-				return plan, e
 			}
 			seasonDirs := map[string]string{}
 			for _, item := range items {
@@ -249,7 +262,13 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 			}
 			sort.Strings(ordered)
 			for _, dir := range ordered {
-				add(filepath.Join(dir, "season.nfo"), "nfo", "", body, seasonDirs[dir])
+				if input.Content != "images" {
+					body, e := metadata.SeasonNFO(entry, seasonInfo)
+					if e != nil {
+						return plan, e
+					}
+					add(filepath.Join(dir, "season.nfo"), "nfo", "", body, seasonDirs[dir])
+				}
 				if seasonInfo.PosterPath != "" {
 					ext := strings.ToLower(filepath.Ext(seasonInfo.PosterPath))
 					if ext == ".jpg" || ext == ".jpeg" || ext == ".png" {
@@ -259,23 +278,25 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 			}
 		}
 	}
-	art, err := provider.Artwork(ctx, kind, id, s.Language)
-	if err != nil {
-		return plan, err
-	}
-	best := selectArtwork(art, s.Language)
-	for _, kind := range []string{"poster", "fanart", "clearlogo"} {
-		image, ok := best[kind]
-		if !ok {
-			continue
+	if input.Content != "nfo" {
+		art, err := provider.Artwork(ctx, kind, id, s.Language)
+		if err != nil {
+			return plan, err
 		}
-		ext := strings.ToLower(filepath.Ext(image.Path))
-		name := kind + ".jpg"
-		if kind == "clearlogo" && ext == ".png" {
-			name = "clearlogo.png"
-		}
-		for _, dir := range dirs {
-			add(filepath.Join(dir, name), "image", image.Path, nil, showDirs[dir])
+		best := selectArtwork(art, s.Language)
+		for _, kind := range []string{"poster", "fanart", "clearlogo"} {
+			image, ok := best[kind]
+			if !ok {
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(image.Path))
+			name := kind + ".jpg"
+			if kind == "clearlogo" && ext == ".png" {
+				name = "clearlogo.png"
+			}
+			for _, dir := range dirs {
+				add(filepath.Join(dir, name), "image", image.Path, nil, showDirs[dir])
+			}
 		}
 	}
 	for i := range ops {
@@ -295,8 +316,19 @@ func (a *Service) ScrapePreview(ctx context.Context, selected []string) (ScrapeP
 			}
 		}
 	}
+	// Videos with no scheduled artifact must keep their previous scrape state.
+	affected := []model.MediaMapping{}
+	for _, item := range items {
+		for _, op := range ops {
+			if op.Owner == item.Path || slices.Contains(op.Owners, item.Path) {
+				affected = append(affected, item)
+				break
+			}
+		}
+	}
+	sort.Strings(plan.Skipped)
 	sort.Strings(plan.Artifacts)
-	a.previews.put(&Plan{ID: plan.ID, Purpose: "scrape", Ops: ops, Mappings: items, Version: s.Version,
+	a.previews.put(&Plan{ID: plan.ID, Purpose: "scrape", Ops: ops, Mappings: affected, Version: s.Version,
 		Expires: time.Now().Add(previewTTL), Issues: plan.Issues, Title: plan.Title})
 	return plan, nil
 }

@@ -460,3 +460,8 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 
 
 本轮新增入口：记录列表的 `search/state` 筛选在 SQL 分页前执行，列表总数与当前页使用同一读取事务；详情异常筛选只作用于已加载操作。数据维护由 `app/maintenance.go` 校验选项与截止时间，`infra/sqlite/maintenance.go` 事务执行预览或清理，HTTP 不直接访问存储。清理按 `finishedAt` 截止，保留边界时刻及运行记录；缓存使用预览时确定的 `cacheBefore`，执行时不自动向后移动。数量可能随并发识别变化，响应报告实际删除数量。子表级联删除失败时历史与缓存一起回滚，工作区结果、revision、历史引用及媒体文件不改写。
+
+
+后续新增选择性重跑入口见 `app/reidentify.go` 与 `features/workspace/useReidentification.ts`。不同于普通导入对未变化文件的复用，该入口持久化 reidentifying 标记，强制按当前规则重提取选中文件；任务 HTTP 回执与 worker 使用独立副本。人工修正字段不被新自动匹配覆盖，未指定条目不写入；取消、匹配失败与中断恢复后普通 retry 只继续未完成标记。存在标记时新增来源会明确拒绝，避免扩大重跑范围。
+
+刮削预览新增必填 content（all/nfo/images）及 onlyMissing（布尔）；前端调用和测试均使用当前请求。跳过已有产物不会登记归属，只有实际计划生成项才参加撤销；全跳过不会创建任务或改写映射状态。部分内容刮削已完成不代表全部 NFO／图片齐全，完整行为见 API 文档。

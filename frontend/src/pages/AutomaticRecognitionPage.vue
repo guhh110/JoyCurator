@@ -19,6 +19,7 @@ import {
 import { RouterLink } from 'vue-router'
 import { bytes, episodeCode, name } from '../api'
 import { recognitionStates } from '../recognition'
+import ReidentifyDialog from '../features/workspace/ReidentifyDialog.vue'
 import FileBrowser from '../components/FileBrowser.vue'
 import Modal from '../components/Modal.vue'
 import QueryState from '../components/ui/QueryState.vue'
@@ -32,6 +33,7 @@ import { useWorkspace } from '../features/workspace/useWorkspace'
 const workspace = useWorkspace()
 const {
   runtime,
+  reidentification,
   busy,
   task,
   browser,
@@ -421,6 +423,7 @@ const workType = (group: Group) =>
                   <p v-if="groupSeasonsError" class="danger tiny" role="alert">{{ groupSeasonsError }}</p>
                 </div>
                 <div class="auto-work-actions">
+                <button class="button small" :disabled="locked || current.files.every(fileLocked)" @click="reidentification.open(current.files)"><RotateCcw :size="14" />重新识别本组</button>
                 <button v-if="current.entry?.type === 'tv'" class="button small"
                   :disabled="locked || groupSeasonsLoading || !groupSeasons.length || current.files.every(fileLocked)" @click="openOffset">
                   <ArrowLeftRight :size="14" />批量修正季集
@@ -506,6 +509,7 @@ const workType = (group: Group) =>
                     </p>
                   </div>
                   <div class="auto-file-actions">
+                    <button class="icon-button" :disabled="locked || fileLocked(file)" aria-label="重新识别此文件" title="重新识别此文件" @click="reidentification.open([file])"><RotateCcw :size="15" /></button>
                     <RouterLink
                       v-if="file.traceId"
                       class="icon-button"
@@ -614,6 +618,7 @@ const workType = (group: Group) =>
       </template>
     </template>
   </section>
+  <ReidentifyDialog :state="reidentification" :busy="busy" />
   <FileBrowser
     v-if="browser"
     confirm-label="开始识别"

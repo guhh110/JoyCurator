@@ -115,7 +115,11 @@ export interface ScrapeWorkPage {
   items: ScrapeWork[]
   nextCursor: string
 }
+export type ScrapeContent = 'all' | 'nfo' | 'images'
 export interface ScrapePreview {
+  content: ScrapeContent
+  onlyMissing: boolean
+  skipped: string[]
   id: string
   title: string
   type: string
@@ -131,7 +135,7 @@ export interface RecognitionItem extends MediaFile {
   group: string
   entry: Entry | null
   candidates: Entry[]
-  state: 'pending' | 'ready' | 'review' | 'unmatched' | 'failed'
+  state: 'pending' | 'reidentifying' | 'ready' | 'review' | 'unmatched' | 'failed'
   reason: string
   selected: boolean
   removed: boolean

@@ -94,6 +94,13 @@ func (a *WorkspaceService) Start(paths []string, retryID string) (matching.Works
 		if task.State == "running" {
 			return task, errors.New("识别任务仍在运行")
 		}
+		if len(paths) > 0 {
+			for _, item := range task.Items {
+				if item.State == "reidentifying" {
+					return task, errors.New("请先重试未完成的重新识别，再添加来源")
+				}
+			}
+		}
 		task.State, task.Error = "running", ""
 		if len(paths) > 0 {
 			seen := map[string]bool{}
@@ -108,34 +115,37 @@ func (a *WorkspaceService) Start(paths []string, retryID string) (matching.Works
 				}
 			}
 		}
+		rerunning := hasReidentification(task.Items)
 		for i := range task.Items {
-			if task.Items[i].State == "failed" {
+			if task.Items[i].State == "failed" && !rerunning {
 				task.Items[i].State = "pending"
 			}
 		}
 	}
-	remainingPaths := []string{}
-	for _, path := range task.Paths {
-		_, statErr := a.files.Access.Stat(path)
-		completed := false
-		for _, item := range task.Items {
-			if item.Path == a.files.Access.Canonical(path) && item.Removed {
-				completed = true
-				break
+	if !hasReidentification(task.Items) {
+		remainingPaths := []string{}
+		for _, path := range task.Paths {
+			_, statErr := a.files.Access.Stat(path)
+			completed := false
+			for _, item := range task.Items {
+				if item.Path == a.files.Access.Canonical(path) && item.Removed {
+					completed = true
+					break
+				}
 			}
+			if completed && errors.Is(statErr, os.ErrNotExist) {
+				continue
+			}
+			remainingPaths = append(remainingPaths, path)
 		}
-		if completed && errors.Is(statErr, os.ErrNotExist) {
-			continue
+		task.Paths = remainingPaths
+		if len(task.Paths) == 0 || len(task.Paths) > 200 {
+			return task, errors.New("请选择 1–200 个文件或目录")
 		}
-		remainingPaths = append(remainingPaths, path)
-	}
-	task.Paths = remainingPaths
-	if len(task.Paths) == 0 || len(task.Paths) > 200 {
-		return task, errors.New("请选择 1–200 个文件或目录")
-	}
-	for _, path := range task.Paths {
-		if !a.files.SourceAllowed(path, s) {
-			return task, errors.New("只能添加源目录内的文件或文件夹，目标目录不能作为来源")
+		for _, path := range task.Paths {
+			if !a.files.SourceAllowed(path, s) {
+				return task, errors.New("只能添加源目录内的文件或文件夹，目标目录不能作为来源")
+			}
 		}
 	}
 	if err = a.store.SaveWorkspace(&task); err != nil {

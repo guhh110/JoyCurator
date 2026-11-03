@@ -52,6 +52,17 @@ func identificationRoutes(a Dependencies, add func(string, endpoint)) {
 		v, e := a.Workspace.RemoveSource(r.PathValue("id"), in.Path, in.Revision)
 		return respond(w, v, e)
 	})
+	add("POST /api/recognitions/{id}/reidentify", func(w http.ResponseWriter, r *http.Request) error {
+		var input struct {
+			Revision int      `json:"revision"`
+			Paths    []string `json:"paths"`
+		}
+		if err := read(r, &input); err != nil {
+			return err
+		}
+		v, err := a.Workspace.Reidentify(r.PathValue("id"), input.Revision, input.Paths)
+		return respond(w, v, err)
+	})
 	add("POST /api/recognitions/{id}/retry", func(w http.ResponseWriter, r *http.Request) error {
 		v, e := a.Workspace.Start(nil, r.PathValue("id"))
 		return respond(w, v, e)

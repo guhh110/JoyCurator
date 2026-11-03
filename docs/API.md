@@ -22,7 +22,7 @@
 | `GET /episodes?id=&season=` | 指定季的集列表，季号 0 为特别篇 |
 | `GET /scrape/works?q=&cursor=` | 刮削作品概览，按类型和 TMDB ID 稳定排序，每次最多 50 部；返回 `{items:[{type,tmdbId,representative,total,pending,failed,completed}],nextCursor}`。搜索匹配目标路径或 TMDB ID；不逐个检查视频是否可用 |
 | `GET /scrape/works/{kind}/{id}` | 指定电影或剧集的全部已登记目标视频及实时可用状态，返回 `MediaMapping[]`；临时状态含 `queued/running/unavailable`，不扫描旧媒体 |
-| `POST /scrape/preview` | `{paths}`，仅接受已登记且可用的同一作品，单次 1–1000 个目标视频，返回产物、空间与冲突 |
+| `POST /scrape/preview` | `{paths,content,onlyMissing}`，仅接受已登记且可用的同一作品，单次 1–1000 个目标视频，返回产物、空间与冲突 |
 | `POST /scrape/execute` | `{id}`，确认刮削预览；提交时复核所选映射与文件，返回持久化 `queued` Run 摘要 |
 | `GET /recognitions` | 最近的识别工作区，无记录时返回 `null` |
 | `POST /recognitions` | `{paths,id?}`，创建异步识别任务；提供 `id` 时补充现有工作区并保留修正 |
@@ -36,6 +36,7 @@
 | `GET /recognitions/{id}` | 识别进度、候选、匹配依据、文件分组及选中状态 |
 | `PUT /recognitions/{id}` | `{revision,items}`，只提交变更文件，保存人工修正并校验作品与季集；拒绝过期版本及已锁定／完成文件 |
 | `POST /recognitions/{id}/cancel` | 取消识别，已完成结果保留 |
+| `POST /recognitions/{id}/reidentify` | `{revision,paths}`，对 1–2000 个已有文件按当前规则重新识别，保留人工修正，拒绝过期 revision、已移出及已提交文件 |
 | `POST /recognitions/{id}/retry` | 重试失败与未完成项，保留已处理文件的人工修正 |
 | `GET /queue` | `{revision,active,recognizing,organize,scrape}`；每通道返回 `{current,queued,queuedBatches,waitReason}`，`current` 为活动 Run 摘要或 `null`，等待时显示原因 |
 | `GET /queue/items?purpose=&page=` | `purpose=organize/scrape`，按实际出队顺序返回等待任务，固定每页 20 条 `{items,total,page}`；不含运行中任务 |
@@ -62,7 +63,7 @@
 
 ## 自动识别工作区
 
-识别任务返回 `id`、`revision`、`state`、`paths`、`items`、`completed`、`total`、`error`、`created`。任务状态为 `running`、`completed`、`failed`、`cancelled`、`interrupted`。每个文件在扫描字段之外包含可选 `traceId`、`metadata`、`group`、`entry`、`candidates`、`state`、`reason`、`selected`、`removed`；文件状态为 `pending`、`ready`、`review`、`unmatched`、`failed`。只有 `ready` 的选中文件可进入预览。
+识别任务返回 `id`、`revision`、`state`、`paths`、`items`、`completed`、`total`、`error`、`created`。任务状态为 `running`、`completed`、`failed`、`cancelled`、`interrupted`。每个文件在扫描字段之外包含可选 `traceId`、`metadata`、`group`、`entry`、`candidates`、`state`、`reason`、`selected`、`removed`；文件状态为 `pending`、`reidentifying`、`ready`、`review`、`unmatched`、`failed`。只有 `ready` 的选中文件可进入预览。
 
 保存修正只提交变更文件，保留 revision 检查；每项为 `{path,group,type,tmdbId,season,episodes,selected,removed}`。大小和修改时间由服务端保留，不接受前端修改。`tmdbId:0` 表示尚未选定作品。服务端校验季集，并自动取消无效文件的选择。预览绑定工作区版本，人工保存或识别增量保存后要求重新预览。执行进度不修改编辑 revision，不使无关预览过期。
 
@@ -100,3 +101,14 @@
 数据维护请求为 `{before,traces,cache,cacheBefore}`。`traces/cache` 至少一项为 true；清理历史时 `before` 必须为不晚于当前时间的 RFC3339 时间，只清理在此时刻之前结束的 completed/failed/cancelled/interrupted 轨迹。运行项、无结束时间及边界时刻记录保留。`cacheBefore` 为 Unix 秒，0 或省略时由服务端确定当前时间；只删除过期时间小于等于该值的缓存，不接受未来时间。前端提交预览返回的 `request`，固定已复核的截止时间；预览不锁定数据，实际数量以清理响应为准。
 
 清理需要登录和同源写请求。先预览、再确认；不改变工作区结果及其 revision，不删除整理／刮削 Run、当前规则或媒体文件，不执行 VACUUM。历史清理后，工作区历史链接可能提示已清理。任何子表或缓存删除失败都会整体回滚，不报告成功；数据库已释放页面可供后续写入复用，文件体积不保证立即缩小。
+
+
+## 选择性重新识别与刮削选项
+
+`POST /recognitions/{id}/reidentify` 的 `paths` 必须来自当前工作区且无重复；整个请求在提交前检查 revision、路径授权及文件可用性，任一项无效则整体拒绝。提交事务只更新指定条目及工作区摘要，成功后才注册后台任务。`reidentifying` 标记随条目持久化；工作区变为 running，取消／关闭后保留未完成标记，通过现有 retry 入口继续，不重扫其他来源。存在未完成重新识别时不允许再提交新的重跑或补充来源。
+
+成功重跑写入新的原始 Metadata 和 traceId，保留旧轨迹。未人工编辑的文件按当前提取结果重新匹配；Edited 文件保留作品快照、分组、季集及整理选择，重新校验无效时取消选择。未指定文件及已提交文件不修改。匹配失败仍保留重跑标记，工作区报告 failed，可继续重试。
+
+刮削 `content` 必填且只能为 `all/nfo/images`；`onlyMissing` 为布尔值，默认 false。返回的 `ScrapePlan` 新增 `content/onlyMissing/skipped`，其中 `artifacts` 只含本次计划生成的文件，`skipped` 为按路径排序的同名已有普通文件。不选 NFO 时不生成 NFO 内容，不选图片时不查询作品图片候选。已有目录或符号链接仍作为冲突，不作为可保留产物。
+
+“只补缺失”不验证已有产物内容，也不自动登记这些文件的归属。预览后目标被外部新增时沿用严格提交／执行校验，拒绝覆盖；由其他本系统任务生成的相同且未变化产物仍可复用。没有任何操作的预览不能执行；不包含实际操作归属的视频不进入 Run 映射快照，既有刮削状态不改变。重试、撤销和重启直接使用已持久化操作快照，不重新扩展刮削内容。完成状态仅针对本次选择的产物。

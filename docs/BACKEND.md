@@ -105,3 +105,8 @@ python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|Ben
 轨迹完成使用 `traceBatch` 将不可变的新子记录按表分组、按父子依赖顺序批量插入，每条 SQL 最多 900 个绑定参数；不再为首次创建的步骤子表执行 DELETE 或 UPSERT。最终摘要、Metadata 与全部步骤仍在同一个事务提交。该策略只用于轨迹，不用于文件操作日志。
 
 macOS 与 Linux 的 `Replace` 共用受限目录句柄、目标／暂存身份校验与独占重命名流程，旧文件在 journaled hold 路径保留至调用方清理，发布失败时尝试独占恢复，不能覆盖外部新增的目标。整理撤销在操作前核对记录身份与大小，并在检查点保存后复核，刮削继续校验内容哈希；视频不增加全文件哈希扫描。
+
+
+`app/reidentify.go` 管理指定文件重跑：在 Coordinator 锁内按 revision 校验、检查执行投影并持久化 reidentifying 标记后才启动 worker；任务副本独立于 HTTP 回执。只读取／重建标记条目的原始 Metadata、轨迹和匹配结果，沿用十条批次增量检查点；人工作品快照及季集保留。匹配失败和取消／重启后仍可用普通重试入口继续标记范围，不重扫其他来源。规则配置不变，当前 SQLite schema 无需调整。
+
+刮削预览使用 `ScrapePreviewRequest{Paths,Content,OnlyMissing}`，内容选择在构建操作前过滤；仅 NFO 不调用 Artwork，图片模式不序列化 NFO。只补缺失在目标普通文件检查后跳过，预览保留跳过清单但不创建占有这些文件的操作；只把有实际操作归属的视频映射放入缓存 Plan 和 Run。缺失文件在确认／出队前出现时仍严格复核，不覆盖外部文件。取消、重试、共享产物及撤销继续依据既有操作与 owner/owners 快照。

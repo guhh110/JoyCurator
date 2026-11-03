@@ -21,13 +21,11 @@ func scrapeRoutes(a Dependencies, add func(string, endpoint)) {
 		return respond(w, v, e)
 	})
 	add("POST /api/scrape/preview", func(w http.ResponseWriter, r *http.Request) error {
-		var input struct {
-			Paths []string `json:"paths"`
-		}
+		var input organizer.ScrapePreviewRequest
 		if err := read(r, &input); err != nil {
 			return err
 		}
-		v, e := a.Organizer.ScrapePreview(r.Context(), input.Paths)
+		v, e := a.Organizer.ScrapePreview(r.Context(), input)
 		return respond(w, v, e)
 	})
 	add("POST /api/scrape/execute", func(w http.ResponseWriter, r *http.Request) error {

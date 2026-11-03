@@ -22,15 +22,24 @@ type Run struct {
 	Mappings      []model.MediaMapping `json:"mappings,omitempty"`
 }
 
+type ScrapePreviewRequest struct {
+	Paths       []string `json:"paths"`
+	Content     string   `json:"content"`
+	OnlyMissing bool     `json:"onlyMissing"`
+}
+
 type ScrapePlan struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Type      string   `json:"type"`
-	TMDBID    int      `json:"tmdbId"`
-	Targets   []string `json:"targets"`
-	Artifacts []string `json:"artifacts"`
-	Issues    []string `json:"issues"`
-	Required  int64    `json:"required"`
+	Content     string   `json:"content"`
+	OnlyMissing bool     `json:"onlyMissing"`
+	Skipped     []string `json:"skipped"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Type        string   `json:"type"`
+	TMDBID      int      `json:"tmdbId"`
+	Targets     []string `json:"targets"`
+	Artifacts   []string `json:"artifacts"`
+	Issues      []string `json:"issues"`
+	Required    int64    `json:"required"`
 }
 
 type Batch struct {
