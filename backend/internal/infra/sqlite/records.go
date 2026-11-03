@@ -1814,7 +1814,7 @@ func putExtractionSteps(q queryer, key, root, owner string, position int, v reco
 	if err != nil {
 		return err
 	}
-	_, err = q.Exec("INSERT INTO extraction_steps(k,root,owner,position,f_rule_id,f_rule_name,f_order,f_target,f_status,f_matched_text,f_extracted_value,f_before,f_after,f_applied,f_reason,f_started_at,f_duration_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_rule_id=excluded.f_rule_id,f_rule_name=excluded.f_rule_name,f_order=excluded.f_order,f_target=excluded.f_target,f_status=excluded.f_status,f_matched_text=excluded.f_matched_text,f_extracted_value=excluded.f_extracted_value,f_before=excluded.f_before,f_after=excluded.f_after,f_applied=excluded.f_applied,f_reason=excluded.f_reason,f_started_at=excluded.f_started_at,f_duration_ms=excluded.f_duration_ms", key, root, owner, position, v.RuleID, v.RuleName, v.Order, v.Target, v.Status, v.MatchedText, j6, j7, j8, v.Applied, v.Reason, v.StartedAt.Format(time.RFC3339Nano), v.DurationMS)
+	_, err = q.Exec("INSERT INTO extraction_steps(k,root,owner,position,f_rule_id,f_rule_name,f_order,f_target,f_status,f_matched_text,f_extracted_value,f_before,f_after,f_applied,f_reason,f_started_at,f_duration_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", key, root, owner, position, v.RuleID, v.RuleName, v.Order, v.Target, v.Status, v.MatchedText, j6, j7, j8, v.Applied, v.Reason, v.StartedAt.Format(time.RFC3339Nano), v.DurationMS)
 	return err
 }
 
@@ -1822,22 +1822,13 @@ func writeExtractionSteps(q queryer, key, root, owner string, position int, v re
 	if err := putExtractionSteps(q, key, root, owner, position, v); err != nil {
 		return err
 	}
-	if _, err := q.Exec("DELETE FROM step_rules WHERE owner=?", key); err != nil {
-		return err
-	}
 	if err := writeStepRules(q, childKey(key, 0), root, key, 0, v.RuleConfig); err != nil {
-		return err
-	}
-	if _, err := q.Exec("DELETE FROM step_inputs WHERE owner=?", key); err != nil {
 		return err
 	}
 	for i, x := range v.Inputs {
 		if err := writeStepInputs(q, childKey(key, i), root, key, i, x); err != nil {
 			return err
 		}
-	}
-	if _, err := q.Exec("DELETE FROM step_captures WHERE owner=?", key); err != nil {
-		return err
 	}
 	{
 		keys := make([]string, 0, len(v.Captures))
@@ -1850,9 +1841,6 @@ func writeExtractionSteps(q queryer, key, root, owner string, position int, v re
 				return err
 			}
 		}
-	}
-	if _, err := q.Exec("DELETE FROM step_attempts WHERE owner=?", key); err != nil {
-		return err
 	}
 	for i, x := range v.Attempts {
 		if err := writeStepAttempts(q, childKey(key, i), root, key, i, x); err != nil {
@@ -2002,15 +1990,12 @@ func putStepRules(q queryer, key, root, owner string, position int, v recognitio
 	if err != nil {
 		return err
 	}
-	_, err = q.Exec("INSERT INTO step_rules(k,root,owner,position,f_id,f_name,f_description,f_target,f_source,f_order,f_enabled,f_kind,f_overwrite,f_config_code,f_config_source_code,f_config_params,f_config_pattern,f_config_capture,f_config_value) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_id=excluded.f_id,f_name=excluded.f_name,f_description=excluded.f_description,f_target=excluded.f_target,f_source=excluded.f_source,f_order=excluded.f_order,f_enabled=excluded.f_enabled,f_kind=excluded.f_kind,f_overwrite=excluded.f_overwrite,f_config_code=excluded.f_config_code,f_config_source_code=excluded.f_config_source_code,f_config_params=excluded.f_config_params,f_config_pattern=excluded.f_config_pattern,f_config_capture=excluded.f_config_capture,f_config_value=excluded.f_config_value", key, root, owner, position, v.ID, v.Name, v.Description, v.Target, v.Source, v.Order, v.Enabled, v.Kind, v.Overwrite, v.Config.Code, v.Config.SourceCode, j11, v.Config.Pattern, v.Config.Capture, j14)
+	_, err = q.Exec("INSERT INTO step_rules(k,root,owner,position,f_id,f_name,f_description,f_target,f_source,f_order,f_enabled,f_kind,f_overwrite,f_config_code,f_config_source_code,f_config_params,f_config_pattern,f_config_capture,f_config_value) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", key, root, owner, position, v.ID, v.Name, v.Description, v.Target, v.Source, v.Order, v.Enabled, v.Kind, v.Overwrite, v.Config.Code, v.Config.SourceCode, j11, v.Config.Pattern, v.Config.Capture, j14)
 	return err
 }
 
 func writeStepRules(q queryer, key, root, owner string, position int, v recognition.Rule) error {
 	if err := putStepRules(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	if _, err := q.Exec("DELETE FROM step_rule_examples WHERE owner=?", key); err != nil {
 		return err
 	}
 	for i, x := range v.Examples {
@@ -2091,7 +2076,7 @@ func writeStepRuleExamples(q queryer, key, root, owner string, position int, v r
 	if err != nil {
 		return err
 	}
-	_, err = q.Exec("INSERT INTO step_rule_examples(k,root,owner,position,f_path,f_root,f_expected) VALUES(?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_path=excluded.f_path,f_root=excluded.f_root,f_expected=excluded.f_expected", key, root, owner, position, v.Path, v.Root, j2)
+	_, err = q.Exec("INSERT INTO step_rule_examples(k,root,owner,position,f_path,f_root,f_expected) VALUES(?,?,?,?,?,?,?)", key, root, owner, position, v.Path, v.Root, j2)
 	return err
 }
 
@@ -2135,7 +2120,7 @@ func scanStepInputs(s scanner) (string, error) {
 }
 
 func writeStepInputs(q queryer, key, root, owner string, position int, v string) error {
-	_, err := q.Exec("INSERT INTO step_inputs(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
+	_, err := q.Exec("INSERT INTO step_inputs(k,root,owner,position,value) VALUES(?,?,?,?,?)", key, root, owner, position, v)
 	return err
 }
 
@@ -2179,7 +2164,7 @@ func scanStepCaptures(s scanner) (capture, error) {
 }
 
 func writeStepCaptures(q queryer, key, root, owner string, position int, v capture) error {
-	_, err := q.Exec("INSERT INTO step_captures(k,root,owner,position,f_name,f_value) VALUES(?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_name=excluded.f_name,f_value=excluded.f_value", key, root, owner, position, v.Name, v.Value)
+	_, err := q.Exec("INSERT INTO step_captures(k,root,owner,position,f_name,f_value) VALUES(?,?,?,?,?,?)", key, root, owner, position, v.Name, v.Value)
 	return err
 }
 
@@ -2223,15 +2208,12 @@ func scanStepAttempts(s scanner) (recognition.Attempt, error) {
 }
 
 func putStepAttempts(q queryer, key, root, owner string, position int, v recognition.Attempt) error {
-	_, err := q.Exec("INSERT INTO step_attempts(k,root,owner,position,f_input,f_matched,f_matched_text,f_error) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_input=excluded.f_input,f_matched=excluded.f_matched,f_matched_text=excluded.f_matched_text,f_error=excluded.f_error", key, root, owner, position, v.Input, v.Matched, v.MatchedText, v.Error)
+	_, err := q.Exec("INSERT INTO step_attempts(k,root,owner,position,f_input,f_matched,f_matched_text,f_error) VALUES(?,?,?,?,?,?,?,?)", key, root, owner, position, v.Input, v.Matched, v.MatchedText, v.Error)
 	return err
 }
 
 func writeStepAttempts(q queryer, key, root, owner string, position int, v recognition.Attempt) error {
 	if err := putStepAttempts(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	if _, err := q.Exec("DELETE FROM attempt_captures WHERE owner=?", key); err != nil {
 		return err
 	}
 	{
@@ -2245,9 +2227,6 @@ func writeStepAttempts(q queryer, key, root, owner string, position int, v recog
 				return err
 			}
 		}
-	}
-	if _, err := q.Exec("DELETE FROM attempt_events WHERE owner=?", key); err != nil {
-		return err
 	}
 	for i, x := range v.Trace {
 		if err := writeAttemptEvents(q, childKey(key, i), root, key, i, x); err != nil {
@@ -2337,7 +2316,7 @@ func scanAttemptCaptures(s scanner) (capture, error) {
 }
 
 func writeAttemptCaptures(q queryer, key, root, owner string, position int, v capture) error {
-	_, err := q.Exec("INSERT INTO attempt_captures(k,root,owner,position,f_name,f_value) VALUES(?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_name=excluded.f_name,f_value=excluded.f_value", key, root, owner, position, v.Name, v.Value)
+	_, err := q.Exec("INSERT INTO attempt_captures(k,root,owner,position,f_name,f_value) VALUES(?,?,?,?,?,?)", key, root, owner, position, v.Name, v.Value)
 	return err
 }
 
@@ -2391,7 +2370,7 @@ func writeAttemptEvents(q queryer, key, root, owner string, position int, v reco
 	if err != nil {
 		return err
 	}
-	_, err = q.Exec("INSERT INTO attempt_events(k,root,owner,position,f_phase,f_line,f_column,f_function,f_operation,f_message,f_data) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_phase=excluded.f_phase,f_line=excluded.f_line,f_column=excluded.f_column,f_function=excluded.f_function,f_operation=excluded.f_operation,f_message=excluded.f_message,f_data=excluded.f_data", key, root, owner, position, v.Phase, v.Line, v.Column, v.Function, v.Operation, v.Message, j6)
+	_, err = q.Exec("INSERT INTO attempt_events(k,root,owner,position,f_phase,f_line,f_column,f_function,f_operation,f_message,f_data) VALUES(?,?,?,?,?,?,?,?,?,?,?)", key, root, owner, position, v.Phase, v.Line, v.Column, v.Function, v.Operation, v.Message, j6)
 	return err
 }
 

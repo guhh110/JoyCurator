@@ -58,3 +58,6 @@ python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|Ben
 队列工作区另有 `BenchmarkFileExecutionProjection1000`，测量 1000 文件任务状态投影。基准不访问公网，不操作已有用户数据，设置及样本创建不计入计时。结果与测量边界见 [性能记录](../docs/PERFORMANCE.md)。
 
 存储关系化回归位于 `backend/infra/sqlite/relational_test.go`：覆盖独立作品／规则快照、NULL 与特别篇、有序集合、递归撤销与 BLOB、空规则链重启、严格动态 JSON、旧格式／损坏结构拒绝且不改写、跨记录恢复回滚，以及触发器保护未变化条目。`BenchmarkRunCheckpoint`（10／1000 操作）和 `BenchmarkWorkspaceCheckpoint`（10／2000 条目，更新固定十条）测量增量写入成本。
+
+
+增补回归：`backend/infra/fsops/replace_test.go` 验证 Linux／macOS 独占覆盖及目标、暂存、hold 冲突；`backend/organizer/undo_identity_test.go` 验证等长外部替换、检查点期间变化和 NFO 覆盖撤销；`backend/infra/sqlite/trace_batch_test.go` 覆盖跨 SQL 批次顺序、独立规则快照及末尾事件失败回滚。`maintenance_test.go` 与 `app/maintenance_routes_test.go` 覆盖清理预览、固定截止、终态筛选、外键子表与缓存共同回滚、revision 不变及登录／同源约束。`run_filter_test.go` 覆盖筛选后分页、用途隔离及字面搜索；前端对应测试位于 `frontend/app/maintenance.test.ts`、`records.test.ts` 和 `recordPresentation.test.ts`。

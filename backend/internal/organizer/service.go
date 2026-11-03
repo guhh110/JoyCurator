@@ -42,8 +42,8 @@ func New(d Dependencies) *Service {
 		factory: d.Factory, runner: d.Runner, revision: d.Revision}
 }
 
-func (a *Service) ScrapeRecords(page int) (RunPage, error) {
-	return a.store.RunsByPurpose(page, "scrape")
+func (a *Service) ScrapeRecords(page int, filter RunFilter) (RunPage, error) {
+	return a.store.RunsByPurpose(page, "scrape", filter)
 }
 
 func (a *Service) ScrapeRecord(id string) (Run, error) {
@@ -139,7 +139,9 @@ func (a *Service) Record(id string) (Run, error) {
 	}
 	return r, err
 }
-func (a *Service) Records(page int) (RunPage, error) { return a.store.RunsByPurpose(page, "organize") }
+func (a *Service) Records(page int, filter RunFilter) (RunPage, error) {
+	return a.store.RunsByPurpose(page, "organize", filter)
+}
 func (a *Service) Cancel(id string) error {
 	c := a.coordinator
 	c.mu.Lock()

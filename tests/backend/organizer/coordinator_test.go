@@ -53,7 +53,9 @@ func (m *memoryRuns) Runs(int) (RunPage, error) {
 	defer m.mu.Unlock()
 	return RunPage{Total: len(m.items)}, nil
 }
-func (m *memoryRuns) RunsByPurpose(page int, purpose string) (RunPage, error) { return m.Runs(page) }
+func (m *memoryRuns) RunsByPurpose(page int, purpose string, filter RunFilter) (RunPage, error) {
+	return m.Runs(page)
+}
 func (m *memoryRuns) BatchRuns(id string) ([]Run, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

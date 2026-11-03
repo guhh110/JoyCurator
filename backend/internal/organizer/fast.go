@@ -231,6 +231,9 @@ func (e *Engine) fastUndo(ctx context.Context, op *Operation, save func() error)
 	if err != nil || !info.Mode().IsRegular() {
 		return errors.New("目标不存在或不是普通文件，不能撤销")
 	}
+	if op.Identity == "" || fsops.Identity(info) != op.Identity || info.Size() != op.Size {
+		return errors.New("目标文件身份或大小已变化，停止撤销，请人工检查")
+	}
 	if op.Mode == "move" {
 		if _, err = e.FS.Stat(op.Source); !errors.Is(err, os.ErrNotExist) {
 			return errors.New("来源路径已被占用，停止撤销")
@@ -258,7 +261,7 @@ func (e *Engine) fastUndo(ctx context.Context, op *Operation, save func() error)
 			}
 			defer from.Close()
 			opened, statErr := from.Stat()
-			if statErr != nil || !os.SameFile(info, opened) {
+			if statErr != nil || !os.SameFile(info, opened) || opened.Size() != op.Size {
 				return errors.New("目标文件在撤销期间发生变化")
 			}
 			to, createErr := e.FS.CreateExclusive(tempPath)
@@ -281,7 +284,7 @@ func (e *Engine) fastUndo(ctx context.Context, op *Operation, save func() error)
 				return err
 			}
 			current, statErr := e.FS.Stat(op.Target)
-			if statErr != nil || !os.SameFile(opened, current) {
+			if statErr != nil || !os.SameFile(opened, current) || current.Size() != op.Size || !current.ModTime().Equal(opened.ModTime()) {
 				return errors.New("目标文件在撤销期间发生变化，来源副本需人工检查")
 			}
 			tempInfo, statErr := e.FS.Stat(tempPath)
@@ -303,10 +306,14 @@ func (e *Engine) fastUndo(ctx context.Context, op *Operation, save func() error)
 	if err = save(); err != nil {
 		return err
 	}
+	current, err := e.fastLeaf(op.Target, op.Identity)
+	if err != nil || current.Size() != op.Size || !current.ModTime().Equal(info.ModTime()) {
+		return errors.New("目标文件在撤销期间发生变化，请人工检查")
+	}
 	if op.Mode == "move" {
-		err = e.FS.RenameOwned(op.Target, op.Source, fsops.Identity(info))
+		err = e.FS.RenameOwned(op.Target, op.Source, op.Identity)
 	} else {
-		err = e.FS.RemoveOwned(op.Target, fsops.Identity(info))
+		err = e.FS.RemoveOwned(op.Target, op.Identity)
 	}
 	if err != nil {
 		return err

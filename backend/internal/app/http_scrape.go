@@ -1,6 +1,7 @@
 package app
 
 import (
+	"joycurator/internal/organizer"
 	"net/http"
 	"strconv"
 	"strings"
@@ -44,7 +45,7 @@ func scrapeRoutes(a Dependencies, add func(string, endpoint)) {
 		if page < 1 {
 			page = 1
 		}
-		v, e := a.Organizer.ScrapeRecords(page)
+		v, e := a.Organizer.ScrapeRecords(page, organizer.RunFilter{Search: r.URL.Query().Get("search"), State: r.URL.Query().Get("state")})
 		return respond(w, v, e)
 	})
 	add("GET /api/scrape/runs/{id}", func(w http.ResponseWriter, r *http.Request) error {

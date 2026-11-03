@@ -58,3 +58,18 @@ python3 tests/run_backend.py test -run '^$' -bench BenchmarkFileExecutionProject
 ```sh
 python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|BenchmarkWorkspace2000|BenchmarkRunHistory|BenchmarkPreview1000|BenchmarkFileExecutionProjection1000|BenchmarkRunCheckpoint|BenchmarkWorkspaceCheckpoint' -benchtime=1x -count=3 ./internal/infra/sqlite ./internal/app
 ```
+
+
+## 轨迹批量插入优化
+
+2026-11-03，同一台 Apple M4／macOS arm64／Go 1.24.2，优化前后各运行三次原有 `BenchmarkRecognition2000`（`-benchtime=1x`），取中位数，保留相同默认规则、2000 路径与完整轨迹，不访问公网或媒体内容。
+
+| 样本 | 优化前 | 优化后 | 变化 |
+| --- | ---: | ---: | ---: |
+| 2000 文件提取与完整历史写入 | 7396.98 ms | 5048.67 ms | 耗时降低 31.7% |
+| 累计分配 B/op | 2,102,069,096 | 2,150,579,480 | 增加 2.3% |
+| 分配次数 allocs/op | 28,470,418 | 26,658,163 | 减少 6.4% |
+
+完成事务中不再为全新步骤及其子记录执行 DELETE／UPSERT；按表分组插入步骤、规则快照、样例、输入、捕获、尝试与脚本事件，每条 SQL 最多 900 个绑定参数。父表先于子表写入，最终 Metadata 与状态仍和所有子表原子提交；末尾事件触发器失败回归验证跨批次整体回滚。批量缓冲以单文件为单位，累计分配略增，未测峰值内存；该优化不减少历史内容，不用于文件操作检查点。
+
+同时复跑当前 `BenchmarkWorkspace2000` 三次，中位数 7720.42 ms/op、3,070,876,672 B/op，仍为每批 3 次模拟 Provider 调用、5 ms 轮询。没有同期重测工作区优化前值，因此不据较早表格计算该样本收益。高频轮询及完整工作区读取仍计入端到端成本，本机小文件样本不代表 NAS 或公网耗时。

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"joycurator/internal/model"
 	"joycurator/internal/organizer"
+	"strings"
 )
 
 func (a *Store) SaveRun(r organizer.Run) error {
@@ -185,14 +186,42 @@ func runColumns(alias string) string {
 	}
 	return out
 }
-func (a *Store) RunsByPurpose(page int, purpose string) (organizer.RunPage, error) {
+func (a *Store) RunsByPurpose(page int, purpose string, filter organizer.RunFilter) (organizer.RunPage, error) {
+	if page < 1 {
+		page = 1
+	}
+	if page > 1000000 {
+		page = 1000000
+	}
 	v := organizer.RunPage{Page: page}
-	if err := a.db.QueryRow("SELECT COUNT(*) FROM runs WHERE f_purpose=?", purpose).Scan(&v.Total); err != nil {
+	where := " WHERE f_purpose=?"
+	args := []any{purpose}
+	if search := strings.TrimSpace(filter.Search); search != "" {
+		where += " AND instr(lower(f_title),lower(?))>0"
+		args = append(args, search)
+	}
+	if filter.State != "" {
+		switch filter.State {
+		case "queued", "running", "completed", "failed", "cancelled", "interrupted", "undone":
+		default:
+			return v, errors.New("无效的任务状态筛选")
+		}
+		where += " AND f_state=?"
+		args = append(args, filter.State)
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
 		return v, err
 	}
-	var err error
-	v.Items, err = a.readRuns("SELECT id,"+columnsRuns+" FROM runs WHERE f_purpose=? ORDER BY sequence DESC LIMIT 20 OFFSET ?", purpose, (page-1)*20)
-	return v, err
+	defer tx.Rollback()
+	if err = tx.QueryRow("SELECT COUNT(*) FROM runs"+where, args...).Scan(&v.Total); err != nil {
+		return v, err
+	}
+	v.Items, err = queryRuns(tx, "SELECT id,"+columnsRuns+" FROM runs"+where+" ORDER BY sequence DESC LIMIT 20 OFFSET ?", append(args, (page-1)*20)...)
+	if err != nil {
+		return v, err
+	}
+	return v, tx.Commit()
 }
 func (a *Store) BatchSummaries(id string) ([]organizer.Run, error) {
 	return a.readRuns("SELECT id,"+columnsRuns+" FROM runs WHERE f_batch_id=? ORDER BY sequence", id)

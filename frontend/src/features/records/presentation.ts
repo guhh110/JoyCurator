@@ -34,3 +34,16 @@ export function date(value: string) {
     minute: '2-digit',
   })
 }
+
+export const recordStateOptions = [
+  { value: '', label: '全部状态' },
+  ...['queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'undone']
+    .map(value => ({ value, label: states[value]! })),
+]
+export function recordState(value: unknown): string {
+  return typeof value === 'string' && recordStateOptions.some(option => option.value === value) ? value : ''
+}
+export function operationNeedsAttention(op: { status: string; error: string }, runState: string) {
+  return !!op.error || ['failed', 'manual_review'].includes(op.status) ||
+    (!['running', 'queued'].includes(runState) && ['preparing', 'staged', 'published', 'cleanup', 'undoing'].includes(op.status))
+}

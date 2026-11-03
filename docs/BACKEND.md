@@ -98,3 +98,10 @@ python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|Ben
 - 提取轨迹的 Metadata、步骤、输入、捕获、尝试、事件及规则快照均关系化；每步保存自己的规则和样例。只有 Config.Params/Value、样例 Expected、步骤 Before/After/ExtractedValue、事件 Data 使用严格 JSON，编码失败或多余 JSON 输入直接报错。
 - 完整保存用于创建、结构变更与重试；`SaveCheckpoint` 仅保存 Run 摘要和指定位置的操作／映射，并原子登记已完成视频。`CheckpointWorkspace` 仅保存摘要和变化条目，以 revision 检查并在提交成功后增加 revision。后台执行投影不增加工作区 revision。
 - 子表使用所属外键、级联删除、显式 position 与归属位置唯一约束。工作区 traceId 为可清理的历史引用，清理轨迹不删除工作区。多表详情通过读取事务保持同一快照。所有结果集先关闭再进行下一次查询；列表不组装操作，详情按表批量读取；单个刮削产物通过递归 CTE 只读取自身操作及撤销链。
+
+
+系统维护入口由 `app/MaintenanceService` 校验截止时间与清理选项，存储实现集中在 `infra/sqlite/maintenance.go`。预览只统计，清理在同一事务删除符合结束时间的终态轨迹及过期缓存，所有轨迹子表通过外键级联删除，运行记录不参与；工作区保留可清理历史引用与原 revision。
+
+轨迹完成使用 `traceBatch` 将不可变的新子记录按表分组、按父子依赖顺序批量插入，每条 SQL 最多 900 个绑定参数；不再为首次创建的步骤子表执行 DELETE 或 UPSERT。最终摘要、Metadata 与全部步骤仍在同一个事务提交。该策略只用于轨迹，不用于文件操作日志。
+
+macOS 与 Linux 的 `Replace` 共用受限目录句柄、目标／暂存身份校验与独占重命名流程，旧文件在 journaled hold 路径保留至调用方清理，发布失败时尝试独占恢复，不能覆盖外部新增的目标。整理撤销在操作前核对记录身份与大小，并在检查点保存后复核，刮削继续校验内容哈希；视频不增加全文件哈希扫描。

@@ -50,7 +50,7 @@ func TestRunSummariesSkipOperationDecodingButDetailsRemainStrict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	page, err := store.RunsByPurpose(1, "organize")
+	page, err := store.RunsByPurpose(1, "organize", organizer.RunFilter{})
 	if err != nil || page.Total != 1 || len(page.Items) != 1 || page.Items[0].Ops != nil || page.Items[0].Mappings != nil {
 		t.Fatal(page, err)
 	}

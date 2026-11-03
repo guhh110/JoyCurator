@@ -1,6 +1,7 @@
 package app
 
 import (
+	"joycurator/internal/organizer"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,7 +16,7 @@ func organizationRoutes(a Dependencies, add func(string, endpoint)) {
 		if page > 1000000 {
 			page = 1000000
 		}
-		v, e := a.Organizer.Records(page)
+		v, e := a.Organizer.Records(page, organizer.RunFilter{Search: r.URL.Query().Get("search"), State: r.URL.Query().Get("state")})
 		return respond(w, v, e)
 	})
 	add("GET /api/runs/{id}", func(w http.ResponseWriter, r *http.Request) error {

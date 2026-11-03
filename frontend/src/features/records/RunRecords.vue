@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useRecords } from './queries'
 import {
@@ -11,9 +11,10 @@ import {
 } from '@lucide/vue'
 import { pageNumber } from '../../app/routing'
 import { useRuntime } from '../../app/runtime'
-import { date, modeNames, states } from './presentation'
+import { date, modeNames, states, recordStateOptions, recordState } from './presentation'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import QueryState from '../../components/ui/QueryState.vue'
+import Select from '../../components/ui/Select.vue'
 import Pagination from '../../components/ui/Pagination.vue'
 const props = defineProps<{ purpose: 'organize' | 'scrape' }>()
 const pageCopy = computed(() => props.purpose === 'scrape'
@@ -35,11 +36,26 @@ const route = useRoute(),
   router = useRouter(),
   runtime = useRuntime()
 const page = computed(() => pageNumber(route.query.page))
-const recordsQuery = useRecords(page, props.purpose)
+const appliedSearch = computed(() => typeof route.query.search === 'string' ? route.query.search : '')
+const state = computed(() => recordState(route.query.state))
+const search = ref(appliedSearch.value)
+watch(appliedSearch, value => { search.value = value })
+const filtered = computed(() => !!appliedSearch.value || !!state.value)
+const recordsQuery = useRecords(page, props.purpose, appliedSearch, state)
 const records = computed(() => recordsQuery.data.value?.items ?? [])
 function changePage(value: number) {
-  void router.push({ name: pageCopy.value.route, query: { page: value } })
+  void router.push({ name: pageCopy.value.route, query: { ...route.query, page: value } })
 }
+function applyFilter(value = state.value) {
+  void router.push({ name: pageCopy.value.route, query: {
+    ...(search.value.trim() ? { search: search.value.trim() } : {}),
+    ...(value ? { state: value } : {}),
+  } })
+}
+watch(() => recordsQuery.data.value, value => {
+  const last = Math.max(1, Math.ceil((value?.total ?? 0) / 20))
+  if (value && page.value > last) void router.replace({ query: { ...route.query, page: last } })
+})
 </script>
 <template>
   <section :aria-label="pageCopy.title">
@@ -53,15 +69,21 @@ function changePage(value: number) {
         </button></template
       ></PageHeader
     >
+    <form class="record-filters" @submit.prevent="applyFilter()">
+      <input v-model="search" type="search" placeholder="搜索作品名称" aria-label="记录作品搜索" />
+      <Select :model-value="state" :options="recordStateOptions" label="记录状态筛选" @update:model-value="applyFilter" />
+      <button class="button small" type="submit">查询</button>
+    </form>
     <QueryState
       :loading="recordsQuery.isPending.value"
       :error="recordsQuery.error.value"
       @retry="recordsQuery.refetch()"
       ><div v-if="!records.length" class="pane empty record-empty">
         <History :size="38" />
-        <h3>还没有{{ pageCopy.title }}</h3>
-        <p>{{ pageCopy.emptyDescription }}</p>
-        <RouterLink class="button" :to="{ name: pageCopy.destination }"
+        <h3>{{ filtered ? '没有符合条件的记录' : `还没有${pageCopy.title}` }}</h3>
+        <p>{{ filtered ? '试试其他作品名称或任务状态。' : pageCopy.emptyDescription }}</p>
+        <button v-if="filtered" class="button" @click="router.push({ name: pageCopy.route })">清除筛选</button>
+        <RouterLink v-else class="button" :to="{ name: pageCopy.destination }"
           >{{ pageCopy.destinationLabel }}</RouterLink
         >
       </div>
@@ -102,3 +124,10 @@ function changePage(value: number) {
     /></QueryState>
   </section>
 </template>
+
+<style scoped>
+.record-filters { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
+.record-filters input { flex:1; min-width:0; }
+.record-filters .button, .record-filters :deep(.ui-select-anchor) { flex-shrink:0; }
+@media(max-width:520px) { .record-filters { flex-wrap:wrap; } .record-filters input { flex-basis:100%; } }
+</style>

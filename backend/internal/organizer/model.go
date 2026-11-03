@@ -101,3 +101,9 @@ type BatchPage struct {
 	Total int     `json:"total"`
 	Page  int     `json:"page"`
 }
+
+// RunFilter applies to summaries before pagination.
+type RunFilter struct {
+	Search string
+	State  string
+}

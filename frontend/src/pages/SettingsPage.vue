@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Trash2,
 } from '@lucide/vue'
+import DataMaintenance from '../features/settings/DataMaintenance.vue'
 import FileBrowser from '../components/FileBrowser.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -50,7 +51,7 @@ const {
           ><template #actions>
             <button
               class="button primary"
-              :disabled="busy || running"
+              :disabled="busy || running" v-if="settingsSection !== 'maintenance'"
               @click="saveSettings"
             >
               <Check :size="16" />保存设置
@@ -78,6 +79,7 @@ const {
             >
               <Layers3 :size="17" />命名与分类</button
             >
+            <button :class="{ active: settingsSection === 'maintenance' }" @click="settingsSection = 'maintenance'"><Trash2 :size="17" />数据维护</button>
           </nav>
           <section
             class="pane settings-content"
@@ -331,11 +333,10 @@ const {
                 </section>
               </div></template
             >
-            <template v-else><p>整理只处理视频及同名字幕。刮削在独立工作区进行。</p></template>
-            >
+            <DataMaintenance v-else-if="settingsSection === 'maintenance'" />
           </section>
         </div>
-        <div class="mobile-save">
+        <div v-if="settingsSection !== 'maintenance'" class="mobile-save">
           <button
             class="button primary full"
             :disabled="busy || running"

@@ -245,7 +245,7 @@ func TestStalePlanAndSourceChangesRejected(t *testing.T) {
 		t.Fatal("unknown preview accepted")
 	}
 }
-func TestNoOverwriteAndPathLevelUndo(t *testing.T) {
+func TestNoOverwriteAndChangedTargetUndo(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows organizer execution unsupported")
 	}
@@ -275,11 +275,11 @@ func TestNoOverwriteAndPathLevelUndo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if done(t, a, u).State != "undone" {
-		t.Fatal("path-level undo failed")
+	if done(t, a, u).State != "failed" {
+		t.Fatal("undo accepted modified target")
 	}
-	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Fatal("path-level undo retained modified target")
+	if got, err := os.ReadFile(target); err != nil || string(got) != "user-modified" {
+		t.Fatal("undo changed external target", err)
 	}
 }
 func TestMoveAndHardlink(t *testing.T) {

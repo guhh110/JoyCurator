@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"joycurator/internal/auth"
+	"joycurator/internal/model"
 )
 
 func systemRoutes(a Dependencies, add func(string, endpoint)) {
@@ -56,6 +57,23 @@ func systemRoutes(a Dependencies, add func(string, endpoint)) {
 		http.SetCookie(w, &http.Cookie{Name: "joycurator_session", Path: "/", HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteStrictMode, Secure: a.Secure})
 		reply(w, map[string]bool{"ok": true})
 		return nil
+	})
+
+	add("POST /api/maintenance/preview", func(w http.ResponseWriter, r *http.Request) error {
+		var in model.CleanupRequest
+		if err := read(r, &in); err != nil {
+			return err
+		}
+		v, err := a.Maintenance.PreviewCleanup(in)
+		return respond(w, v, err)
+	})
+	add("POST /api/maintenance/cleanup", func(w http.ResponseWriter, r *http.Request) error {
+		var in model.CleanupRequest
+		if err := read(r, &in); err != nil {
+			return err
+		}
+		v, err := a.Maintenance.Cleanup(in)
+		return respond(w, v, err)
 	})
 
 	add("GET /api/settings", func(w http.ResponseWriter, r *http.Request) error { v, e := a.Config.View(); return respond(w, v, e) })

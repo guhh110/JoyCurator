@@ -91,11 +91,11 @@ func TestNoOverwriteAndExternalChange(t *testing.T) {
 	if err := os.WriteFile(op.Target, []byte("external change"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Undo(context.Background(), op, func() error { return nil }); err != nil {
-		t.Fatal(err)
+	if err := e.Undo(context.Background(), op, func() error { return nil }); err == nil {
+		t.Fatal("undo accepted changed target")
 	}
-	if _, err := os.Stat(op.Target); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("path-level undo did not remove replacement")
+	if got, err := os.ReadFile(op.Target); err != nil || string(got) != "external change" {
+		t.Fatal("external file changed", err)
 	}
 }
 func TestInterruptedPublicationNeedsManualReview(t *testing.T) {

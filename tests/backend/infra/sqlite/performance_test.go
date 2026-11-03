@@ -46,7 +46,7 @@ func BenchmarkRunHistory(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		if _, err := store.RunsByPurpose(1, "organize"); err != nil {
+		if _, err := store.RunsByPurpose(1, "organize", organizer.RunFilter{}); err != nil {
 			b.Fatal(err)
 		}
 		if _, err := store.BatchSummaries("99"); err != nil {

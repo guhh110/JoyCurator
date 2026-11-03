@@ -31,12 +31,13 @@ func (a *Store) FinishTrace(t recognition.Trace, steps []recognition.Step) error
 		if err = writeTraceMetadata(tx, childKey(t.ID, 0), t.ID, t.ID, 0, t.Metadata); err != nil {
 			return err
 		}
+		batch := newTraceBatch(tx)
 		for i, s := range steps {
-			if err = writeExtractionSteps(tx, childKey(t.ID, i), t.ID, t.ID, i, s); err != nil {
+			if err = writeExtractionSteps(batch, childKey(t.ID, i), t.ID, t.ID, i, s); err != nil {
 				return err
 			}
 		}
-		return nil
+		return batch.flush()
 	})
 }
 func (a *Store) DeleteTrace(id string) error {

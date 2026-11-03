@@ -34,7 +34,7 @@ function changePage(value: number) {
 <template>
   <section class="history-page" aria-label="识别历史">
     <PageHeader title="识别历史" eyebrow="RECOGNITION HISTORY" description="查看文件的识别结果与规则执行轨迹。">
-      <template #actions><RouterLink class="button" :to="{ name: 'automatic-recognition' }">返回整理工作区</RouterLink></template>
+      <template #actions><RouterLink class="button" :to="{ name: 'settings', query: { section: 'maintenance' } }">批量清理</RouterLink><RouterLink class="button" :to="{ name: 'automatic-recognition' }">返回整理工作区</RouterLink></template>
     </PageHeader>
     <form class="history-search" @submit.prevent="search">
       <input v-model="path" placeholder="输入完整文件路径精确筛选" aria-label="历史路径筛选" />

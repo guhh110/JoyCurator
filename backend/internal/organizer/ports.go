@@ -23,7 +23,7 @@ type Store interface {
 	ScrapeArtifact(string) (*Work, error)
 	DeleteMapping(model.MediaMapping) error
 	UpdateMappingState(model.MediaMapping, string, string) error
-	RunsByPurpose(int, string) (RunPage, error)
+	RunsByPurpose(int, string, RunFilter) (RunPage, error)
 }
 type Settings interface {
 	Load() (model.Settings, error)

@@ -14,6 +14,8 @@
 | `POST /logout` | 注销会话 |
 | `GET /settings` | 设置、授权 `roots`、凭据存在标志 `hasToken`；不返回 Token |
 | `PUT /settings` | 设置及当前 `version`，可选 `tmdbToken`；版本过期、识别未结束或任一通道运行／排队时拒绝保存 |
+| `POST /maintenance/preview` | 预览已结束识别历史及过期 TMDB 缓存的清理数量，返回 `{request,traces,cache}` |
+| `POST /maintenance/cleanup` | 提交确认的清理条件，同一事务删除所选历史及其全部子表和过期缓存，返回实际数量 `{traces,cache}` |
 | `GET /browse?path=` | 默认仅浏览已配置源目录；目录设置选择器可用 `scope=roots` 浏览授权根目录，跳过隐藏文件和符号链接 |
 | `GET /search?type=&q=&year=` | 搜索 TMDB，`type` 为 `movie` 或 `tv` |
 | `GET /seasons?id=` | 作品的季列表 |
@@ -42,7 +44,7 @@
 | `GET /batches?page=` | 分页批次列表，固定每页 20 批 `{items,total,page}`，空列表为 `[]` |
 | `GET /batches/{id}` | `{id,runs,active,state,position}`，持久化任务推导状态及队列批次位置；`position=0` 表示已无队列项 |
 | `POST /batches/{id}/cancel` | 取消当前作品及未启动队列项，已完成记录保留 |
-| `GET /runs?page=` | 整理任务摘要，固定每页 20 条，返回 `{items,total,page}` |
+| `GET /runs?page=&search=&state=` | 整理任务摘要，作品名称包含搜索及任务状态筛选，先筛选后分页，固定每页 20 条 `{items,total,page}` |
 | `GET /runs/{id}` | 整理任务详情、逐文件状态和错误 |
 | `POST /runs/{id}/cancel` | 取消排队中或运行中的任务 |
 | `POST /runs/{id}/retry` | 重试失败、取消或中断的整理 |
@@ -89,3 +91,12 @@
 扫描及预览均校验来源必须位于 `sourceRoot` 内且不在 `targetRoot` 内。显式提交目标文件也会被拒绝。`scope=roots` 只供设置目录浏览，不会放宽扫描或预览权限。
 
 单部与多部整理共用工作区和批次入口。独立扫描、单作品预览执行入口已移除。记录列表及批次状态不包含 `ops` 和 `mappings`；单条详情按需返回完整记录。刮削记录对应 `GET /scrape/runs`、`GET /scrape/runs/{id}` 及 `POST /scrape/runs/{id}/cancel|retry|undo`，与整理记录按用途隔离。
+
+
+## 记录筛选与数据维护
+
+`GET /runs` 和 `GET /scrape/runs` 均接受 `search`（作品名称包含搜索，去掉两端空格，ASCII 大小写不敏感，`%/_` 按字面匹配）、`state`（省略或 `queued/running/completed/failed/cancelled/interrupted/undone`）及 `page`。无效状态报错。总数与当前页使用同一数据库快照，不加载操作内容或映射快照；按稳定创建序号倒序，重试不会改变历史位置。
+
+数据维护请求为 `{before,traces,cache,cacheBefore}`。`traces/cache` 至少一项为 true；清理历史时 `before` 必须为不晚于当前时间的 RFC3339 时间，只清理在此时刻之前结束的 completed/failed/cancelled/interrupted 轨迹。运行项、无结束时间及边界时刻记录保留。`cacheBefore` 为 Unix 秒，0 或省略时由服务端确定当前时间；只删除过期时间小于等于该值的缓存，不接受未来时间。前端提交预览返回的 `request`，固定已复核的截止时间；预览不锁定数据，实际数量以清理响应为准。
+
+清理需要登录和同源写请求。先预览、再确认；不改变工作区结果及其 revision，不删除整理／刮削 Run、当前规则或媒体文件，不执行 VACUUM。历史清理后，工作区历史链接可能提示已清理。任何子表或缓存删除失败都会整体回滚，不报告成功；数据库已释放页面可供后续写入复用，文件体积不保证立即缩小。

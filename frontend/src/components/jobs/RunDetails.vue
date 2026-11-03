@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Undo2 } from '@lucide/vue'
 import Modal from '../Modal.vue'
 import QueryState from '../ui/QueryState.vue'
@@ -7,6 +7,7 @@ import EliText from '../ui/EliText.vue'
 import { useRuntime } from '../../app/runtime'
 import {
   date,
+  operationNeedsAttention,
   kindNames,
   modeNames,
   states,
@@ -21,6 +22,10 @@ const {
   recordAction,
 } = runtime
 const detail = computed(() => detailQuery.data.value)
+const onlyIssues = ref(false)
+watch(detailId, () => { onlyIssues.value = false })
+const issues = computed(() => detail.value?.ops?.filter(op => operationNeedsAttention(op, detail.value!.state)) ?? [])
+const operations = computed(() => onlyIssues.value ? issues.value : detail.value?.ops ?? [])
 </script>
 <template>
   <Modal
@@ -44,8 +49,10 @@ const detail = computed(() => detailQuery.data.value)
         <p v-if="detail.error" class="notice error preserve-lines">
           {{ detail.error }}
         </p>
+        <label class="operation-filter"><input v-model="onlyIssues" type="checkbox" />只看异常项（{{ issues.length }}）</label>
+        <p v-if="onlyIssues && !operations.length" class="muted">没有异常操作。</p>
         <div class="operation-list">
-          <article v-for="(op, index) in detail.ops" :key="index">
+          <article v-for="(op, index) in operations" :key="index">
             <span class="operation-kind">{{ kindNames[op.kind] }}</span>
             <div>
               <code><EliText :text="op.target" ellipsis="start" /></code>
@@ -62,7 +69,7 @@ const detail = computed(() => detailQuery.data.value)
     ><template v-if="detail" #footer
       ><span class="muted tiny">{{
         detail.purpose === 'organize'
-          ? '整理撤销只核对路径，不核对文件内容或身份'
+          ? '整理撤销核对文件身份和大小，不扫描视频内容'
           : '文件变化时会停止操作'
       }}</span>
       <div class="footer-buttons">
@@ -106,7 +113,7 @@ const detail = computed(() => detailQuery.data.value)
     @close="undoing = null"
     ><p>将撤销「{{ undoing.title }}」的文件操作。</p>
     <p v-if="undoing.purpose === 'organize'" class="notice error">
-      整理撤销只按记录路径操作，不校验文件身份或内容。同一路径若已被外部文件替换，撤销可能误移或误删它；状态不明的操作需先人工核对，不能自动撤销。
+      整理撤销会核对目标文件的身份和大小，发现变化时停止对应操作；不扫描视频内容，同一文件被等长修改时无法据此识别。状态不明的操作需先人工核对。
     </p>
     <p class="muted">
       {{
@@ -128,3 +135,8 @@ const detail = computed(() => detailQuery.data.value)
     ></Modal
   >
 </template>
+
+<style scoped>
+.operation-filter { display:flex; align-items:center; gap:8px; margin:16px 0; font-size:13px; }
+.operation-filter input { width:auto; }
+</style>

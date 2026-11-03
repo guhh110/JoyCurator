@@ -231,7 +231,7 @@ recognition.Service.ExtractFile(path,root,workspace)
   → 获取当前 Engine
   → 插入 extraction_traces(status=running)
   → Engine.Extract：内存收集完整步骤
-  → 单个事务插入 extraction_steps 并保存最终 metadata、status、finishedAt、error
+  → 单个事务按子表批量插入步骤、规则快照和事件，并保存最终 metadata、status、finishedAt、error
   → 返回 Result 与 traceId
 ```
 
@@ -296,7 +296,7 @@ AutomaticRecognitionPage → useWorkspace.start → POST /recognitions
 
 `BatchPreview` 是单部与多部作品共用的规划入口，各组调用 `buildPreview`。前端提交工作区 ID、修订号、重复策略和模式，不能提交作品详情或可信文件操作指令。两类预览在共享缓存中短期保存（15 分钟，合计最多 32 份，满额逐出最早预览），包含配置版本及服务端生成的 ops；服务重启后须重新预览。
 
-`organizer` 将整理的视频／字幕和独立刮削的 NFO／图片分开记录，通过 `fsops` 完成受限目录内的读写、暂存与发布。视频／字幕采用无全文件哈希的快速路径；异常中断若状态不明，保留现场待人工确认。整理撤销只按路径处理，不核对内容或身份，可能误移／误删同路径外部文件；刮削仍保持内容与身份校验。覆盖没有备份，不能恢复旧内容。
+`organizer` 将整理的视频／字幕和独立刮削的 NFO／图片分开记录，通过 `fsops` 完成受限目录内的读写、暂存与发布。视频／字幕采用无全文件哈希的快速路径；异常中断若状态不明，保留现场待人工确认。整理撤销核对持久化的目标身份与大小，发现外部替换或大小变化则停止；不扫描视频内容，因此不能识别同一文件的等长修改。刮削仍保持内容与身份校验。覆盖没有备份，不能恢复旧内容。
 
 ## 10. 多批队列、并行刮削与文件锁定
 
@@ -448,7 +448,7 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 2. 新增 Metadata 字段要同步 target 枚举、转换校验、前端模型、编辑器与展示，以及所有消费方；不要在脚本返回任意字段字典。
 3. TMDB 匹配策略继续留在 matching 模块，现阶段不属于可排序的路径提取链。新引擎的 Step 仅追踪路径提取，不能据此声称已持久化完整 TMDB 决策链。
 4. 规则单步错误容错继续执行，最终结果可能是部分字段。需要严格拒绝某种结果时在消费边界明确处理，避免把规则运行 error 和网络 failed 混为一种状态。
-5. 轨迹长期保留、没有自动清理，较大目录会持续增加数据库体积；当前只支持手动清理已结束记录。
+5. 轨迹长期保留、没有自动清理，较大目录会持续增加数据库体积；支持逐条清理，也支持“设置 → 数据维护”预览后按结束时间批量清理历史，并清理过期 TMDB 缓存；运行中轨迹不参与。
 6. 当前规则保存不做多编辑者版本冲突控制，后保存者替换当前链；工作区修正和设置则分别有 revision/version。
 7. 规则编辑草稿只在页面内存中，离开后不恢复。需要保存草稿时应新增明确机制，不能复用“当前生效链”。
 8. 批次执行和恢复信息持久化，预览不持久化；服务重启区分原运行与等待状态：运行项中断后需人工重试，等待项按序重验后自动续跑。
@@ -457,3 +457,6 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 建议接手顺序：先读本节总体链路，再读 `recognition/model.go → engine.go → scripts`，然后 `recognition → matching → organizer`，配合 `infra/sqlite` 和 `app/http*.go`，最后结合前端 `routes.ts → runtime.ts → 对应 feature` 追一条实际路径。
 
 当前持久化模型已全面关系化，只有脚本动态值和上游缓存保留 JSON/BLOB。旧 JSON 表格式不能直接启动；先校验 schema 再恢复，明确报错，不重置或迁移用户数据。逐操作和工作区批次更新使用增量检查点；执行检查点与媒体登记同事务提交。模型所有者、构造依赖、摘要读取及事务语义以 [后端架构](BACKEND.md) 为准；性能样本见 [性能记录](PERFORMANCE.md)。
+
+
+本轮新增入口：记录列表的 `search/state` 筛选在 SQL 分页前执行，列表总数与当前页使用同一读取事务；详情异常筛选只作用于已加载操作。数据维护由 `app/maintenance.go` 校验选项与截止时间，`infra/sqlite/maintenance.go` 事务执行预览或清理，HTTP 不直接访问存储。清理按 `finishedAt` 截止，保留边界时刻及运行记录；缓存使用预览时确定的 `cacheBefore`，执行时不自动向后移动。数量可能随并发识别变化，响应报告实际删除数量。子表级联删除失败时历史与缓存一起回滚，工作区结果、revision、历史引用及媒体文件不改写。

@@ -69,7 +69,7 @@ func Open(dir, sourceRoot, targetRoot string, secure bool) (*App, error) {
 		store.Close()
 		return nil, err
 	}
-	deps := Dependencies{Auth: auth.New(store), Secure: secure, Health: store.Ping, Config: config, Matching: match, Recognition: recognize, Workspace: workspace, Files: files, Organizer: organize}
+	deps := Dependencies{Auth: auth.New(store), Secure: secure, Health: store.Ping, Maintenance: NewMaintenance(store), Config: config, Matching: match, Recognition: recognize, Workspace: workspace, Files: files, Organizer: organize}
 	return &App{store: store, coordinator: coordinator, tmdbPool: pool, dependencies: deps}, nil
 }
 func (a *App) Handler(frontend fs.FS) http.Handler { return NewHTTP(a.dependencies, frontend) }

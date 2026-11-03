@@ -155,3 +155,18 @@ type Artwork struct {
 }
 
 var ErrNotFound = errors.New("TMDB 条目或季集不存在")
+
+type CleanupRequest struct {
+	Before      string `json:"before"`
+	Traces      bool   `json:"traces"`
+	Cache       bool   `json:"cache"`
+	CacheBefore int64  `json:"cacheBefore"`
+}
+type CleanupCounts struct {
+	Traces int64 `json:"traces"`
+	Cache  int64 `json:"cache"`
+}
+type CleanupPreview struct {
+	Request CleanupRequest `json:"request"`
+	CleanupCounts
+}

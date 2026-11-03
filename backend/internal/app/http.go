@@ -22,6 +22,7 @@ type Dependencies struct {
 	Auth        *auth.Service
 	Secure      bool
 	Health      func(context.Context) error
+	Maintenance *MaintenanceService
 	Config      *ConfigService
 	Matching    *matching.Service
 	Recognition *recognition.Service
