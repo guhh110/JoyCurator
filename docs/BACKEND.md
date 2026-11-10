@@ -55,7 +55,7 @@ Workspace.Start → 完整目录 scanner.Walk → recognition.ExtractTree → ma
 
 ```text
 获取一次当前 Engine → StartTrace(running)
-  → Engine.ExtractBatch：符号分词、词语标注、剩余区段片名标注、目录裁决；规则源码与上下文只保存一次
+  → Engine.ExtractBatch：符号分词、候选标注、保留推测数字的片名标注、目录级季集与片名裁决；规则源码与上下文只保存一次
   → FinishTrace：一个事务插入全部步骤并更新结果
 ```
 

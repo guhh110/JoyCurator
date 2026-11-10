@@ -52,7 +52,7 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 固定性能样本：2000 文件规则提取和历史写入、1000 文件工作区预览、1000 条历史（每条 100 项操作）的列表和批次摘要查询。运行：
 
 ```sh
-python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|BenchmarkWorkspace2000|BenchmarkRunHistory|BenchmarkPreview1000' -benchtime=1x ./internal/infra/sqlite ./internal/app
+python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|BenchmarkDirectoryDecisions2000|BenchmarkWorkspace2000|BenchmarkRunHistory|BenchmarkPreview1000' -benchtime=1x ./internal/infra/sqlite ./internal/app ./internal/recognition
 ```
 
 队列工作区另有 `BenchmarkFileExecutionProjection1000`，测量 1000 文件任务状态投影。基准不访问公网，不操作已有用户数据，设置及样本创建不计入计时。结果与测量边界见 [性能记录](../docs/PERFORMANCE.md)。

@@ -57,10 +57,22 @@ func TestBatchScreenshotAndVaryingNumbers(t *testing.T) {
 	paths := []string{"/source/斗破苍穹 第3季/[斗破苍穹 第3季][Fights Break Sphere III][01][HEVC][GB][1080P].mp4"}
 	got := batch(t, r.DefaultPipeline(), paths, nil)
 	m := got.Files[0].Metadata
-	if value(m.Title, "") != "斗破苍穹" || value(m.Season, -1) != 3 || !reflect.DeepEqual(m.Episodes, []int{1}) {
+	if value(m.Title, "") != "斗破苍穹" || value(m.Season, -1) != 3 || len(m.Episodes) != 0 {
 		t.Fatal(m)
 	}
+	paths = append(paths, strings.Replace(paths[0], "[01]", "[03]", 1))
+	corroborated := batch(t, r.DefaultPipeline(), paths, paths[:1])
+	if !reflect.DeepEqual(corroborated.Files[0].Metadata.Episodes, []int{1}) {
+		t.Fatal(corroborated.Files)
+	}
 	paths = []string{"/source/任意作品/[任意作品][202][01][1080p].mkv", "/source/任意作品/[任意作品][202][03][1080p].mkv", "/source/任意作品/[任意作品][202][03][720p].mkv"}
+	withoutAnchor := batch(t, r.DefaultPipeline(), paths, paths[:1])
+	if len(withoutAnchor.Files[0].Metadata.Episodes) != 0 {
+		t.Fatal(withoutAnchor.Files)
+	}
+	for i := range paths {
+		paths[i] = strings.Replace(paths[i], "[202]", "[第一季][202]", 1)
+	}
 	got = batch(t, r.DefaultPipeline(), paths, paths[:1])
 	if len(got.Files) != 1 || !reflect.DeepEqual(got.Files[0].Metadata.Episodes, []int{1}) || len(got.Files[0].Decisions[r.Episodes].Candidates) < 2 {
 		t.Fatal(got.Files)

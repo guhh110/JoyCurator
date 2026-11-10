@@ -75,7 +75,7 @@
 
 ## 路径识别流水线
 
-`GET /extraction/rules` 返回 `{pipeline,defaults,catalog,targets,sources,scriptLanguage}`。配置为 `{tokenizer,annotators,resolver}`；只有标注规则具有 `target/source/order`。分词和裁决均为启用的脚本，标注支持 script/regex；普通标注先执行、片名标注最后执行，两组内分别按 order 排序；正则逐词匹配，跨词识别使用脚本。完整数据约束和示例见 [识别规范](RECOGNITION.md)。
+`GET /extraction/rules` 返回 `{pipeline,defaults,catalog,targets,sources,scriptLanguage}`。配置为 `{tokenizer,annotators,resolver}`；只有标注规则具有 `target/source/order`。分词和裁决均为启用的脚本，标注支持 script/regex；普通标注先执行、片名标注最后执行，两组内分别按 order 排序；正则逐词匹配，跨词识别使用脚本。候选 `valid` 表示值合法，不表示已采纳；默认裸数字集数须明确季集依据与目录变化佐证，片名保留推测数字直到裁决。派生片名的依据同时引用片名与集数候选。完整数据约束和示例见 [识别规范](RECOGNITION.md)。
 
 `POST /extraction/test` 接收完整目录的文本路径快照与目标数组，支持不存在的文件，不读取文件、不调用 TMDB、不持久化。省略边界时，所有路径须位于首个路径选定的源目录边界内，或显式提供 `/`。省略 pipeline 使用当前配置。执行错误保留阶段结果并返回 error；输入、配置错误返回 400。前端超时 90 秒，取消或离开中止请求并忽略过期响应。
 

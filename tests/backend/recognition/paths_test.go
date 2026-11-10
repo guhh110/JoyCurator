@@ -18,7 +18,7 @@ func TestChineseEpisodeExample(t *testing.T) {
 }
 func TestRecognitionNeverUsesSourceName(t *testing.T) {
 	p := extractMetadata(t, "/library/Show [tmdb-999]/source/Season 2/01.mkv", "/library/Show [tmdb-999]/source")
-	if p.Title != nil || p.TMDBID != nil || value(p.Season, -1) != 2 {
+	if value(p.Title, "") != "01" || p.TMDBID != nil || value(p.Season, -1) != 2 || len(p.Episodes) != 0 {
 		t.Fatal(p)
 	}
 	if recognition.NormalizeTitle("SHOW.Name：星空") != recognition.NormalizeTitle("show name 星空") {
@@ -57,7 +57,7 @@ func TestWindowsPathsAndPOSIXExamples(t *testing.T) {
 		})
 	}
 	p := extractMetadata(t, `C:\outside [tmdb-999]\source\Show [tmdb-7]\Season 2\03.mkv`, `C:\outside [tmdb-999]\source`)
-	if value(p.TMDBID, -1) != 7 || value(p.Title, "") != "Show" || value(p.Season, -1) != 2 || !reflect.DeepEqual(p.Episodes, []int{3}) {
+	if value(p.TMDBID, -1) != 7 || value(p.Title, "") != "03" || value(p.Season, -1) != 2 || len(p.Episodes) != 0 {
 		t.Fatalf("Windows native extraction: %+v", p)
 	}
 }

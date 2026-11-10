@@ -100,16 +100,14 @@
     "category": "directories",
     "path": "/source/某剧/第二季/07.mkv",
     "root": "/source",
-    "reason": "纯集号从中文季目录与剧名目录补全。",
+    "reason": "季目录提供明确季号；单文件裸数字保留片名候选，集数待目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": "某剧",
+      "title": "07",
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [
-        7
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -119,16 +117,14 @@
     "category": "ids",
     "path": "/source/Show [tmdb-2]/Season 2/03.mkv",
     "root": "/source",
-    "reason": "剧目录 ID 不得混入季集号。",
+    "reason": "目录 ID 和季号仍可识别；单文件裸数字不直接成为集号。",
     "expected": {
       "tmdbId": 2,
-      "title": "Show",
+      "title": "03",
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [
-        3
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -138,16 +134,14 @@
     "category": "directories",
     "path": "/source/Show/Specials/01.mkv",
     "root": "/source",
-    "reason": "Specials 目录表示第 0 季。",
+    "reason": "Specials 提供第 0 季；单文件数字保留，集数待目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": "Show",
+      "title": "01",
       "mediaType": "tv",
       "year": null,
       "season": 0,
-      "episodes": [
-        1
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -366,16 +360,14 @@
     "category": "anime",
     "path": "/source/[Group] Show - 01 [1080p][CHS].mkv",
     "root": "/source",
-    "reason": "发布组及字幕画质标签不影响尾部集号。",
+    "reason": "发布组、字幕与画质标签不影响片名；尾部裸数字未获目录佐证时保留。",
     "expected": {
       "tmdbId": null,
-      "title": "Show",
-      "mediaType": "tv",
+      "title": "Show 01",
+      "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [
-        1
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -487,16 +479,14 @@
     "category": "ids",
     "path": "/source/Show - 03.tmdb-603.mkv",
     "root": "/source",
-    "reason": "移除 ID 后仍提取真正的尾部集号。",
+    "reason": "TMDB ID 不提供剧集依据；尾部数字需目录佐证。",
     "expected": {
       "tmdbId": 603,
-      "title": "Show",
-      "mediaType": "tv",
+      "title": "Show 03",
+      "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [
-        3
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -542,16 +532,14 @@
     "category": "quality",
     "path": "/source/4k/01.mkv",
     "root": "/source",
-    "reason": "画质目录不能成为片名；纯集号仍可识别。",
+    "reason": "画质目录不能成为片名；裸数字文件名保留，不由画质推断集数或类型。",
     "expected": {
       "tmdbId": null,
-      "title": null,
-      "mediaType": "tv",
+      "title": "01",
+      "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [
-        1
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -854,16 +842,14 @@
     "category": "anime",
     "path": "/source/Show/07v2.mkv",
     "root": "/source",
-    "reason": "v2 是修订号，不是第二集。",
+    "reason": "裸数字及修订文字保留片名；修订号不作为推测集号。",
     "expected": {
       "tmdbId": null,
-      "title": "Show",
-      "mediaType": "tv",
+      "title": "07v2",
+      "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [
-        7
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -892,16 +878,14 @@
     "category": "anime",
     "path": "/source/【字幕组】 某剧 - 03 【1080p】.mp4",
     "root": "/source",
-    "reason": "中文方括号标签应清除。",
+    "reason": "中文方括号标签被标注；无目录佐证的尾部数字保留片名。",
     "expected": {
       "tmdbId": null,
-      "title": "某剧",
-      "mediaType": "tv",
+      "title": "某剧 03",
+      "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [
-        3
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1070,16 +1054,14 @@
     "category": "conflicts",
     "path": "/source/Outer [tmdb-7]/Inner [tmdb-8]/Season 2/03.mkv",
     "root": "/source",
-    "reason": "多个目录 ID 选择最近的；纯集号片名也取最近作品目录。",
+    "reason": "多个目录 ID 选择最近的；裸数字文件名未获佐证时保留。",
     "expected": {
       "tmdbId": 8,
-      "title": "Inner",
+      "title": "03",
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [
-        3
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1280,16 +1262,14 @@
     "category": "directories",
     "path": "/source/Show/S02/03.mkv",
     "root": "/source",
-    "reason": "短季目录 S02。",
+    "reason": "短季目录 S02 提供季号，裸数字仍需目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": "Show",
+      "title": "03",
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [
-        3
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1299,16 +1279,14 @@
     "category": "directories",
     "path": "/source/Show/Season2/03.mkv",
     "root": "/source",
-    "reason": "Season 与季号之间空格可省略。",
+    "reason": "Season2 提供季号，单文件裸数字仍需目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": "Show",
+      "title": "03",
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [
-        3
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1318,16 +1296,14 @@
     "category": "directories",
     "path": "/source/某剧/特别篇/01.mkv",
     "root": "/source",
-    "reason": "简体特别篇目录。",
+    "reason": "简体特别篇提供第 0 季，裸数字仍需目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": "某剧",
+      "title": "01",
       "mediaType": "tv",
       "year": null,
       "season": 0,
-      "episodes": [
-        1
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1337,16 +1313,14 @@
     "category": "directories",
     "path": "/source/某剧/特別篇/01.mkv",
     "root": "/source",
-    "reason": "繁体特别篇目录。",
+    "reason": "繁体特别篇提供第 0 季，裸数字仍需目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": "某剧",
+      "title": "01",
       "mediaType": "tv",
       "year": null,
       "season": 0,
-      "episodes": [
-        1
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1356,16 +1330,14 @@
     "category": "directories",
     "path": "/source/某剧/第二十三季/07.mkv",
     "root": "/source",
-    "reason": "中文两位季号。",
+    "reason": "中文两位季号可识别，裸数字仍需目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": "某剧",
+      "title": "07",
       "mediaType": "tv",
       "year": null,
       "season": 23,
-      "episodes": [
-        7
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1394,16 +1366,14 @@
     "category": "conflicts",
     "path": "/source/Show/Season 2/Season 3/04.mkv",
     "root": "/source",
-    "reason": "最近季目录优先，片名跳过所有季目录。",
+    "reason": "最近季目录优先；单文件裸数字保留，集数待目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": "Show",
+      "title": "04",
       "mediaType": "tv",
       "year": null,
       "season": 3,
-      "episodes": [
-        4
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1432,16 +1402,14 @@
     "category": "boundary",
     "path": "/library/Show [tmdb-999]/source/Season 2/01.mkv",
     "root": "/library/Show [tmdb-999]/source",
-    "reason": "边界外片名与 ID 不可泄漏进结果。",
+    "reason": "边界外片名与 ID 不泄漏；可见数字保留，集数待目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": null,
+      "title": "01",
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [
-        1
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1468,16 +1436,14 @@
     "category": "boundary",
     "path": "/source/Show/Season 2/03.mkv",
     "root": "/source/Show",
-    "reason": "季目录可见但作品目录是边界，片名保持未知。",
+    "reason": "作品目录在边界外；保留数字片名候选，不借边界外文本确定集数。",
     "expected": {
       "tmdbId": null,
-      "title": null,
+      "title": "03",
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [
-        3
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1487,16 +1453,14 @@
     "category": "boundary",
     "path": "/source/Show/Season 2/../Season 3/04.mkv",
     "root": "/source",
-    "reason": "先规范化路径，不能把已被 .. 消去的季目录当来源。",
+    "reason": "先规范化路径并识别可见季号；单文件裸数字仍需目录佐证。",
     "expected": {
       "tmdbId": null,
-      "title": "Show",
+      "title": "04",
       "mediaType": "tv",
       "year": null,
       "season": 3,
-      "episodes": [
-        4
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}
@@ -1542,16 +1506,14 @@
     "category": "release-tags",
     "path": "/source/Film.2024.1080p-123.mkv",
     "root": "/source",
-    "reason": "当前尾部数字策略将 -123 视为集号，但纯数字仍不能作为发布组；画质前的年份不改变该优先级。",
+    "reason": "纯数字不作为发布组；无目录佐证的尾部数字不直接判定集数。",
     "expected": {
       "tmdbId": null,
       "title": "Film",
-      "mediaType": "tv",
+      "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [
-        123
-      ],
+      "episodes": [],
       "releaseTag": null
     },
     "errors": {}

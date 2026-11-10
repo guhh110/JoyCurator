@@ -39,7 +39,7 @@ export const scriptContextFields: readonly ScriptFieldReference[] = [
     type: 'Candidate[]',
     summary: '已有候选',
     description:
-      '已有标注，保留冲突与无效解释及词内原文范围。片名标注最后执行并排除其他标注的范围，不包含最终元数据。',
+      '已有标注及词内原文范围，保留冲突与无效解释。valid 表示值合法，不等于采纳；heuristic 集数须目录佐证，片名候选保留这些数字，裁决确认后再排除。',
   },
   {
     name: 'contextRoot',
@@ -64,7 +64,7 @@ export const scriptContextFields: readonly ScriptFieldReference[] = [
     type: 'Document[]',
     summary: '全部上下文文件',
     description:
-      '裁决输入，含每个文件的 sources、tokens、candidates；包含仅提供证据的非目标文件。',
+      '裁决输入，含全部文件的 sources、tokens、candidates，包括非目标文件。默认在同目录相同命名结构、有明确季集依据且集数值变化时采纳唯一数字位置，再裁决片名。',
   },
   {
     name: 'targetFileIds',

@@ -19,8 +19,8 @@ func TestSingleTargetReadsFullParentTreeAndSharesTrace(t *testing.T) {
 	if err = os.MkdirAll(filepath.Join(dir, "子目录"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	first := filepath.Join(dir, "[组][作品][202][01][1080p].mkv")
-	second := filepath.Join(dir, "[组][作品][202][03][720p].mkv")
+	first := filepath.Join(dir, "[组]作品01.第一季.[202].1080p.mkv")
+	second := filepath.Join(dir, "[组]作品03.第一季.[202].720p.mkv")
 	other := filepath.Join(dir, "子目录", "Other.S02E04.mkv")
 	for _, p := range []string{first, second, other, filepath.Join(dir, ".hidden.mkv")} {
 		if err = os.WriteFile(p, []byte("video"), 0644); err != nil {

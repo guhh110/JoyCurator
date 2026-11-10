@@ -19,14 +19,14 @@ defineProps<{ label: string; editorId: string; stage: Stage }>()
         / start / end）、strength（explicit / contextual /
         heuristic）、status（valid / invalid）、reason。ID、ruleId、role
         由系统填写。按 tokens 的词语及同组相邻词标注，可引用词内子范围。
-        只使用本规则所选来源。片名标注最后执行。
+        只使用本规则所选来源。valid 表示值合法，不等于采纳。片名最后标注，保留推测集数文字。
       </p>
       <p v-else>
         输入
         ctx.contextRoot、sourceBoundary、tree、files、targetFileIds、params。files
         包含整个目录树的来源、片段与候选。为每个目标返回
         fileId、metadata、decisions；非空字段需引用 candidates（fileId /
-        candidateId），可跨文件引用。
+        candidateId），可跨文件引用。推测集数需明确季集依据与目录数字变化佐证；裁剪片名时同时引用片名和集数依据。
       </p>
       <p>
         入口 function extract(ctx)。输入只读，所有位置均为 UTF-16。未知标量用

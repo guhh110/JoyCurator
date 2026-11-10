@@ -105,7 +105,8 @@ function extract(ctx) {
     )
       continue
     const occupied = ctx.candidates
-        .filter((c) => c.role !== 'title')
+        .filter((c) => c.role !== 'title' &&
+          !(c.role === 'episodes' && c.strength === 'heuristic' && c.status === 'valid'))
         .flatMap((c) => c.spans.filter((p) => p.sourceId === s.id))
         .sort((a, b) => a.start - b.start),
       root = [],

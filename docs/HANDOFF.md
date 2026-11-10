@@ -97,7 +97,7 @@ main.main
 
 ## 5. 三阶段识别
 
-当前识别架构、脚本契约、边界与存储规范统一见 [RECOGNITION.md](RECOGNITION.md)。核心入口为 `Compile(Pipeline)`、`ExtractBatch(BatchInput)`；应用通过 `extractContexts` 收集完整目录树，再调用 `Service.ExtractTree`，每树固定配置快照和共享历史。默认分词按非中英文数字字符分隔，保留完整词及括号结构；标注消费词和相邻词，正则逐词匹配。片名标注最后从排除元信息后的连续区段生成候选，词间统一空格；裁决脚本读取所有文件并逐目标输出 Metadata。下游匹配和整理接口继续消费 Metadata。
+当前识别架构、脚本契约、边界与存储规范统一见 [RECOGNITION.md](RECOGNITION.md)。核心入口为 `Compile(Pipeline)`、`ExtractBatch(BatchInput)`；应用通过 `extractContexts` 收集完整目录树，再调用 `Service.ExtractTree`，每树固定配置快照和共享历史。默认分词按非中英文数字字符分隔，保留完整词及括号结构；标注消费词和相邻词，正则逐词匹配。片名标注最后从排除元信息后的连续区段生成候选，保留推测集数文字，词间统一空格；裁决脚本按同目录命名结构、明确季集依据和不同数字值佐证唯一集数位置，再裁剪片名并逐目标输出 Metadata。单文件裸数字及无剧集依据的数字变化保留歧义，派生片名引用原片名与集数依据。下游匹配和整理接口继续消费 Metadata。
 
 规则 API 仅接受 `{pipeline:{tokenizer,annotators,resolver}}`。调试输入多路径文本快照及 targets；样例使用 paths/root/targets/expected。旧数组、覆盖与来源清理格式均拒绝。存储格式为 2，不迁移或重建旧库；全部验证使用临时空目录。
 

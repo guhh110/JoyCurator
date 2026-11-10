@@ -1,193 +1,218 @@
-// 整棵目录树一次裁决；所有非空字段必须引用真实候选。
+// 先确定季集，再从保留原文的片名候选中排除已确认的集数。
 function extract(ctx) {
   const rank = { explicit: 0, contextual: 1, heuristic: 2 },
-    byId = new Map(ctx.files.map((f) => [f.fileId, f]))
-  const sourceDepth = (f, c) =>
-    Math.min(
-      ...c.spans.map((p) => f.sources.find((s) => s.id === p.sourceId).depth),
-    )
-  const norm = (s) => (s || '').toLowerCase().replace(/[ ._-]/g, '')
-  function ordered(f, role) {
-    return f.candidates
-      .filter((c) => c.role === role)
-      .slice()
-      .sort(
-        (a, b) =>
-          rank[a.strength] - rank[b.strength] ||
-          sourceDepth(f, a) - sourceDepth(f, b) ||
-          a.spans[0].start - b.spans[0].start,
-      )
-  }
+    states = new Map(),
+    technical = ['resolution', 'videoCodec', 'audioCodec', 'bitDepth',
+      'dynamicRange', 'language', 'subtitleLanguage', 'checksum', 'releaseTag']
+  const norm = (s) => (s || '').toLowerCase().replace(/[\s._-]/g, '')
+  const ref = (f, c) => ({ fileId: f.fileId, candidateId: c.id })
+  const unique = (refs) => [...new Map(refs.map((r) =>
+    [r.fileId + '/' + r.candidateId, r])).values()]
+  const depth = (f, c) => Math.min(...c.spans.map((p) =>
+    f.sources.find((s) => s.id === p.sourceId).depth))
+  const compare = (f, a, b) => rank[a.strength] - rank[b.strength] ||
+    depth(f, a) - depth(f, b) || a.spans[0].start - b.spans[0].start
+  const ordered = (f, role) => f.candidates.filter((c) => c.role === role)
+    .slice().sort((a, b) => compare(f, a, b))
   function first(f, role) {
-    const list = ordered(f, role)
-    if (role === 'title') {
-      const names = list.filter(
-          (c) => c.status === 'valid' && sourceDepth(f, c) === 0,
-        ),
-        folders = list.filter(
-          (c) => c.status === 'valid' && sourceDepth(f, c) > 0,
-        )
-      if (names.length > 1) {
-        const matched = names.find((c) =>
-          folders.some((d) => norm(d.value) === norm(c.value)),
-        )
-        if (matched) return matched
-      }
-    }
-    const c = list[0]
+    const c = ordered(f, role)[0]
     return c && c.status === 'valid' ? c : null
   }
-  const titles = new Map(ctx.files.map((f) => [f.fileId, first(f, 'title')]))
-  function signature(f, c) {
-    const p = c.spans[0],
-      s = f.sources.find((s) => s.id === p.sourceId),
-      ranges = [{ start: p.start, end: p.end, label: '#episode' }]
-    for (const candidate of f.candidates)
-      if (
-        [
-          'resolution',
-          'videoCodec',
-          'audioCodec',
-          'bitDepth',
-          'dynamicRange',
-          'language',
-          'subtitleLanguage',
-          'checksum',
-          'releaseTag',
-        ].includes(candidate.role)
-      )
-        for (const span of candidate.spans)
-          if (span.sourceId === p.sourceId)
-            ranges.push({ ...span, label: '#' + candidate.role })
-    ranges.sort((a, b) => a.start - b.start)
-    let text = '',
-      end = 0
-    for (const r of ranges) {
-      if (r.start < end) continue
-      text += s.text.slice(end, r.start) + r.label
-      end = r.end
-    }
-    return text + s.text.slice(end)
+  function set(state, role, c, f, reason) {
+    state.metadata[role] = c.value
+    state.decisions[role] = { candidates: [ref(f, c)], reason: reason || c.reason }
   }
-  const signatures = new Map(),
-    local = new Map()
   for (const f of ctx.files) {
-    const title = titles.get(f.fileId),
-      work = f.directory + '|' + norm(title && title.value),
-      peers = local.get(work) || []
-    peers.push(f)
-    local.set(work, peers)
-    for (const c of f.candidates)
-      if (
-        c.role === 'episodes' &&
-        c.status === 'valid' &&
-        c.strength === 'heuristic'
-      ) {
-        const key = work + '|' + signature(f, c)
-        const list = signatures.get(key) || []
-        list.push({ f, c })
-        signatures.set(key, list)
-      }
-  }
-  function varying(f, c) {
-    const title = titles.get(f.fileId),
-      key =
-        f.directory + '|' + norm(title && title.value) + '|' + signature(f, c)
-    const list = signatures.get(key) || []
-    return new Set(list.map((x) => JSON.stringify(x.c.value))).size > 1
-      ? list
-      : []
-  }
-  const results = []
-  for (const id of ctx.targetFileIds) {
-    const f = byId.get(id),
-      metadata = {
-        tmdbId: null,
-        title: null,
-        mediaType: null,
-        year: null,
-        season: null,
-        episodes: [],
-        releaseTag: null,
-      },
-      decisions = {}
-    function set(role, c, file = f, reason) {
-      metadata[role] = c.value
-      decisions[role] = {
-        candidates: [{ fileId: file.fileId, candidateId: c.id }],
-        reason: reason || c.reason,
-      }
-    }
-    for (const role of [
-      'tmdbId',
-      'title',
-      'year',
-      'season',
-      'releaseTag',
-      'mediaType',
-    ]) {
+    const state = { metadata: { tmdbId: null, title: null, mediaType: null,
+      year: null, season: null, episodes: [], releaseTag: null }, decisions: {},
+      episode: null, blocked: f.candidates.some((c) => c.role === 'episodes' &&
+        c.strength !== 'heuristic' && c.status === 'invalid') }
+    for (const role of ['tmdbId', 'year', 'season', 'releaseTag', 'mediaType']) {
       const c = first(f, role)
-      if (c) set(role, c)
+      if (c) set(state, role, c, f)
     }
-    const ep = ordered(f, 'episodes')
-    if (ep.length && ep[0].status === 'valid') {
-      const c = ep[0]
-      if (c.strength !== 'heuristic') set('episodes', c)
-      else {
-        const varyingCandidates = ep.filter(
-          (c) => c.status === 'valid' && varying(f, c).length,
-        )
-        const choices = varyingCandidates.length
-          ? varyingCandidates
-          : ep.length === 1 && metadata.season !== null
-            ? [c]
-            : []
-        if (choices.length === 1) {
-          const picked = choices[0],
-            peers = varying(f, picked)
-          set(
-            'episodes',
-            picked,
-            f,
-            peers.length ? '同一位置数字随文件变化' : '季标记下唯一括号集号',
-          )
-          if (peers.length)
-            decisions.episodes.candidates.push(
-              ...peers
-                .filter((p) => p.f.fileId !== id)
-                .slice(0, 3)
-                .map((p) => ({ fileId: p.f.fileId, candidateId: p.c.id })),
-            )
+    const c = first(f, 'episodes')
+    if (c && c.strength !== 'heuristic') {
+      state.episode = c
+      set(state, 'episodes', c, f)
+    }
+    states.set(f.fileId, state)
+  }
+  function signature(f, c) {
+    if (c.spans.some((p) => p.sourceId !== 'name')) return null
+    const source = f.sources.find((s) => s.id === 'name'),
+      ranges = c.spans.map((p) => ({ ...p, label: '#episode', priority: 0 }))
+    for (const other of f.candidates) {
+      if (other.status !== 'valid' ||
+          !(other.role === 'season' || technical.includes(other.role))) continue
+      for (const p of other.spans)
+        if (p.sourceId === 'name' && !c.spans.some((x) =>
+          p.start < x.end && p.end > x.start))
+          ranges.push({ ...p, label: other.role === 'season' ? '' : '#' + other.role,
+            priority: 1 })
+    }
+    ranges.sort((a, b) => a.start - b.start || a.priority - b.priority || b.end - a.end)
+    let text = '', end = 0
+    for (const p of ranges) {
+      if (p.start < end) continue
+      text += source.text.slice(end, p.start) + p.label
+      end = p.end
+    }
+    return norm(text + source.text.slice(end))
+  }
+  // 使用命名结构建立索引，避免依赖尚未确定的片名或两两比较文件。
+  const buckets = new Map()
+  for (const f of ctx.files) {
+    const state = states.get(f.fileId)
+    if (state.blocked) continue
+    const list = state.episode ? [state.episode] : ordered(f, 'episodes')
+      .filter((c) => c.status === 'valid' && c.strength === 'heuristic')
+    for (const c of list) {
+      const shape = signature(f, c)
+      if (shape === null) continue
+      const key = JSON.stringify([f.directory, shape]), nodes = buckets.get(key) || []
+      nodes.push({ f, c, state, value: JSON.stringify(c.value) })
+      buckets.set(key, nodes)
+    }
+  }
+  const supported = new Map()
+  for (const nodes of buckets.values()) {
+    const seasons = new Set(nodes.map((n) => n.state.metadata.season).filter((v) => v !== null)),
+      ids = new Set(nodes.map((n) => n.state.metadata.tmdbId).filter((v) => v !== null)),
+      season = seasons.size === 1 ? [...seasons][0] : null,
+      id = ids.size === 1 ? [...ids][0] : null,
+      groups = new Map()
+    for (const n of nodes) {
+      // 无身份的文件仅在组内身份唯一时参与，不能连接不同作品或季。
+      const key = JSON.stringify([n.state.metadata.season ?? season,
+        n.state.metadata.tmdbId ?? id]), group = groups.get(key) || []
+      group.push(n)
+      groups.set(key, group)
+    }
+    for (const group of groups.values()) {
+      group.sort((a, b) => a.f.path < b.f.path ? -1 : a.f.path > b.f.path ? 1 :
+        a.c.spans[0].start - b.c.spans[0].start || a.c.id.localeCompare(b.c.id))
+      const anchor = group.find((n) => n.state.metadata.season !== null ||
+        n.c.strength !== 'heuristic')
+      if (!anchor) continue
+      // 每个值保留两个不同文件，提供有界且可重建的不同集号佐证。
+      const values = new Map()
+      for (const n of group) {
+        const representatives = values.get(n.value) || []
+        if (representatives.length < 2 && !representatives.some((x) => x.f.fileId === n.f.fileId))
+          representatives.push(n)
+        values.set(n.value, representatives)
+      }
+      if (values.size < 2) continue
+      const representatives = [...values.values()].slice(0, 2).flat(),
+        anchorCandidate = anchor.state.metadata.season !== null
+          ? first(anchor.f, 'season') : anchor.c
+      for (const n of group) {
+        if (n.c.strength !== 'heuristic') continue
+        const peer = representatives.find((x) => x.value !== n.value && x.f.fileId !== n.f.fileId)
+        if (!peer) continue
+        const choices = supported.get(n.f.fileId) || new Map(),
+          key = JSON.stringify([n.c.spans, n.c.value])
+        if (!choices.has(key)) choices.set(key, { c: n.c, refs: unique([
+          ref(n.f, n.c), ref(peer.f, peer.c), ref(anchor.f, anchorCandidate)]) })
+        supported.set(n.f.fileId, choices)
+      }
+    }
+  }
+  for (const f of ctx.files) {
+    const state = states.get(f.fileId), choices = supported.get(f.fileId)
+    if (state.episode || state.blocked || !choices || choices.size !== 1) continue
+    const picked = [...choices.values()][0]
+    state.episode = picked.c
+    state.metadata.episodes = picked.c.value
+    state.decisions.episodes = { candidates: picked.refs,
+      reason: '明确季集依据下，同目录唯一数字位置随文件变化' }
+  }
+  function titles(f, episode) {
+    const output = []
+    for (const c of ordered(f, 'title')) {
+      if (c.status !== 'valid' || !episode || !c.spans.some((p) =>
+        episode.spans.some((x) => x.sourceId === p.sourceId && x.start < p.end && x.end > p.start))) {
+        output.push(c)
+        continue
+      }
+      for (const p of c.spans) {
+        const cuts = episode.spans.filter((x) => x.sourceId === p.sourceId)
+          .sort((a, b) => a.start - b.start), remaining = []
+        let start = p.start
+        for (const cut of cuts) {
+          if (cut.end <= start || cut.start >= p.end) continue
+          if (cut.start > start) remaining.push({ start, end: cut.start })
+          start = Math.max(start, cut.end)
+        }
+        if (start < p.end) remaining.push({ start, end: p.end })
+        const source = f.sources.find((s) => s.id === p.sourceId)
+        for (const part of remaining) {
+          // 按原有词及括号边界取剩余区段，不跨被移除的数字拼接。
+          let words = [], parent
+          function flush() {
+            if (words.length) output.push({ ...c, trimmed: true,
+              value: words.map((w) => source.text.slice(w.start, w.end)).join(' '),
+              spans: [{ sourceId: p.sourceId, start: words[0].start,
+                end: words[words.length - 1].end }] })
+            words = []
+          }
+          for (const t of f.tokens) {
+            if (t.sourceId !== p.sourceId || t.end <= part.start || t.start >= part.end) continue
+            if (t.kind === 'group') { flush(); continue }
+            if (t.kind !== 'text' && t.kind !== 'number') continue
+            if (words.length && t.parentId !== parent) flush()
+            parent = t.parentId
+            words.push({ start: Math.max(t.start, part.start), end: Math.min(t.end, part.end) })
+          }
+          flush()
         }
       }
     }
-    if (
-      metadata.season === null &&
-      metadata.title !== null &&
-      !f.candidates.some((c) => c.role === 'season' && c.status === 'invalid')
-    ) {
-      const peers = local.get(f.directory + '|' + norm(metadata.title)) || [],
-        seasons = peers
-          .map((file) => ({ file, c: first(file, 'season') }))
-          .filter((x) => x.c)
-      if (seasons.length && new Set(seasons.map((x) => x.c.value)).size === 1)
-        set('season', seasons[0].c, seasons[0].file, '同目录同片名唯一明确季号')
-    }
-    if (
-      metadata.mediaType === null &&
-      (metadata.season !== null || metadata.episodes.length)
-    ) {
-      metadata.mediaType = 'tv'
-      decisions.mediaType = {
-        candidates: [
-          ...(decisions.season?.candidates || []),
-          ...(decisions.episodes?.candidates || []),
-        ],
-        reason: '季号或集数提供剧集依据',
-      }
-    }
-    results.push({ fileId: id, metadata, decisions })
+    return output.sort((a, b) => compare(f, a, b))
   }
+  for (const f of ctx.files) {
+    const state = states.get(f.fileId), list = titles(f, state.episode),
+      names = list.filter((c) => c.status === 'valid' && depth(f, c) === 0),
+      folders = list.filter((c) => c.status === 'valid' && depth(f, c) > 0),
+      matched = names.length > 1 && names.find((c) =>
+        folders.some((d) => norm(d.value) === norm(c.value))),
+      c = matched || list[0]
+    if (c && c.status === 'valid') {
+      set(state, 'title', c, f, c.trimmed ? '片名排除目录确认的集数' : c.reason)
+      if (c.trimmed) state.decisions.title.candidates = unique([
+        ...state.decisions.title.candidates, ...state.decisions.episodes.candidates])
+    }
+  }
+  const local = new Map()
+  for (const f of ctx.files) {
+    const m = states.get(f.fileId).metadata
+    if (m.title === null || m.season === null) continue
+    const key = JSON.stringify([f.directory, norm(m.title)]), peers = local.get(key) || []
+    peers.push(f)
+    local.set(key, peers)
+  }
+  for (const f of ctx.files) {
+    const state = states.get(f.fileId), m = state.metadata
+    if (m.season === null && m.title !== null &&
+        !f.candidates.some((c) => c.role === 'season' && c.status === 'invalid')) {
+      const peers = (local.get(JSON.stringify([f.directory, norm(m.title)])) || [])
+        .filter((p) => m.tmdbId === null || states.get(p.fileId).metadata.tmdbId === null ||
+          m.tmdbId === states.get(p.fileId).metadata.tmdbId),
+        ids = new Set(peers.map((p) => states.get(p.fileId).metadata.tmdbId).filter((v) => v !== null)),
+        seasons = new Set(peers.map((p) => states.get(p.fileId).metadata.season))
+      if (peers.length && ids.size <= 1 && seasons.size === 1)
+        set(state, 'season', first(peers[0], 'season'), peers[0], '同目录同片名唯一明确季号')
+    }
+    if (m.mediaType === null && (m.season !== null || m.episodes.length)) {
+      m.mediaType = 'tv'
+      state.decisions.mediaType = { candidates: unique([
+        ...(state.decisions.season?.candidates || []),
+        ...(state.decisions.episodes?.candidates || [])]), reason: '季号或集数提供剧集依据' }
+    }
+  }
+  const results = ctx.targetFileIds.map((fileId) => ({ fileId,
+    metadata: states.get(fileId).metadata, decisions: states.get(fileId).decisions }))
   trace('裁决完成', { contextFiles: ctx.files.length, targets: results.length })
   return results
 }

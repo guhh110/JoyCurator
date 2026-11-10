@@ -10,6 +10,9 @@ import (
 func TestExamplesUseFullPipelineAndFailOnExecutionErrors(t *testing.T) {
 	p := r.DefaultPipeline()
 	p.Tokenizer.Examples = []r.Example{}
+	for i := range p.Annotators {
+		p.Annotators[i].Examples = []r.Example{}
+	}
 	p.Resolver.Examples = []r.Example{}
 	p.Annotators[0].Examples = []r.Example{{Paths: []string{"/Film.mkv"}, Root: "/", Targets: []string{"/Film.mkv"}, Expected: json.RawMessage(`[[]]`)}}
 	got, err := r.Examples(context.Background(), p)
@@ -49,7 +52,7 @@ func TestHTTPPipelineSimulationAndStrictPayload(t *testing.T) {
 
 func TestDefaultExamples(t *testing.T) {
 	results, err := r.Examples(context.Background(), r.DefaultPipeline())
-	if err != nil || len(results) != 4 {
+	if err != nil || len(results) != 6 {
 		t.Fatal(results, err)
 	}
 	for _, r := range results {

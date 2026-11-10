@@ -150,7 +150,7 @@ function number(text) {
 function extract(ctx) {
   const out = [],
     s = ctx.sources[0],
-    protectedRoles = ['tmdbId', ...technical]
+    protectedRoles = ['tmdbId', 'season', 'year', ...technical]
   let marked = false
   for (const m of scan(
     ctx,
@@ -226,71 +226,29 @@ function extract(ctx) {
     }
   }
   if (out.length) return out
-  const roots = runs(ctx, s)
-    .filter((r) => r.parentId === null)
-    .map((r) => ({
-      ...r,
-      words: r.words.filter(
-        (t) => !overlaps(ctx, s, t.start, t.end, protectedRoles),
-      ),
-    }))
-    .filter((r) => r.words.length)
-  if (roots.length === 1 && ctx.sources.length > 1) {
-    const list = roots[0].words,
-      plain = list.map((t) => t.text).join(' '),
-      bare =
-        /^(?:([0-9]{1,4})(?:v\d)?|ep?\s*(\d{1,4})|(\d{1,4})\s*[集话話])$/i.exec(
-          plain,
-        )
-    if (bare && !isYear(Number(plain))) {
-      out.push(
-        item(
-          s,
-          list[0].start,
-          list[list.length - 1].end,
-          [number(bare[1] || bare[2] || bare[3])],
-          'contextual',
-          '父目录内纯集号',
-        ),
-      )
-      return out
+  // E/EP 和数字加“集/话”是明确标记；裸数字留给目录裁决。
+  for (const run of runs(ctx, s)) {
+    const text = s.text.slice(run.start, run.end)
+    for (const m of text.matchAll(/(?:^|[ ._-])(ep?[ ._-]*(\d+)|((?:\d)+)[集话話])(?=$|[ ._-])/gi)) {
+      const raw = m[2] || m[3],
+        start = run.start + m.index + m[0].length - m[1].length,
+        end = start + m[1].length
+      if (overlaps(ctx, s, start, end, protectedRoles)) continue
+      out.push(item(s, start, end, raw.length <= 4 ? [Number(raw)] : null,
+        'explicit', raw.length <= 4 ? '显式集号' : '集数超出范围',
+        raw.length <= 4 ? 'valid' : 'invalid'))
     }
   }
-  for (const t of ctx.tokens)
-    if (t.sourceId === s.id && t.kind === 'group') {
-      const list = words(ctx, s).filter((w) => w.parentId === t.id)
-      if (
-        list.length === 1 &&
-        /^\d{1,4}$/.test(list[0].text) &&
-        !isYear(Number(list[0].text)) &&
-        !overlaps(ctx, s, t.start, t.end, protectedRoles)
-      )
-        out.push(
-          item(
-            s,
-            t.start,
-            t.end,
-            [Number(list[0].text)],
-            'heuristic',
-            '括号数字待目录对比',
-          ),
-        )
+  if (out.length) return out
+  for (const t of words(ctx, s))
+    for (const m of t.text.matchAll(/\d+/g)) {
+      const start = t.start + m.index,
+        end = start + m[0].length,
+        n = Number(m[0])
+      if (m[0].length > 4 || isYear(n) ||
+          /v$/i.test(t.text.slice(0, m.index)) ||
+          overlaps(ctx, s, start, end, protectedRoles)) continue
+      out.push(item(s, start, end, [n], 'heuristic', '数字片段，待目录裁决'))
     }
-  const last = roots[roots.length - 1],
-    list = last && last.words,
-    t = list && list[list.length - 1]
-  if (t && /^(?:ep?|e)?\d{1,4}$/i.test(t.text)) {
-    const raw = t.text.replace(/^ep?/i, ''),
-      n = Number(raw),
-      previous = list[list.length - 2]
-    if (
-      !isYear(n) &&
-      previous &&
-      /[\s._-]/.test(s.text.slice(previous.end, t.start))
-    ) {
-      const start = /^ep?$/i.test(previous.text) ? previous.start : t.start
-      out.push(item(s, start, t.end, [n], 'contextual', '尾部集号'))
-    }
-  }
   return out
 }
