@@ -1,111 +1,159 @@
-// 片名：先从文件名提取，文件名只剩集号时改用目录名（近到远，跳过季目录）。
-// 清理顺序：去掉 TMDB 标记 → 截到季集标记或尾部集号 → 截到年份、画质 → 去掉方括号与分隔符。
-//
-// 执行过程只记录影响结果的判断（reSearch / reFindAll）；纯字符串整理用原生
-// RegExp，不单独记录，最后由一条「清理片名」汇总前后对比。
-
-// SxxExx、1x03、独立 Sxx 三种季集标记，取最靠前的一个截断。
-const EPISODE_MARK = "(?i)s\\d{1,3}e\\d{1,4}|\\b\\d{1,3}x\\d{1,4}|(?:^|[ ._-])s\\d{1,3}(?:$|[ ._-])";
-const BARE = "(?i)^(?:\\d{1,4}|ep?\\.?\\s*\\d{1,4}|第\\s*(?:\\d{1,4}|[零〇一二两三四五六七八九十百千]{1,16})\\s*[集话話]|\\d{1,4}\\s*[集话話]|\\d{1,4}v\\d)$";
-const TRAILING = "(?i)^(.*?)[\\s._-]+(?:ep?|e)?\\.?\\s*(\\d{1,4})$";
-const SEASON_FOLDER = "(?i)^(?:specials?|特别篇|特別篇|season\\s*\\d{1,3}|s\\d{1,3}|第\\s*[0-9零一二两三四五六七八九十]{1,3}\\s*季)$";
-const QUALITY_WORDS = "2160p|1080p|1080i|720p|480p|4k|bluray|blu-ray|bdrip|webrip|web-dl|webdl|hdtv|remux|x264|x265|h[ .]?264|h[ .]?265|hevc|avc|aac|dts|ddp|hdr10?|dv|10bit|8bit";
-const QUALITY = "(?i)\\b(?:" + QUALITY_WORDS + ")\\b";
-
-const ID_NATIVE = /tmdb[-= ]?\d+/gi;
-const BRACKETS_NATIVE = /[\[【][^\]】]*[\]】]/g;
-const QUALITY_NATIVE = new RegExp("\\b(?:" + QUALITY_WORDS + ")\\b", "gi");
+// 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。
+function item(source, start, end, value, strength, reason, status) {
+  return {
+    value,
+    spans: [{ sourceId: source.id, start, end }],
+    strength: strength || 'explicit',
+    status: status || 'valid',
+    reason,
+  }
+}
+function words(ctx, source) {
+  return ctx.tokens
+    .filter(
+      (t) =>
+        t.sourceId === source.id && (t.kind === 'text' || t.kind === 'number'),
+    )
+    .sort((a, b) => a.start - b.start)
+}
+function runs(ctx, source) {
+  const parents = new Map(),
+    result = []
+  for (const t of ctx.tokens)
+    if (t.sourceId === source.id) {
+      const key = t.parentId,
+        list = parents.get(key) || []
+      list.push(t)
+      parents.set(key, list)
+    }
+  for (const [parentId, list] of parents) {
+    list.sort((a, b) => a.start - b.start)
+    let sequence = []
+    function flush() {
+      if (sequence.length)
+        result.push({
+          parentId,
+          words: sequence,
+          start: sequence[0].start,
+          end: sequence[sequence.length - 1].end,
+        })
+      sequence = []
+    }
+    for (const t of list) {
+      if (t.kind === 'group') flush()
+      else if (t.kind === 'text' || t.kind === 'number') sequence.push(t)
+    }
+    flush()
+  }
+  return result.sort((a, b) => a.start - b.start)
+}
+function overlaps(ctx, source, start, end, roles) {
+  return ctx.candidates.some(
+    (c) =>
+      roles.includes(c.role) &&
+      c.spans.some(
+        (s) => s.sourceId === source.id && start < s.end && end > s.start,
+      ),
+  )
+}
+function scan(ctx, source, pattern, roles = []) {
+  const result = []
+  for (const run of runs(ctx, source)) {
+    const chars = source.text.slice(run.start, run.end).split('')
+    for (const c of ctx.candidates)
+      if (roles.includes(c.role))
+        for (const s of c.spans)
+          if (s.sourceId === source.id)
+            for (
+              let i = Math.max(s.start, run.start);
+              i < Math.min(s.end, run.end);
+              i++
+            )
+              chars[i - run.start] = ' '
+    for (const m of chars.join('').matchAll(pattern)) {
+      m.index += run.start
+      result.push(m)
+    }
+  }
+  return result.sort((a, b) => a.index - b.index)
+}
+const technical = [
+  'resolution',
+  'videoCodec',
+  'audioCodec',
+  'bitDepth',
+  'dynamicRange',
+  'language',
+  'subtitleLanguage',
+  'checksum',
+  'releaseTag',
+]
+function isYear(n) {
+  return n >= 1900 && n <= 2099
+}
 
 function extract(ctx) {
-  const fromFile = fileTitle(ctx.filename, ctx.hasParent);
-  if (fromFile) {
-    return {value: fromFile, matchedText: ctx.filename};
-  }
-  for (const dir of ctx.directories) {
-    const fromDir = folderTitle(dir);
-    if (fromDir) {
-      return {value: fromDir, matchedText: dir};
+  const out = []
+  for (const s of ctx.sources) {
+    if (
+      s.kind === 'directories' &&
+      /^(?:specials?|特别篇|特別篇)$/i.test(
+        words(ctx, s)
+          .map((t) => t.text)
+          .join(' '),
+      )
+    )
+      continue
+    const occupied = ctx.candidates
+        .filter((c) => c.role !== 'title')
+        .flatMap((c) => c.spans.filter((p) => p.sourceId === s.id))
+        .sort((a, b) => a.start - b.start),
+      root = [],
+      grouped = []
+    for (const run of runs(ctx, s)) {
+      const parts = []
+      for (const t of run.words) {
+        let pos = t.start
+        for (const p of occupied) {
+          if (p.end <= pos || p.start >= t.end) continue
+          if (p.start > pos) parts.push({ start: pos, end: p.start })
+          pos = Math.max(pos, p.end)
+          if (pos >= t.end) break
+        }
+        if (pos < t.end) parts.push({ start: pos, end: t.end })
+      }
+      let sequence = []
+      function flush() {
+        if (sequence.length) {
+          const start = sequence[0].start,
+            end = sequence[sequence.length - 1].end,
+            value = sequence.map((p) => s.text.slice(p.start, p.end)).join(' '),
+            target = run.parentId === null ? root : grouped
+          target.push(
+            item(
+              s,
+              start,
+              end,
+              value,
+              'contextual',
+              run.parentId === null ? '来源片名' : '括号片名',
+            ),
+          )
+        }
+        sequence = []
+      }
+      for (const p of parts) {
+        const previous = sequence[sequence.length - 1]
+        if (
+          previous &&
+          occupied.some((x) => x.start < p.start && x.end > previous.end)
+        )
+          flush()
+        sequence.push(p)
+      }
+      flush()
     }
+    out.push(...(root.length ? root : grouped))
   }
-  return null;
-}
-
-function fileTitle(filename, hasParent) {
-  const original = filename;
-  let text = withoutId(filename);
-  if (reSearch(BARE, clean(text)) && hasParent && !isYear(clean(text))) {
-    trace("文件名只有集号，改用目录名", filename);
-    return null;
-  }
-  const mark = reSearch(EPISODE_MARK, text);
-  if (mark) {
-    text = text.slice(0, mark.start);
-  }
-  const tail = reSearch(TRAILING, clean(text));
-  if (tail) {
-    const number = Number(tail.groups[2]);
-    if (number >= 0 && !isYear(String(number))) {
-      text = tail.groups[1];
-    }
-  }
-  return titleText(text, original);
-}
-
-function folderTitle(dir) {
-  const text = withoutId(dir);
-  if (reSearch(SEASON_FOLDER, text.trim())) {
-    trace("跳过季目录或特别篇目录", dir);
-    return null;
-  }
-  return titleText(text, dir);
-}
-
-// text 已去掉 TMDB 标记。
-function titleText(text, original) {
-  const year = findYear(text);
-  if (year) {
-    text = text.slice(0, year.start);
-  }
-  const quality = reSearch(QUALITY, text);
-  if (quality) {
-    text = text.slice(0, quality.start);
-  }
-  text = text.replace(BRACKETS_NATIVE, " ")
-    .replaceAll(".", " ").replaceAll("_", " ").trim().split(/\s+/).join(" ")
-    .replace(/^[ \-_\[\](){}【】]+|[ \-_\[\](){}【】]+$/g, "");
-  trace("清理片名", {before: original, after: text});
-  return text;
-}
-
-// 只截掉前面已有片名文字的年份，开头的数字保留为片名。
-function findYear(text) {
-  for (const match of reFindAll("\\b\\d{4}\\b", text)) {
-    const number = Number(match.text);
-    const before = text.slice(0, match.start).replace(BRACKETS_NATIVE, " ");
-    // goja 的原生正则不支持 \p{…}，这里用 RE2 辅助函数判断前面是否有片名文字。
-    if (number >= 1900 && number <= 2099 && reSearch("[\\p{L}\\p{N}]", before)) {
-      return match;
-    }
-  }
-  return null;
-}
-
-function isYear(text) {
-  return /^\d+$/.test(text) && Number(text) >= 1900 && Number(text) <= 2099;
-}
-
-// 判断用的文本：去掉方括号与画质词、首尾分隔符（不记录过程）。
-function clean(text) {
-  return text.replace(ID_NATIVE, " ").replace(BRACKETS_NATIVE, " ").replace(QUALITY_NATIVE, " ")
-    .replace(/^[ ._\-\t]+|[ ._\-\t]+$/g, "");
-}
-
-// 每个来源只记录一次 TMDB 标记的去除。
-function withoutId(text) {
-  // 只有确实去掉了 TMDB 标记才记录，普通路径不留这一步。
-  const result = text.replace(ID_NATIVE, " ");
-  if (result !== text) {
-    trace("去掉 TMDB 标记", {before: text, after: result});
-  }
-  return result;
+  return out
 }

@@ -2,7 +2,7 @@ package recognition_test
 
 import (
 	"context"
-	"encoding/json"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"testing"
@@ -64,27 +64,19 @@ func TestWindowsPathsAndPOSIXExamples(t *testing.T) {
 
 func assertPathSources(t *testing.T, file, root, relative, absolute string, folders []string) {
 	t.Helper()
-	rules := make([]recognition.Rule, 0, 4)
-	for i, source := range []recognition.Source{recognition.RelativePath, recognition.AbsolutePath, recognition.ParentDirectory, recognition.Directories} {
-		rules = append(rules, recognition.Rule{ID: string(source), Name: string(source), Order: i + 1, Enabled: true, Kind: "regex", Target: recognition.Title, Source: source, Config: recognition.Config{Pattern: "^not-a-match$", Value: json.RawMessage(`"unused"`)}, Examples: []recognition.Example{}})
-	}
-	engine, err := recognition.Compile(rules)
+	result, err := recognition.DefaultEngine().ExtractBatch(context.Background(), recognition.BatchInput{ContextRoot: filepath.Dir(absolute), SourceBoundary: root, Paths: []string{file}, Targets: []string{file}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := engine.Extract(context.Background(), recognition.Input{Path: file, Root: root}, nil)
-	if err != nil {
-		t.Fatal(err)
+	doc := result.Documents[0]
+	got := []string{}
+	for _, source := range doc.Sources[1:] {
+		got = append(got, source.Text)
 	}
-	want := [][]string{{relative}, {absolute}, {}, folders}
-	if len(folders) > 0 {
-		want[2] = folders[:1]
+	if doc.Path != absolute || !reflect.DeepEqual(got, folders) {
+		t.Fatal(doc.Path, got, absolute, folders)
 	}
-	for i, step := range result.Steps {
-		if !reflect.DeepEqual(step.Inputs, want[i]) {
-			t.Fatalf("%s inputs = %q, want %q", step.RuleID, step.Inputs, want[i])
-		}
-	}
+
 }
 
 func TestPathBoundaryRejectsTraversalAndDifferentKinds(t *testing.T) {

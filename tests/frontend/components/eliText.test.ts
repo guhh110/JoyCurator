@@ -43,7 +43,7 @@ describe('EliText ellipsis direction', () => {
       'features/workspace/PreviewDialog.vue', 'pages/SettingsPage.vue', 'components/jobs/RunDetails.vue',
       'features/workspace/EpisodeOffsetDialog.vue', 'features/extraction/ExtractionHistory.vue',
       'features/extraction/ExtractionHistoryDetail.vue', 'features/extraction/RuleExamples.vue',
-      'features/extraction/ExtractionResult.vue', 'pages/ScrapePage.vue',
+      'pages/ScrapePage.vue',
     ]
     for (const path of paths) {
       const source = readFileSync(new URL(`../../../frontend/src/${path}`, import.meta.url), 'utf8')
@@ -51,5 +51,10 @@ describe('EliText ellipsis direction', () => {
       expect(displays.length, path).toBeGreaterThan(0)
       for (const display of displays) expect(display, path).toContain('ellipsis="start"')
     }
+    const resultSource = readFileSync(new URL('../../../frontend/src/features/extraction/ExtractionResult.vue', import.meta.url), 'utf8')
+    const fileSelect = resultSource.match(/<Select\b[\s\S]*?label="选择文件"[\s\S]*?\/>/)?.[0]
+    expect(fileSelect).toBeDefined()
+    expect(fileSelect).toContain('ellipsis="start"')
+    expect(fileSelect).toMatch(/label:\s*d\.path/)
   })
 })

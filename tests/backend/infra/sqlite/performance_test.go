@@ -18,14 +18,39 @@ func BenchmarkRecognition2000(b *testing.B) {
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
+	paths := []string{}
+	for i := 0; i < 2000; i++ {
+		paths = append(paths, fmt.Sprintf("/source/Show/Season 1/Show.S01E%04d.1080p.mkv", i))
+	}
 	for n := 0; n < b.N; n++ {
-		for i := 0; i < 2000; i++ {
-			_, _, err := service.ExtractFile(context.Background(), fmt.Sprintf("/source/Show.S01E%03d.1080p.mkv", i), "/source", "benchmark")
-			if err != nil {
-				b.Fatal(err)
+		result, id, err := service.ExtractTree(context.Background(), recognition.BatchInput{ContextRoot: "/source/Show", SourceBoundary: "/source", Paths: paths, Targets: paths}, "benchmark")
+		if err != nil || len(result.Files) != 2000 {
+			b.Fatal(len(result.Files), err)
+		}
+		b.StopTimer()
+		_, steps, err := store.TraceDetail(id)
+		if err != nil {
+			b.Fatal(err)
+		}
+		restored, err := recognition.RestoreBatch(steps)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(restored.Files) != 2000 || len(restored.Documents) != 2000 {
+			b.Fatal("batch snapshot lost")
+		}
+		var snapshots int
+		for _, s := range steps {
+			if s.RuleConfig.ID != "" {
+				snapshots++
 			}
 		}
+		if snapshots != len(service.Current().Rules().Rules()) {
+			b.Fatal("duplicate rule snapshots", snapshots)
+		}
+		b.StartTimer()
 	}
+
 }
 
 func BenchmarkRunHistory(b *testing.B) {

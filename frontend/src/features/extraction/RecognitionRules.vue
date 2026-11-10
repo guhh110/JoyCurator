@@ -15,13 +15,13 @@ import RuleExamples from './RuleExamples.vue'
 import { draftScriptDiagnostics } from './scriptDiagnostics'
 import { useRuleLibrary } from './queries'
 import { api } from '../../api'
-import type { Rule, Target } from './model'
-import { fieldOrder, targets } from './model'
+import type { Pipeline, Role } from './model'
+import { roles } from './model'
 import RuleFieldTable from './RuleFieldTable.vue'
 import { useRuleDraft } from './useRuleDraft'
 import { useToastFeedback } from '../../app/toast'
 
-// Rule list page: manages the chain (enable, order inside a field, add, delete,
+// Rule list page: manages the chain (enable, order within non-title/title groups, add, delete,
 // defaults, examples). Editing a rule happens on its own page.
 defineEmits<{ back: [] }>()
 const router = useRouter()
@@ -39,8 +39,7 @@ watch(
   library,
   (value) => {
     if (value && !initialized) {
-      if (load(value.rules, value.sourceScripts))
-        notice.value = '已按字段顺序整理执行顺序，保存后生效'
+      load(value.pipeline)
       initialized = true
     }
   },
@@ -49,21 +48,41 @@ watch(
 const validationErrors = computed(() =>
   validation.value.errors.map((item) => item.key),
 )
-const syntaxProblems = computed(() => drafts.value.flatMap(draft => draftScriptDiagnostics(draft)))
+const syntaxProblems = computed(() =>
+  drafts.value.flatMap((draft) => draftScriptDiagnostics(draft)),
+)
 const saveMutation = useMutation({
-  mutationFn: (rules: Rule[]) => api('/extraction/rules', { rules }, 'PUT'),
+  mutationFn: (pipeline: Pipeline) =>
+    api('/extraction/rules', { pipeline }, 'PUT'),
 })
-const { results: exampleResults, checkedKey, busy: checking, stale: examplesStale, run: checkExamples, reset: resetExamples } = useRuleExamples(() => validation.value.errors.length ? undefined : validation.value.rules)
+const {
+  results: exampleResults,
+  checkedKey,
+  busy: checking,
+  stale: examplesStale,
+  run: checkExamples,
+  reset: resetExamples,
+} = useRuleExamples(() =>
+  validation.value.errors.length ? undefined : validation.value.pipeline,
+)
 const saving = saveMutation.isPending
 const submitting = ref(false)
 const resetting = ref(false)
 const activeMenu = ref('')
-const busy = computed(() => submitting.value || checking.value || resetting.value)
+const busy = computed(
+  () => submitting.value || checking.value || resetting.value,
+)
 const canSubmit = computed(
-  () => !!library.value && !validation.value.errors.length && !syntaxProblems.value.length && !busy.value,
+  () =>
+    !!library.value &&
+    !validation.value.errors.length &&
+    !syntaxProblems.value.length &&
+    !busy.value,
 )
 let disposed = false
-onBeforeUnmount(() => { disposed = true })
+onBeforeUnmount(() => {
+  disposed = true
+})
 
 // Leaving with unsaved list changes would drop them; ask first.
 useUnsavedChanges(unsaved, '规则列表')
@@ -75,7 +94,7 @@ function open(key: string) {
     params: { ruleId: draft.rule.id },
   })
 }
-function add(target: Target, kind: 'script' | 'regex', templateId?: string) {
+function add(target: Role, kind: 'script' | 'regex', templateId?: string) {
   if (!library.value || busy.value) return
   void router.push({
     name: 'recognition-rule-edit',
@@ -90,13 +109,21 @@ async function reset() {
   try {
     const confirmed = await confirmAction({
       title: '恢复默认规则？',
-      description: '将用默认规则替换当前列表草稿，当前未保存的修改会丢失。不会立即修改已生效的规则，点击「保存」后才生效。',
+      description:
+        '将用默认规则替换当前列表草稿，当前未保存的修改会丢失。不会立即修改已生效的规则，点击「保存」后才生效。',
       confirmLabel: '替换当前草稿',
       cancelLabel: '保留当前草稿',
       destructive: true,
     })
-    if (!confirmed || disposed || !library.value || submitting.value || checking.value) return
-    load(library.value.defaults, library.value.sourceScripts, false)
+    if (
+      !confirmed ||
+      disposed ||
+      !library.value ||
+      submitting.value ||
+      checking.value
+    )
+      return
+    load(library.value.defaults, false)
     resetExamples()
     error.value = ''
     notice.value = ''
@@ -110,12 +137,14 @@ async function save() {
   submitting.value = true
   error.value = ''
   notice.value = ''
-  const rules = JSON.parse(JSON.stringify(validation.value.rules)) as Rule[]
+  const pipeline = JSON.parse(
+    JSON.stringify(validation.value.pipeline),
+  ) as Pipeline
   try {
-    if (!await checkExamples(rules)) return
-    await saveMutation.mutateAsync(rules)
+    if (!(await checkExamples(pipeline))) return
+    await saveMutation.mutateAsync(pipeline)
     markSaved()
-    client.setQueryData(keys.ruleLibrary, { ...library.value!, rules })
+    client.setQueryData(keys.ruleLibrary, { ...library.value!, pipeline })
     notice.value = '规则链已保存并生效'
     void client.invalidateQueries({ queryKey: keys.ruleLibrary })
   } catch (e) {
@@ -126,15 +155,12 @@ async function save() {
 }
 async function examples() {
   if (!canSubmit.value) return
-  await checkExamples(validation.value.rules)
+  if (validation.value.pipeline) await checkExamples(validation.value.pipeline)
 }
 </script>
 <template>
   <section class="rules-page" aria-label="识别规则页面">
-    <PageHeader
-      title="识别规则"
-      eyebrow="PATH EXTRACTION RULES"
-      description="按字段管理规则。点规则进入编辑页，排查路径请用「识别调试」。"
+    <PageHeader title="识别规则" eyebrow="PATH EXTRACTION RULES"
       ><template #actions
         ><button class="button" @click="$emit('back')">
           返回整理工作区
@@ -147,29 +173,51 @@ async function examples() {
       @retry="libraryQuery.refetch()"
     >
       <div class="toolbar">
-        <ActionMenu :open="activeMenu === 'new'" :disabled="!library || busy" label="为哪个字段新增？" @update:open="value => { if (value) activeMenu = 'new'; else if (activeMenu === 'new') activeMenu = '' }">
-          <template #trigger><button class="button" type="button"><Plus :size="14" />新增规则<ChevronDown :size="13" /></button></template>
+        <ActionMenu
+          :open="activeMenu === 'new'"
+          :disabled="!library || busy"
+          label="新增候选标注规则"
+          @update:open="
+            (value) => {
+              if (value) activeMenu = 'new'
+              else if (activeMenu === 'new') activeMenu = ''
+            }
+          "
+        >
+          <template #trigger
+            ><button class="button" type="button">
+              <Plus :size="14" />新增规则<ChevronDown :size="13" /></button
+          ></template>
           <DropdownMenuItem
-            v-for="target in fieldOrder"
+            v-for="(_, target) in roles"
             :key="target"
             class="ui-action-menu-item"
             :disabled="!library || busy"
             @select="add(target, 'script')"
           >
-            {{ targets[target] }}
+            {{ roles[target] }}
           </DropdownMenuItem>
         </ActionMenu>
-        <button
-          class="button"
-          :disabled="!canSubmit"
-          @click="examples"
-        >
+        <button class="button" :disabled="!canSubmit" @click="examples">
           {{ checking ? '样例运行中…' : '运行全部样例' }}
         </button>
-        <button class="restore-defaults" type="button" :disabled="!library || busy" @click="reset">恢复默认规则</button>
+        <button
+          class="restore-defaults"
+          type="button"
+          :disabled="!library || busy"
+          @click="reset"
+        >
+          恢复默认规则
+        </button>
         <span class="save-status" :class="{ dirty }" role="status"
           ><i />{{
-            checking ? '正在验证样例…' : saving ? '正在保存…' : dirty ? '有未保存修改' : '与生效链一致'
+            checking
+              ? '正在验证样例…'
+              : saving
+                ? '正在保存…'
+                : dirty
+                  ? '有未保存修改'
+                  : '与生效链一致'
           }}</span
         >
         <button
@@ -193,26 +241,26 @@ async function examples() {
           {{ item.name }}：{{ item.message }}
         </button>
       </div>
-      <p v-if="syntaxProblems.length" class="notice error" role="alert">规则包含脚本错误，请进入编辑页修正后保存。</p>
-      <RuleExamples :results="exampleResults" :checked="!!checkedKey" :busy="checking" :stale="examplesStale" />
+      <p v-if="syntaxProblems.length" class="notice error" role="alert">
+        规则包含脚本错误，请进入编辑页修正后保存。
+      </p>
+      <RuleExamples
+        :results="exampleResults"
+        :checked="!!checkedKey"
+        :busy="checking"
+        :stale="examplesStale"
+      />
 
       <fieldset class="list-area" :disabled="busy">
         <RuleFieldTable
-          v-model:open-menu="activeMenu"
           :drafts="drafts"
           :errors="validationErrors"
-          :catalog="library?.catalog ?? []"
           :disabled="busy"
           @open="open"
-          @add="add"
           @move="move"
           @remove="remove"
         />
       </fieldset>
-      <p class="tiny muted foot">
-        执行顺序按字段固定：TMDB ID → 季号 → 集数 → 媒体类型 → 片名 → 年份 →
-        发布标签；同一字段内先命中的规则生效。启停、排序和删除在点「保存」后生效。
-      </p>
     </QueryState>
   </section>
 </template>
@@ -231,8 +279,18 @@ async function examples() {
 .toolbar .save-status {
   margin-left: auto;
 }
-.restore-defaults { padding:8px; border:0; border-radius:6px; background:transparent; color:var(--muted); font-size:12px; }
-.restore-defaults:hover:not(:disabled) { background:#f4f2fb; color:var(--purple-dark); }
+.restore-defaults {
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.restore-defaults:hover:not(:disabled) {
+  background: #f4f2fb;
+  color: var(--purple-dark);
+}
 .save-status {
   display: inline-flex;
   align-items: center;

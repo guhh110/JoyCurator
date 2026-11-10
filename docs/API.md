@@ -27,9 +27,9 @@
 | `GET /recognitions` | 最近的识别工作区，无记录时返回 `null` |
 | `POST /recognitions` | `{paths,id?}`，创建异步识别任务；提供 `id` 时补充现有工作区并保留修正 |
 | `GET /extraction/rules` | 当前链、默认链、完整脚本模板目录、目标及来源枚举 |
-| `PUT /extraction/rules` | `{rules}`，全量验证并原子替换当前链 |
-| `POST /extraction/test` | `{path,root?,rules?}`，试跑保存链或提供的编辑链，返回 `{path,root,metadata,steps}` |
-| `POST /extraction/examples` | `{rules}`，返回各规则样例的 `{ruleId,path,expected,actual,passed,error}` 数组；`error` 无错误时为空字符串，整条链任一规则执行报错均判为失败，即使 `actual` 与 `expected` 都为 `null` |
+| `PUT /extraction/rules` | `{pipeline}`，全量验证并原子替换三阶段配置 |
+| `POST /extraction/test` | `{paths,targets,contextRoot?,sourceBoundary?,pipeline?}`，返回 `{context,tree,documents,files,steps,error?}` |
+| `POST /extraction/examples` | `{pipeline}`，返回各规则样例的 `{ruleId,paths,expected,actual,passed,error}` 数组；`error` 无错误时为空字符串，整条链任一规则执行报错均判为失败，即使 `actual` 与 `expected` 都为 `null` |
 | `GET /extraction/traces?page=&path=&workspaceId=` | 每页 20 条执行摘要，返回 `{items,total,page}`；路径为精确筛选 |
 | `GET /extraction/traces/{id}` | `{trace,metadata,steps}`，含执行时规则快照 |
 | `DELETE /extraction/traces/{id}` | 手动清理已结束轨迹及步骤，不修改工作区结果 |
@@ -73,15 +73,15 @@
 
 识别不运行媒体探测；目录推断止于当前 `sourceRoot`。同批搜索去重、限制请求速率并复用 TMDB 缓存；年份回退及模糊候选需确认。缺少季号时，仅在唯一常规季且集数有效时自动补全。 TMDB ID 标记在提取后不再参与集数识别；同一 ID 在电影和剧集类型中均存在时，仅在片名／原名及已知年份唯一匹配时自动消歧，否则保留待确认。
 
-## 路径元数据规则链
+## 路径识别流水线
 
-新调试页使用 `POST /extraction/test`，只解析路径文本，不读取媒体文件、不访问 TMDB，无需 Token。支持不存在的路径；`root` 必须为其父级绝对目录，省略时路径在源目录内采用源目录，否则 `/`。`rules` 省略时使用当前链，显式 `[]` 表示空链。试跑与样例不创建工作区、预览、整理记录或历史轨迹。前端 90 秒超时，取消或离开页面时中止请求并忽略过期响应。
+`GET /extraction/rules` 返回 `{pipeline,defaults,catalog,targets,sources,scriptLanguage}`。配置为 `{tokenizer,annotators,resolver}`；只有标注规则具有 `target/source/order`。分词和裁决均为启用的脚本，标注支持 script/regex；普通标注先执行、片名标注最后执行，两组内分别按 order 排序；正则逐词匹配，跨词识别使用脚本。完整数据约束和示例见 [识别规范](RECOGNITION.md)。
 
-`GET /extraction/rules` 返回 `{rules,defaults,catalog,targets,sources,sourceScripts,scriptLanguage}`，`scriptLanguage` 为 `javascript`；模板为 `{id,name,target,description,sources,config:{code,params?}}`，源码可直接编辑。规则类型为 `script` 或 `regex`；脚本配置为 `{code,params?,sourceCode?}`，正则配置仍为 `{pattern,capture|value,sourceCode?}`。`sourceCode` 仅用于 `cleanFilename` 来源的清理过程。仅接受当前 script/regex 配置，不支持处理器字段或 builtin 类型。
+`POST /extraction/test` 接收完整目录的文本路径快照与目标数组，支持不存在的文件，不读取文件、不调用 TMDB、不持久化。省略边界时，所有路径须位于首个路径选定的源目录边界内，或显式提供 `/`。省略 pipeline 使用当前配置。执行错误保留阶段结果并返回 error；输入、配置错误返回 400。前端超时 90 秒，取消或离开中止请求并忽略过期响应。
 
-`Step.attempts[].trace` 保存脚本的正则调用、`trace/print` 中间值、阶段和源码行列号。脚本语法、参数结构错误在保存或试跑时返回 HTTP 400；运行错误和超限作为该规则的 `error` 步骤保留日志，继续执行后续规则。历史详情中的配置与源码均来自当次快照。
+`POST /extraction/examples` 使用完整 pipeline 运行各条规则的多路径样例；任何执行错误使样例失败。`PUT /extraction/rules` 完整校验并事务保存配置，保存失败保持当前引擎。当前格式不接受旧规则数组、来源清理和覆盖字段。
 
-`Metadata` 的单值字段未知为 `null`，集数未知为 `[]`；`season:0` 为特别篇。`Step` 保存每条规则的配置、输入尝试、命中与捕获、提出的值、前后值、采用标志、原因、时间和耗时；`matched` 状态不等于已采用。规则模型及执行语义详见 [路径元数据提取](RECOGNITION.md)。当前链保存无效时保留原链；单次调用只使用开始时获取的链。正式轨迹逐文件集中写入步骤和最终摘要，长期保存；正常取消保存已产生步骤，强制退出时当前文件可能只有摘要，重启标为中断；删除轨迹不会修改原识别结果。
+正式导入按目录树共享 traceId。历史详情返回 `{trace,context,tree,documents,files,steps,error}`，保留原始文本、结构片段、候选、规则快照和逐文件裁决引用。可清理已结束轨迹，级联删除步骤，不修改工作区文件。
 
 ## 目录与分类
 

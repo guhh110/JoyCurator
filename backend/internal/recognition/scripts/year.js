@@ -1,32 +1,113 @@
-// 年份：取前面已有片名文字的四位数，因此 1917.mkv、2001.A.Space.Odyssey 里
-// 开头的数字会保留为片名。先看文件名，再按近到远查看目录。
-// 参数 min / max 限定年份范围，默认 1900–2099。
-function extract(ctx) {
-  const minimum = ctx.params.min ?? 1900;
-  const maximum = ctx.params.max ?? 2099;
-  if (minimum < 1 || maximum > 9999 || minimum > maximum) {
-    throw new Error("年份参数 min/max 无效");
+// 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。
+function item(source, start, end, value, strength, reason, status) {
+  return {
+    value,
+    spans: [{ sourceId: source.id, start, end }],
+    strength: strength || 'explicit',
+    status: status || 'valid',
+    reason,
   }
-  for (const text of [ctx.filename, ...ctx.directories]) {
-    const match = findYear(text, minimum, maximum);
-    if (match) {
-      return {value: Number(match.text), matchedText: match.text};
+}
+function words(ctx, source) {
+  return ctx.tokens
+    .filter(
+      (t) =>
+        t.sourceId === source.id && (t.kind === 'text' || t.kind === 'number'),
+    )
+    .sort((a, b) => a.start - b.start)
+}
+function runs(ctx, source) {
+  const parents = new Map(),
+    result = []
+  for (const t of ctx.tokens)
+    if (t.sourceId === source.id) {
+      const key = t.parentId,
+        list = parents.get(key) || []
+      list.push(t)
+      parents.set(key, list)
+    }
+  for (const [parentId, list] of parents) {
+    list.sort((a, b) => a.start - b.start)
+    let sequence = []
+    function flush() {
+      if (sequence.length)
+        result.push({
+          parentId,
+          words: sequence,
+          start: sequence[0].start,
+          end: sequence[sequence.length - 1].end,
+        })
+      sequence = []
+    }
+    for (const t of list) {
+      if (t.kind === 'group') flush()
+      else if (t.kind === 'text' || t.kind === 'number') sequence.push(t)
+    }
+    flush()
+  }
+  return result.sort((a, b) => a.start - b.start)
+}
+function overlaps(ctx, source, start, end, roles) {
+  return ctx.candidates.some(
+    (c) =>
+      roles.includes(c.role) &&
+      c.spans.some(
+        (s) => s.sourceId === source.id && start < s.end && end > s.start,
+      ),
+  )
+}
+function scan(ctx, source, pattern, roles = []) {
+  const result = []
+  for (const run of runs(ctx, source)) {
+    const chars = source.text.slice(run.start, run.end).split('')
+    for (const c of ctx.candidates)
+      if (roles.includes(c.role))
+        for (const s of c.spans)
+          if (s.sourceId === source.id)
+            for (
+              let i = Math.max(s.start, run.start);
+              i < Math.min(s.end, run.end);
+              i++
+            )
+              chars[i - run.start] = ' '
+    for (const m of chars.join('').matchAll(pattern)) {
+      m.index += run.start
+      result.push(m)
     }
   }
-  return null;
+  return result.sort((a, b) => a.index - b.index)
+}
+const technical = [
+  'resolution',
+  'videoCodec',
+  'audioCodec',
+  'bitDepth',
+  'dynamicRange',
+  'language',
+  'subtitleLanguage',
+  'checksum',
+  'releaseTag',
+]
+function isYear(n) {
+  return n >= 1900 && n <= 2099
 }
 
-function findYear(text, minimum, maximum) {
-  text = reSub("(?i)tmdb[-= ]?(\\d+)", text, " ");
-  for (const match of reFindAll("\\b\\d{4}\\b", text)) {
-    const number = Number(match.text);
-    const before = reSub("[\\[【][^\\]】]*[\\]】]", text.slice(0, match.start), " ");
-    const titlePrefix = reSub("[^\\p{L}\\p{N}]", before, "");
-    const accepted = minimum <= number && number <= maximum && Boolean(titlePrefix);
-    trace("年份候选判断", {number: number, hasTitleBefore: Boolean(titlePrefix), accepted: accepted});
-    if (accepted) {
-      return match;
+function extract(ctx) {
+  const min = ctx.params.min ?? 1900,
+    max = ctx.params.max ?? 2099,
+    out = []
+  if (min < 1 || max > 9999 || min > max) throw Error('年份参数 min/max 无效')
+  for (const s of ctx.sources)
+    for (const m of scan(ctx, s, /\b\d{4}\b/g, ['tmdbId', ...technical])) {
+      const n = Number(m[0]),
+        before = words(ctx, s).some(
+          (t) =>
+            t.parentId === null &&
+            t.start < m.index &&
+            !overlaps(ctx, s, t.start, t.end, ['tmdbId', ...technical]),
+        )
+      if (n >= min && n <= max && before)
+        out.push(item(s, m.index, m.index + 4, n, 'explicit', '片名后年份'))
     }
-  }
-  return null;
+  return out
 }

@@ -120,14 +120,14 @@ func TestRelationalOperationsUndoAndAtomicCheckpoint(t *testing.T) {
 
 func TestRelationalTraceDynamicValuesAndRules(t *testing.T) {
 	s := openStore(t)
-	r := recognition.DefaultRules()[0]
+	r := recognition.DefaultPipeline().Tokenizer
 	r.Config.Params = json.RawMessage(`{"x":[1,true]}`)
-	r.Examples = []recognition.Example{{Path: "/a", Root: "/", Expected: json.RawMessage(`null`)}}
-	if err := s.SaveRules([]recognition.Rule{r}); err != nil {
+	r.Examples = []recognition.Example{{Paths: []string{"/a"}, Root: "/", Targets: []string{}, Expected: json.RawMessage(`null`)}}
+	if err := s.SaveRules(pipelineWith(r)); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := s.LoadRules()
-	if err != nil || !reflect.DeepEqual(rules, []recognition.Rule{r}) {
+	if err != nil || !reflect.DeepEqual(rules, pipelineWith(r)) {
 		t.Fatal(rules, err)
 	}
 	trace := recognition.Trace{ID: "trace", Status: "running", Path: "/a", Root: "/", StartedAt: time.Now().UTC().Format(time.RFC3339Nano)}
@@ -149,7 +149,7 @@ func TestRelationalTraceDynamicValuesAndRules(t *testing.T) {
 	if err = s.FinishTrace(trace, []recognition.Step{step}); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SaveRules([]recognition.Rule{}); err != nil {
+	if err = s.SaveRules(emptyPipeline()); err != nil {
 		t.Fatal(err)
 	}
 	_, steps, err = s.TraceDetail(trace.ID)
@@ -161,11 +161,11 @@ func TestRelationalTraceDynamicValuesAndRules(t *testing.T) {
 		t.Fatal("trailing JSON accepted")
 	}
 	r.Config.Params = json.RawMessage(`{"x":`)
-	if err = s.SaveRules([]recognition.Rule{r}); err == nil {
+	if err = s.SaveRules(pipelineWith(r)); err == nil {
 		t.Fatal("invalid raw JSON accepted")
 	}
 	rules, err = s.LoadRules()
-	if err != nil || len(rules) != 0 {
+	if err != nil || len(rules.Annotators) != 0 {
 		t.Fatal("failed save changed rules", rules, err)
 	}
 	if err = s.DeleteTrace(trace.ID); err != nil {
@@ -180,7 +180,7 @@ func TestRelationalTraceDynamicValuesAndRules(t *testing.T) {
 }
 
 func TestStorageFormatRejectionDoesNotRewriteDatabase(t *testing.T) {
-	for _, kind := range []string{"legacy", "broken"} {
+	for _, kind := range []string{"legacy", "previous-version", "broken"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "joycurator.db")
@@ -201,7 +201,11 @@ func TestStorageFormatRejectionDoesNotRewriteDatabase(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err = s.db.Exec("DROP INDEX runs_state"); err != nil {
+				statement := "DROP INDEX runs_state"
+				if kind == "previous-version" {
+					statement = "PRAGMA user_version=1"
+				}
+				if _, err = s.db.Exec(statement); err != nil {
 					t.Fatal(err)
 				}
 				s.Close()
@@ -235,7 +239,7 @@ func TestEmptyRuleChainSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SaveRules([]recognition.Rule{}); err != nil {
+	if err = s.SaveRules(emptyPipeline()); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -245,7 +249,7 @@ func TestEmptyRuleChainSurvivesReopen(t *testing.T) {
 	}
 	defer s.Close()
 	rules, err := s.LoadRules()
-	if err != nil || len(rules) != 0 {
+	if err != nil || len(rules.Annotators) != 0 {
 		t.Fatal(rules, err)
 	}
 }

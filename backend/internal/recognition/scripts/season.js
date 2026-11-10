@@ -1,88 +1,236 @@
-// 季号：按优先级依次尝试，先命中优先。
-//   1. 文件名 SxxExx        Show.S02E03.mkv
-//   2. 文件名 1x03          Show.1x03.mkv
-//   3. 文件名独立 Sxx 标记   Show.S02.mkv
-//   4. 季目录（近到远）      Season 2 / S02 / 第二季 / Specials
-// 某种写法出错时记录原因并继续尝试下一种；全部未命中且有错误时报告第一个错误。
-const SXE = "(?i)s(\\d{1,3})e(\\d{1,4})((?:\\s*(?:-\\s*e?|e)\\d{1,4})*)";
-const CROSS = "(?i)\\b(\\d{1,3})x(\\d{1,4})";
-const MARKER = "(?i)(?:^|[ ._-])s(\\d{1,3})(?:$|[ ._-])";
-const SPECIALS = "(?i)^(?:specials?|特别篇|特別篇)$";
-const FOLDER = "(?i)^(?:season\\s*(\\d{1,3})|s(\\d{1,3})|第\\s*([0-9零一二两三四五六七八九十]{1,3})\\s*季)$";
-
-function extract(ctx) {
-  const name = withoutId(ctx.filename);
-  return firstHit([
-    () => seasonOf(marked(SXE, name)),
-    () => seasonOf(marked(CROSS, name)),
-    () => seasonOf(reSearch(MARKER, name)),
-    ...ctx.directories.map((dir) => () => folderSeason(dir)),
-  ]);
-}
-
-function seasonOf(match) {
-  return match ? {value: Number(match.groups[1]), matchedText: match.text} : null;
-}
-
-function folderSeason(dir) {
-  const text = withoutId(dir).trim();
-  if (reSearch(SPECIALS, text)) {
-    trace("特别篇目录", dir);
-    return {value: 0, matchedText: dir};
+// 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。
+function item(source, start, end, value, strength, reason, status) {
+  return {
+    value,
+    spans: [{ sourceId: source.id, start, end }],
+    strength: strength || 'explicit',
+    status: status || 'valid',
+    reason,
   }
-  const match = reSearch(FOLDER, text);
-  if (!match) {
-    return null;
-  }
-  const numeral = match.groups.slice(1).find((part) => part);
-  const number = /^\d+$/.test(numeral) ? Number(numeral) : chineseNumber(numeral);
-  trace("季号转换", {before: numeral, after: number});
-  return {value: number, matchedText: match.text};
 }
-
-function chineseNumber(numeral) {
-  const digits = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9};
-  const parts = numeral.split("十");
-  let number = null;
-  if (parts.length === 1) {
-    number = digits[numeral] ?? null;
-  } else if (parts.length === 2) {
-    number = (parts[0] ? (digits[parts[0]] ?? 1) : 1) * 10 + (parts[1] ? (digits[parts[1]] ?? 0) : 0);
-  }
-  if (number === null) {
-    throw new Error("中文季号无效");
-  }
-  return number;
+function words(ctx, source) {
+  return ctx.tokens
+    .filter(
+      (t) =>
+        t.sourceId === source.id && (t.kind === 'text' || t.kind === 'number'),
+    )
+    .sort((a, b) => a.start - b.start)
 }
-
-// 季集标记后紧跟数字说明集号超过四位，不能截断后当作有效值。
-function marked(pattern, text) {
-  const match = reSearch(pattern, text);
-  if (match && match.end < text.length && /^\d$/.test(text[match.end])) {
-    throw new Error("季集标记中的数字超出范围");
+function runs(ctx, source) {
+  const parents = new Map(),
+    result = []
+  for (const t of ctx.tokens)
+    if (t.sourceId === source.id) {
+      const key = t.parentId,
+        list = parents.get(key) || []
+      list.push(t)
+      parents.set(key, list)
+    }
+  for (const [parentId, list] of parents) {
+    list.sort((a, b) => a.start - b.start)
+    let sequence = []
+    function flush() {
+      if (sequence.length)
+        result.push({
+          parentId,
+          words: sequence,
+          start: sequence[0].start,
+          end: sequence[sequence.length - 1].end,
+        })
+      sequence = []
+    }
+    for (const t of list) {
+      if (t.kind === 'group') flush()
+      else if (t.kind === 'text' || t.kind === 'number') sequence.push(t)
+    }
+    flush()
   }
-  return match;
+  return result.sort((a, b) => a.start - b.start)
 }
-
-function withoutId(text) {
-  return reSub("(?i)tmdb[-= ]?(\\d+)", text, " ");
+function overlaps(ctx, source, start, end, roles) {
+  return ctx.candidates.some(
+    (c) =>
+      roles.includes(c.role) &&
+      c.spans.some(
+        (s) => s.sourceId === source.id && start < s.end && end > s.start,
+      ),
+  )
 }
-
-function firstHit(attempts) {
-  let failure = null;
-  for (const attempt of attempts) {
-    try {
-      const result = attempt();
-      if (result) {
-        return result;
-      }
-    } catch (error) {
-      trace("此写法出错，继续尝试下一种", String(error.message ?? error));
-      failure = failure ?? error;
+function scan(ctx, source, pattern, roles = []) {
+  const result = []
+  for (const run of runs(ctx, source)) {
+    const chars = source.text.slice(run.start, run.end).split('')
+    for (const c of ctx.candidates)
+      if (roles.includes(c.role))
+        for (const s of c.spans)
+          if (s.sourceId === source.id)
+            for (
+              let i = Math.max(s.start, run.start);
+              i < Math.min(s.end, run.end);
+              i++
+            )
+              chars[i - run.start] = ' '
+    for (const m of chars.join('').matchAll(pattern)) {
+      m.index += run.start
+      result.push(m)
     }
   }
-  if (failure) {
-    throw failure;
+  return result.sort((a, b) => a.index - b.index)
+}
+const technical = [
+  'resolution',
+  'videoCodec',
+  'audioCodec',
+  'bitDepth',
+  'dynamicRange',
+  'language',
+  'subtitleLanguage',
+  'checksum',
+  'releaseTag',
+]
+function isYear(n) {
+  return n >= 1900 && n <= 2099
+}
+function number(text) {
+  if (/^\d+$/.test(text)) return Number(text)
+  const digits = {
+      零: 0,
+      〇: 0,
+      一: 1,
+      二: 2,
+      两: 2,
+      三: 3,
+      四: 4,
+      五: 5,
+      六: 6,
+      七: 7,
+      八: 8,
+      九: 9,
+    },
+    units = { 十: 10, 百: 100, 千: 1000 }
+  if (!/[十百千]/.test(text))
+    return Number(
+      text
+        .split('')
+        .map((c) => digits[c])
+        .join(''),
+    )
+  let total = 0,
+    digit = null,
+    previous = 10000,
+    zero = false
+  for (let i = 0; i < text.length; i++) {
+    let c = text[i],
+      u = units[c]
+    if (u) {
+      if (u >= previous || zero || (digit === null && !(u === 10 && i === 0)))
+        throw Error('中文集号无效')
+      total += (digit === null ? 1 : digit) * u
+      previous = u
+      digit = null
+    } else if (digits[c] === 0) {
+      if (
+        !total ||
+        digit !== null ||
+        zero ||
+        previous === 10 ||
+        i === text.length - 1
+      )
+        throw Error('中文集号无效')
+      zero = true
+    } else {
+      if (digit !== null || digits[c] === undefined) throw Error('中文集号无效')
+      digit = digits[c]
+      zero = false
+    }
   }
-  return null;
+  return total + (digit === null ? 0 : digit)
+}
+
+function extract(ctx) {
+  const out = []
+  for (const s of ctx.sources) {
+    for (const m of scan(
+      ctx,
+      s,
+      /s(\d+)e(\d+)((?:\s*(?:-\s*e?|e)\d+)*)|\b(\d+)x(\d+)/gi,
+      ['tmdbId', ...technical],
+    )) {
+      let n = Number(m[1] || m[4]),
+        episode = m[2] || m[5],
+        valid = n <= 999 && episode.length <= 4
+      out.push(
+        item(
+          s,
+          m.index,
+          m.index + m[0].length,
+          n,
+          'explicit',
+          valid ? '季集标记' : '季集标记中的数字超出范围',
+          valid ? 'valid' : 'invalid',
+        ),
+      )
+    }
+    for (const m of scan(
+      ctx,
+      s,
+      /(?:^|[ ._\-\[【(])s(\d{1,3})(?=$|[ ._\-\]】)])/gi,
+      ['tmdbId', ...technical],
+    ))
+      out.push(
+        item(
+          s,
+          m.index,
+          m.index + m[0].length,
+          Number(m[1]),
+          'explicit',
+          '独立季标记',
+        ),
+      )
+    for (const m of scan(
+      ctx,
+      s,
+      /第\s*([0-9零〇一二两三四五六七八九十百千]+)\s*季|season\s*(\d+)/gi,
+      ['tmdbId', ...technical],
+    )) {
+      let n
+      try {
+        n = number(m[1] || m[2])
+      } catch (e) {
+        out.push(
+          item(
+            s,
+            m.index,
+            m.index + m[0].length,
+            null,
+            'explicit',
+            e.message,
+            'invalid',
+          ),
+        )
+        continue
+      }
+      out.push(
+        item(
+          s,
+          m.index,
+          m.index + m[0].length,
+          n,
+          'explicit',
+          '中文或英文季标记',
+          n <= 999 ? 'valid' : 'invalid',
+        ),
+      )
+    }
+    if (
+      s.kind === 'directories' &&
+      /^(?:specials?|特别篇|特別篇)$/i.test(
+        words(ctx, s)
+          .map((t) => t.text)
+          .join(' '),
+      )
+    )
+      out.push(item(s, 0, s.text.length, 0, 'explicit', '特别篇目录'))
+  }
+  return out
 }

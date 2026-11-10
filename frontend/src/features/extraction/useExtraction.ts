@@ -1,6 +1,6 @@
 import { onScopeDispose, ref } from 'vue'
 import { api } from '../../api'
-import type { ExtractionResult, Rule } from './model'
+import type { ExtractionResult, Pipeline } from './model'
 import { useToastFeedback } from '../../app/toast'
 
 // One owner per page. Sequence checks reject stale responses even if a transport
@@ -29,7 +29,7 @@ export function useExtraction() {
     error.value = ''
     notice.value = running && !silent ? '已取消调试' : ''
   }
-  async function run(rules?: Rule[]) {
+  async function run(pipeline?: Pipeline) {
     stop()
     const current = sequence,
       active = new AbortController()
@@ -48,9 +48,18 @@ export function useExtraction() {
       const value = await api<ExtractionResult>(
         '/extraction/test',
         {
-          path: path.value,
-          ...(root.value ? { root: root.value } : {}),
-          ...(rules ? { rules } : {}),
+          paths: path.value
+            .split(/\r?\n/)
+            .map((p) => p.trim())
+            .filter(Boolean),
+          targets: path.value
+            .split(/\r?\n/)
+            .map((p) => p.trim())
+            .filter(Boolean),
+          ...(root.value
+            ? { sourceBoundary: root.value, contextRoot: root.value }
+            : {}),
+          ...(pipeline ? { pipeline } : {}),
         },
         'POST',
         { signal: active.signal },

@@ -1,135 +1,126 @@
-import { describe, expect, it } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
   useRuleDraft,
   draftRule,
   trialFingerprint,
+  withRule,
+  canMoveRule,
 } from '../../../frontend/src/features/extraction/useRuleDraft'
-import type { Rule } from '../../../frontend/src/features/extraction/model'
-const rule = (id: string, order: number): Rule => ({
-  id,
-  order,
-  name: id,
-  kind: 'script',
-  target: 'title',
-  source: 'filename',
-  enabled: true,
-  overwrite: false,
-  config: { code: 'function extract(ctx) { return ctx.text; }', params: {} },
-  examples: [],
-})
-describe('rule workbench draft', () => {
-  it('includes current edits in trial payloads without an apply step', () => {
-    const draft = useRuleDraft()
-    draft.load([rule('a', 10), rule('b', 20)], {})
-    expect(draft.dirty.value).toBe(false)
-    draft.selectedKey.value = draft.drafts.value[0]!.key
-    draft.editing.value!.rule.config.code =
-      'function extract(ctx) { return "edited"; }'
-    draft.editing.value!.paramsText = '{"title":"current"}'
-    expect(draft.validation.value.rules[0]!.config.params).toEqual({
-      title: 'current',
-    })
-    expect(draft.validation.value.rules[0]!.config.code).toContain('edited')
-    expect(draft.dirty.value).toBe(true)
-    draft.markSaved()
-    expect(draft.dirty.value).toBe(false)
-  })
-  it('retains invalid JSON, edited IDs and selection through switching and reordering', () => {
-    const draft = useRuleDraft()
-    draft.load([rule('a', 10), rule('b', 20)], {})
-    const first = draft.drafts.value[0]!
-    first.rule.id = 'renamed'
-    first.paramsText = '{ unfinished'
-    draft.selectedKey.value = draft.drafts.value[1]!.key
-    draft.move(first.key, 1)
-    expect(draft.editing.value!.rule.id).toBe('b')
-    draft.selectedKey.value = first.key
-    expect(draft.editing.value!.paramsText).toBe('{ unfinished')
-    expect(draft.validation.value.errors[0]!.key).toBe(first.key)
-    expect(draft.drafts.value.map((item) => item.rule.order)).toEqual([10, 20])
-    first.paramsText = '{}'
-    expect(draft.validation.value.errors).toEqual([])
-    expect(draft.validation.value.rules.map((item) => item.id)).toEqual([
+import { annotation, pipeline } from '../fixtures/pipeline'
+describe('pipeline drafts', () => {
+  it('keeps unfinished JSON and selected identity through ordinary annotation moves', () => {
+    const d = useRuleDraft()
+    d.load(
+      pipeline([
+        { ...annotation('a'), target: 'season' },
+        { ...annotation('b', 20), target: 'year' },
+      ]),
+    )
+    const a = d.drafts.value[1]!,
+      b = d.drafts.value[2]!
+    a.paramsText = '{'
+    d.selectedKey.value = a.key
+    d.move(a.key, 1)
+    expect(d.editing.value).toBe(a)
+    expect(d.validation.value.errors[0]?.key).toBe(a.key)
+    expect(d.drafts.value.map((x) => x.rule.id)).toEqual([
+      'tokenizer',
       'b',
-      'renamed',
+      'a',
+      'resolver',
     ])
+    a.paramsText = '{}'
+    expect(d.validation.value.errors).toEqual([])
+    d.move(b.key, -1)
+    expect(d.drafts.value[0]?.rule.id).toBe('tokenizer')
+    d.remove(d.drafts.value[0]!.key)
+    expect(d.drafts.value[0]?.rule.id).toBe('tokenizer')
   })
-  it('invalidates trial identity for rule changes, input changes and order changes', () => {
-    const draft = useRuleDraft()
-    draft.load([rule('a', 10), rule('b', 20)], {})
-    const baseline = trialFingerprint(draft.fingerprint.value, '/a.mkv', '/')
-    expect(trialFingerprint(draft.fingerprint.value, '/b.mkv', '/')).not.toBe(
-      baseline,
-    )
-    expect(
-      trialFingerprint(draft.fingerprint.value, '/a.mkv', '/source'),
-    ).not.toBe(baseline)
-    const second = draft.drafts.value[1]!.key
-    draft.move(second, -1)
-    expect(trialFingerprint(draft.fingerprint.value, '/a.mkv', '/')).not.toBe(
-      baseline,
-    )
-    draft.move(second, 1)
-    expect(trialFingerprint(draft.fingerprint.value, '/a.mkv', '/')).toBe(
-      baseline,
-    )
-    draft.drafts.value[0]!.rule.enabled = false
-    expect(trialFingerprint(draft.fingerprint.value, '/a.mkv', '/')).not.toBe(
-      baseline,
-    )
-  })
-  it('blocks malformed parameters, examples and duplicate IDs across the whole chain', () => {
-    const draft = useRuleDraft()
-    draft.load([rule('a', 10), rule('b', 20)], {})
-    draft.drafts.value[1]!.rule.id = 'a'
-    expect(draft.validation.value.errors[0]!.message).toContain('重复')
-    draft.drafts.value[1]!.rule.id = 'b'
-    draft.drafts.value[1]!.examplesText = '[{"path":"/a.mkv"}]'
-    expect(draft.validation.value.errors[0]!.message).toContain('expected')
-    draft.drafts.value[1]!.examplesText = '[]'
-    draft.drafts.value[1]!.paramsText = '[]'
-    expect(draft.validation.value.errors[0]!.message).toContain('JSON 对象')
-  })
-  it('keeps raw JSON UI state out of saved rules and materializes source scripts', () => {
-    const draft = useRuleDraft()
-    const current = rule('clean', 10)
-    current.source = 'cleanFilename'
-    draft.load([current], {
-      cleanFilename: 'function extract(ctx) { return ctx.text.trim(); }',
-    })
-    draft.selectedKey.value = draft.drafts.value[0]!.key
-    const output = draftRule(draft.editing.value!)
-    expect(output.config.sourceCode).toContain('trim()')
-    expect(output).not.toHaveProperty('key')
-    expect(output).not.toHaveProperty('paramsText')
-    expect(current.config.sourceCode).toBeUndefined()
-    draft.remove(draft.editing.value!.key)
-    expect(draft.editing.value).toBeUndefined()
-    expect(draft.validation.value.rules).toEqual([])
-  })
-  it('keeps the chain field-major and only moves rules within their field', () => {
-    const draft = useRuleDraft()
-    const season = { ...rule('season', 10), target: 'season' as const }
-    const title = rule('title', 20)
-    const late = { ...rule('late-season', 30), target: 'season' as const }
-    const reordered = draft.load([title, season, late], {})
-    expect(reordered).toBe(true)
-    expect(draft.drafts.value.map((item) => item.rule.id)).toEqual([
+  it('limits moves to ordinary or title groups and inserts rules into the correct group', () => {
+    const source = pipeline([
+      annotation('title', 0),
+      { ...annotation('season', 30), target: 'season' },
+      annotation('other-title', 40),
+    ])
+    const d = useRuleDraft()
+    d.load(source)
+    const season = d.drafts.value[1]!,
+      title = d.drafts.value[2]!,
+      other = d.drafts.value[3]!
+    expect(canMoveRule(d.drafts.value, season.key, 1)).toBe(false)
+    expect(canMoveRule(d.drafts.value, title.key, -1)).toBe(false)
+    d.move(title.key, -1)
+    expect(d.dirty.value).toBe(false)
+    d.move(other.key, -1)
+    expect(d.drafts.value.map((x) => x.rule.id)).toEqual([
+      'tokenizer',
       'season',
-      'late-season',
+      'other-title',
       'title',
+      'resolver',
     ])
-    expect(draft.drafts.value.map((item) => item.rule.order)).toEqual([
-      10, 20, 30,
+    const added = withRule(source, {
+      ...annotation('year', 50),
+      target: 'year',
+    })
+    expect(added.annotators.map((r) => r.id)).toEqual([
+      'season',
+      'year',
+      'title',
+      'other-title',
     ])
-    const lateKey = draft.drafts.value[1]!.key
-    draft.move(lateKey, 1)
-    expect(draft.drafts.value[1]!.key).toBe(lateKey)
-    draft.move(lateKey, -1)
-    expect(draft.drafts.value[0]!.key).toBe(lateKey)
-    expect(draft.siblings(lateKey)).toEqual({ first: true, last: false })
-    draft.drafts.value[2]!.rule.target = 'tmdbId'
-    draft.normalize()
-    expect(draft.drafts.value[0]!.rule.id).toBe('title')
+    const changed = withRule(
+      source,
+      { ...annotation('title'), target: 'year' },
+      'title',
+    )
+    expect(changed.annotators.map((r) => r.id)).toEqual([
+      'season',
+      'title',
+      'other-title',
+    ])
+    expect(source.annotators[0]!.target).toBe('title')
+  })
+  it('materializes current edits without UI state or input mutation', () => {
+    const source = pipeline(),
+      d = useRuleDraft()
+    d.load(source)
+    expect(d.dirty.value).toBe(false)
+    const a = d.drafts.value[1]!
+    a.rule.name = 'changed'
+    a.paramsText = '{"max":4}'
+    const out = draftRule(a)
+    expect(out.config.params).toEqual({ max: 4 })
+    expect(out).not.toHaveProperty('key')
+    expect(source.annotators[0]!.name).toBe('title')
+    expect(d.dirty.value).toBe(true)
+    d.markSaved()
+    expect(d.dirty.value).toBe(false)
+    expect(withRule(source, out, 'title').annotators[0]!.name).toBe('changed')
+  })
+  it('rejects malformed examples, parameters and duplicate IDs across stages', () => {
+    const d = useRuleDraft()
+    d.load(pipeline())
+    const a = d.drafts.value[1]!
+    a.rule.id = 'tokenizer'
+    expect(d.validation.value.errors[0]?.message).toContain('重复')
+    a.rule.id = 'title'
+    a.paramsText = '[]'
+    expect(d.validation.value.errors[0]?.message).toContain('JSON 对象')
+    a.paramsText = '{}'
+    a.examplesText = '[{"paths":["/Film.mkv"]}]'
+    expect(d.validation.value.errors[0]?.message).toContain('expected')
+  })
+  it('changes trial identity for directory inputs, scripts and order', () => {
+    const d = useRuleDraft()
+    d.load(pipeline([annotation('a'), annotation('b', 20)]))
+    const before = trialFingerprint(d.fingerprint.value, '/a.mkv\n/b.mkv', '/')
+    d.move(d.drafts.value[2]!.key, -1)
+    expect(
+      trialFingerprint(d.fingerprint.value, '/a.mkv\n/b.mkv', '/'),
+    ).not.toBe(before)
+    expect(trialFingerprint(d.fingerprint.value, '/a.mkv', '/')).not.toBe(
+      before,
+    )
   })
 })

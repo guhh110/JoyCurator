@@ -91,155 +91,23 @@ main.main
 
 数据库仅设置一个打开连接。不要在尚未关闭的查询结果集内再执行依赖同连接的写入；读取后关闭 rows，再修改记录。并发控制和任务取消要遵循`organizer.Coordinator` 的准入锁、等待计数和 context 生命周期。
 
-## 4. 路径规则链的稳定模型
+## 4. 当前数据模型
 
-### 4.1 Rule：单条规则只能写一个字段
+`Pipeline` 包含唯一分词脚本、有序标注列表和唯一裁决脚本。`Token` 保留结构及 UTF-16 原文范围；`Candidate` 保留语义身份、强度、有效性和依据；`FileResult` 保存七字段 Metadata 和可跨文件的候选引用。`Step` 记录阶段、文件、输出、诊断和时间，同一规则仅首次步骤携带源码快照。详见下节。
 
-| 字段 | 职责 |
-| --- | --- |
-| `id` | 稳定标识，链内唯一 |
-| `name` / `description` | 管理与调试展示 |
-| `target` | `tmdbId/title/mediaType/year/season/episodes/releaseTag` 之一 |
-| `source` | 本条规则读取哪类路径文本 |
-| `order` | 非负顺序值，升序执行，不允许重复 |
-| `enabled` | 禁用仍生成步骤记录 |
-| `kind` | 当前接受 `script` 或 `regex` |
-| `config` | 源码／正则／参数／捕获或固定值／可选清理源码 |
-| `overwrite` | 默认 false；已有值时是否允许覆盖 |
-| `examples` | 路径、边界和本规则预期提取值 |
+## 5. 三阶段识别
 
-来源可选 `filename`、`cleanFilename`、`parentDirectory`、`directories`、`relativePath`、`absolutePath`。文件名不含扩展名；路径来源保留扩展名。逐级父目录按近到远尝试，不包含边界目录，也不会越过边界。
+当前识别架构、脚本契约、边界与存储规范统一见 [RECOGNITION.md](RECOGNITION.md)。核心入口为 `Compile(Pipeline)`、`ExtractBatch(BatchInput)`；应用通过 `extractContexts` 收集完整目录树，再调用 `Service.ExtractTree`，每树固定配置快照和共享历史。默认分词按非中英文数字字符分隔，保留完整词及括号结构；标注消费词和相邻词，正则逐词匹配。片名标注最后从排除元信息后的连续区段生成候选，词间统一空格；裁决脚本读取所有文件并逐目标输出 Metadata。下游匹配和整理接口继续消费 Metadata。
 
-### 4.2 Metadata：只放结果
+规则 API 仅接受 `{pipeline:{tokenizer,annotators,resolver}}`。调试输入多路径文本快照及 targets；样例使用 paths/root/targets/expected。旧数组、覆盖与来源清理格式均拒绝。存储格式为 2，不迁移或重建旧库；全部验证使用临时空目录。
 
-```json
-{
-  "tmdbId": null,
-  "title": "Show",
-  "mediaType": "tv",
-  "year": null,
-  "season": 2,
-  "episodes": [3],
-  "releaseTag": null
-}
-```
+## 6. 编辑与历史
 
-单值未知为 `null`，集数未知为 `[]`。`season: 0` 是特别篇；电影与剧集共用 `title`，`mediaType` 只接受 `movie/tv/null`。接口、存储和内部业务统一使用 Metadata，没有 Parsed 转换；用于整理的可编辑季集映射与原始 Metadata 分开。
+规则列表按三个阶段展示，标注顺序可跨身份调整；单规则编辑器的试跑和保存使用同一份流水线草稿。结果和历史按文件展示片段、候选、跨文件证据和源码定位。每条规则快照及共享上下文只保存一次，文件行引用同一目录 traceId。选择性重新识别依然只写选中行，保留人工决定、锁与重试语义。
 
-### 4.3 Step：说明每条规则做了什么
+## 7. 验证
 
-每条规则都会产生 Step，包含：规则 ID／名称／顺序、完整 Rule 快照、目标字段、尝试文本、命中文本与捕获、提出的值、前后值、采用标志、原因、时间和耗时。逐目录尝试放在 `attempts`，脚本细节放在 `attempts[].trace`。
-
-`status` 为 `disabled/not_matched/matched/skipped/error`。**命中不等于采用**：若前面的规则已写入该字段且未允许覆盖，后续规则仍匹配、记录 proposed value，但 `applied:false`。
-
-## 5. 提取执行器的调用链与行为
-
-核心入口：
-
-```go
-engine, err := recognition.Compile(rules)
-result, err := engine.Extract(ctx, recognition.Input{Path: path, Root: root}, observer)
-```
-
-`Compile` 全量验证规则 ID、顺序、目标、来源、类型、源码或正则配置等，然后生成不可变执行实例。`Rules()` 返回配置快照，调用方不应修改引擎内部状态。
-
-`Extract` 的执行顺序：
-
-```text
-prepare(Input)：验证 /… 绝对路径、文本规范化、确认边界
-  → 初始化全未知 Metadata
-  → 按 order 逐条执行
-    → 创建 Step，记录目标 before
-    → 判断取消、禁用、来源不存在
-    → 按来源逐个尝试文本
-    → 执行来源清理（如需）、ID 标签保护、脚本或正则
-    → 将提出值按 target 转换并验证合法性
-    → 未知字段补全；已有字段按 overwrite 决策
-    → 记录 after、applied、reason、耗时
-    → 深复制 Step，加入结果并通知 observer
-  → 返回 Metadata + Step[]
-```
-
-不自动回头执行规则。单条规则运行或转换失败记录 error，保留已有字段并继续；取消后剩余规则记录 skipped，最终返回取消错误。observer 保存失败则停止调用，不能假装轨迹完整落库。
-
-`tmdb-603` 等 ID 标签在季号、集数输入及相关脚本上下文中受保护，不允许再次把标签数字当季集。Matrix 场景应得到 ID 603、年份 1999，不能产生第 603 集。媒体类型没有提取依据就保持未知，再由消费方进行跨类型查找和消歧。
-
-## 6. 脚本规则与可观测性
-
-JavaScript 引擎使用 goja，每次调用创建独立 Runtime，不提供 Node.js、网络和文件 API。仅支持同步入口，拒绝 Promise 输出。原生 RegExp 需要主动 trace；默认脚本使用可追踪的 RE2 辅助函数。250 ms 是执行中断时限，不是进程级内存或所有原生操作的硬隔离。旧语言源码不自动转换，也不自动重置用户数据。
-
-默认规则每个字段一条，提取算法全部位于 `recognition/scripts/*.js`（一个字段一个脚本，内部按优先级尝试多种写法）；`catalog.go` 和 `defaults.go` 负责登记模板、来源和默认顺序。没有运行时 builtin 处理器分支。
-
-脚本定义同步 `function extract(ctx)`，返回单个值／集数列表、`null`，或 `{value,matchedText?,captures?}`。上下文经 JSON 复制并递归冻结，包含当前文本、文件名、目录、source、metadata、params 等。规则不能直接修改公共 Metadata。
-
-允许的通用能力为 JavaScript 标准字符串、数组及正则操作、Go RE2 正则函数 `reSearch/reFindAll/reSub` 及 `trace/print`。不提供文件、网络、模块加载、系统命令和环境变量访问。
-
-日志层次：
-
-- 执行器自动记录每条规则的输入、结果、字段采用或拒绝。
-- 脚本环境自动记录 RE2 辅助函数调用、返回／错误以及源码行列号。
-- `trace(message, data)` 或 `print` 展示作者认为重要的中间值。
-- 普通变量赋值不会自动逐行记录。要解释算法分支，应在脚本关键处补 `trace`。
-- `cleanFilename` 的清理也是脚本，使用 `config.sourceCode`，步骤快照保留实际源码。
-
-当前限制：单个脚本 32 KiB、250 ms 执行时限与 256 层调用栈；每脚本最多保留 128 条过程事件（超出有省略提示）；单次正则结果最多 512 项。脚本超限作为该规则 error，不抹掉此前轨迹。
-
-规则只维护当前 script/regex 模型，不提供旧处理器迁移、旧接口或双格式读写。已有的当前链由用户编辑保存，不被默认脚本自动覆盖。
-
-## 7. 当前链保存、试跑与正式轨迹
-
-### 保存
-
-```text
-RecognitionRules 编辑草稿 → PUT /api/extraction/rules
-  → recognition.Service.Save
-  → recognition.Compile：先全量验证
-  → recognition 的规则锁内通过 Store 保存 rules 与 rule_examples
-  → 替换 recognition.Service 的当前 Engine
-  → 前端失效并重新读取 rules Query
-```
-
-保存失败不替换原链。不维护版本、草稿发布或任务绑定。每个文件开始提取时通过 `recognition.Service.Current()` 获取一次实例；本次调用内不切换。批量任务的后续文件可以使用刚保存的新链。
-
-### 规则工作台前端
-
-- `useRuleDraft.ts`：唯一页面草稿、稳定界面 key、原始 JSON、全链校验、选中状态与保存指纹。试跑和保存均从同一草稿生成 Rule[]，不再有“应用到编辑链”步骤。
-- 各业务页统一使用 `components/ui/PageHeader.vue`：标题和操作为第一行，说明或流程为第二行；英文副标题桌面内联、手机隐藏，不再单独占一行。手机工作流页将操作／步骤放第二行，说明让位给操作。
-- `RuleFieldTable.vue`：规则列表，按字段顺序分组；每个字段可新增脚本、正则或模板规则，规则行可启停、同字段内上移下移、删除，点击进入编辑页。界面 key 不使用可编辑的规则 ID。
-- `RuleEditor.vue`：脚本／基本配置／样例标签，直接编辑共享草稿；无效 JSON 也保留。`ScriptCode.vue` 根据执行事件行号选中代码。
-- `RecognitionRules.vue`：规则列表页（`/recognition/rules`），管理整条链：排序、启停、新增、删除、恢复默认、运行全部样例与保存；有未保存修改时离开需确认。`RuleEdit.vue`：单条规则编辑页（`/recognition/rules/:ruleId`，`new` 表示新建），代码与试跑在同一页，试跑和保存都使用「已生效的链 + 这条草稿」。`DebugPage.vue` 显示每个字段的结果和决定它的规则，可跳到编辑页。`ExtractionResult.vue` 提供 Metadata／执行过程／JSON 视图、按 `ruleId` 过滤单条规则及定位事件。
-- 切换规则、排序和手机标签保留草稿；离开整个页面仍按现有约定丢弃未保存草稿，不增加本地持久化。
-
-### 试跑
-
-```text
-DebugPage / 规则编辑器试跑 → useExtraction
-  → POST /api/extraction/test {path,root?,rules?}
-  → 选当前引擎，或临时编译提供的编辑链
-  → Engine.Extract(observer=nil)
-  → 返回 metadata + steps
-```
-
-支持不存在的模拟路径。省略 root 时，源目录内路径使用源目录，否则 `/`；显式 root 必须为输入文件的父级目录。`rules` 省略表示当前链，`[]` 表示空链。试跑不写规则配置、工作区、轨迹、整理记录或预览，不访问 TMDB。前端 90 秒上限，取消／离开页面终止请求并忽略过期响应。规则工作台额外按整条草稿、路径和边界的指纹标记过期结果，不将旧轨迹标记到修改后的规则。
-
-样例接口会运行整条链，再比较对应规则 Step 的 `extractedValue`，因此样例验证的是该规则提出的值，不一定是最终 Metadata（后续覆盖可能改变最终结果）。
-
-### 正式轨迹
-
-```text
-recognition.Service.ExtractFile(path,root,workspace)
-  → 获取当前 Engine
-  → 插入 extraction_traces(status=running)
-  → Engine.Extract：内存收集完整步骤
-  → 单个事务按子表批量插入步骤、规则快照和事件，并保存最终 metadata、status、finishedAt、error
-  → 返回 Result 与 traceId
-```
-
-工作区导入统一调用 `ExtractFile`，不探测媒体；独立 `/scan` 已移除。消费方的无持久化适配入口是 `recognition.Service.Parse`。
-
-工作区文件行只携带 `traceId`，历史列表分页读取摘要，选中详情才获取全部步骤。每步含完整规则及源码快照，当前规则改名、修改或删除不影响旧记录。重启将遗留 running 轨迹标记 interrupted。清理仅允许已结束轨迹，关联 steps 通过外键级联删除，不删除工作区结果。
-
-注意：轨迹 completed 表示执行器完成整条链，不代表没有单条规则 error，也不代表 TMDB 匹配成功。定位时同时检查 Step 和工作区状态。
+运行 `make check`；目录级 `BenchmarkRecognition2000` 同时检查完整结果、共享规则快照和重建历史。根目录 `tests/` 覆盖 100 个路径样本与目录推理、非法引用、取消、重启、持久化及选择性更新。
 
 ## 8. 自动识别、匹配与人工修正
 
@@ -250,7 +118,7 @@ AutomaticRecognitionPage → useWorkspace.start
   → 保存 Recognition，建立后台 context
   → recognize
     → scanner.Walk（不 Probe）
-    → 对新文件 ExtractFile → Metadata → 初始 query 分组
+    → 收集完整目录快照 → ExtractTree → 每目标 Metadata → 初始 query 分组
     → Resolver.Match → DecideMatch：作品候选匹配与同批查询去重
     → Resolver.Validate → 季集纯策略：季集有效性
     → 按 type + TMDB ID 合并作品，同剧多季同组
@@ -403,7 +271,7 @@ main.ts
 
 | 现象 | 优先查看 | 排查顺序 |
 | --- | --- | --- |
-| 片名／季集提取错误 | 调试页、Step、scripts | 输入来源和边界 → 命中捕获 → 转换错误 → overwrite／applied |
+| 片名／季集提取错误 | 调试页、Step、scripts | 输入来源和边界 → 结构片段 → 候选诊断 → 裁决引用与依据 |
 | Matrix 被当成某一集 | ID 标签保护、集数脚本 | 是否使用当前链 → 是否把路径别处数字当集数 → Step 的实际输入 |
 | ID 对应错误类型 | matching/match.go 与 policy.go | 路径类型依据 → 电影／剧集候选 → 标题／年份消歧 |
 | 有候选却未自动采用 | 文件 reason 和候选比较 | 同名／年份冲突／回退／模糊匹配是否需要人工确认 |

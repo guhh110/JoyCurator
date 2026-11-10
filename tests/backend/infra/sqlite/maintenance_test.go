@@ -19,7 +19,7 @@ func cleanupTrace(t *testing.T, s *Store, id, status string, finished time.Time)
 		return
 	}
 	v.Status = status
-	step := recognition.Step{RuleConfig: recognition.DefaultRules()[0], Inputs: []string{"b", "a"}, Captures: map[string]string{"x": "y"}, Attempts: []recognition.Attempt{{Captures: map[string]string{"x": "y"}, Trace: []recognition.ScriptEvent{{Message: "event"}}}}}
+	step := recognition.Step{RuleConfig: recognition.DefaultPipeline().Tokenizer, Inputs: []string{"b", "a"}, Captures: map[string]string{"x": "y"}, Attempts: []recognition.Attempt{{Captures: map[string]string{"x": "y"}, Trace: []recognition.ScriptEvent{{Message: "event"}}}}}
 	if err := s.FinishTrace(v, []recognition.Step{step}); err != nil {
 		t.Fatal(err)
 	}

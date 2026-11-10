@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -10,20 +9,18 @@ import (
 
 func extractionRoutes(a Dependencies, add func(string, endpoint)) {
 	add("GET /api/extraction/rules", func(w http.ResponseWriter, r *http.Request) error {
-		reply(w, map[string]any{"rules": a.Recognition.Current().Rules(), "defaults": recognition.DefaultRules(), "catalog": recognition.Catalog(), "targets": recognition.Targets(), "sources": recognition.Sources(), "sourceScripts": recognition.SourceScripts(), "scriptLanguage": "javascript"})
+		reply(w, map[string]any{"pipeline": a.Recognition.Current().Rules(), "defaults": recognition.DefaultPipeline(), "catalog": recognition.Catalog(), "targets": recognition.Roles(), "sources": recognition.Sources(), "scriptLanguage": "javascript"})
 		return nil
 	})
 	add("PUT /api/extraction/rules", func(w http.ResponseWriter, r *http.Request) error {
 		var in struct {
-			Rules []recognition.Rule `json:"rules"`
+			Pipeline recognition.Pipeline `json:"pipeline"`
 		}
 		if e := read(r, &in); e != nil {
 			return e
 		}
-		if in.Rules == nil {
-			return errors.New("请提供规则数组")
-		}
-		return respond(w, map[string]bool{"ok": true}, a.Recognition.Save(in.Rules))
+
+		return respond(w, map[string]bool{"ok": true}, a.Recognition.Save(in.Pipeline))
 	})
 	add("POST /api/extraction/test", func(w http.ResponseWriter, r *http.Request) error {
 		var in recognition.TestRequest
@@ -39,12 +36,12 @@ func extractionRoutes(a Dependencies, add func(string, endpoint)) {
 	})
 	add("POST /api/extraction/examples", func(w http.ResponseWriter, r *http.Request) error {
 		var in struct {
-			Rules []recognition.Rule `json:"rules"`
+			Pipeline recognition.Pipeline `json:"pipeline"`
 		}
 		if e := read(r, &in); e != nil {
 			return e
 		}
-		v, e := recognition.Examples(r.Context(), in.Rules)
+		v, e := recognition.Examples(r.Context(), in.Pipeline)
 		return respond(w, v, e)
 	})
 	add("GET /api/extraction/traces", func(w http.ResponseWriter, r *http.Request) error {
@@ -58,7 +55,16 @@ func extractionRoutes(a Dependencies, add func(string, endpoint)) {
 	})
 	add("GET /api/extraction/traces/{id}", func(w http.ResponseWriter, r *http.Request) error {
 		v, steps, e := a.Recognition.Detail(r.PathValue("id"))
-		return respond(w, map[string]any{"trace": v, "metadata": v.Metadata, "steps": steps}, e)
+		if e != nil {
+			return e
+		}
+		result, e := recognition.RestoreBatch(steps)
+		if e != nil {
+			return e
+		}
+		result.Error = v.Error
+		reply(w, map[string]any{"trace": v, "context": result.Context, "tree": result.Tree, "documents": result.Documents, "files": result.Files, "steps": steps, "error": result.Error})
+		return e
 	})
 	add("DELETE /api/extraction/traces/{id}", func(w http.ResponseWriter, r *http.Request) error {
 		return respond(w, map[string]bool{"ok": true}, a.Recognition.Delete(r.PathValue("id")))

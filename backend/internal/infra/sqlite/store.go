@@ -17,7 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const formatVersion = 1
+const formatVersion = 2
 
 type Store struct{ db *sql.DB }
 
@@ -56,13 +56,13 @@ func Open(dir string, initial model.Settings) (*Store, error) {
 			if _, e := tx.Exec(schema); e != nil {
 				return e
 			}
-			if _, e := tx.Exec("PRAGMA user_version=1; INSERT INTO rule_chain(id) VALUES('current')"); e != nil {
+			if _, e := tx.Exec("PRAGMA user_version=2; INSERT INTO rule_chain(id) VALUES('current')"); e != nil {
 				return e
 			}
 			if e := writeConfig(tx, "1", "1", "", 0, initial); e != nil {
 				return e
 			}
-			if e := saveRules(tx, recognition.DefaultRules()); e != nil {
+			if e := saveRules(tx, recognition.DefaultPipeline()); e != nil {
 				return e
 			}
 			if _, e := loadSettings(tx); e != nil {

@@ -1,126 +1,90 @@
 import { h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { describe, expect, it } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import ScriptCode from '../../../frontend/src/features/extraction/ScriptCode.vue'
-import { createRuleDraft } from '../../../frontend/src/features/extraction/useRuleDraft'
 import RuleEditor from '../../../frontend/src/features/extraction/RuleEditor.vue'
 import ExtractionResult from '../../../frontend/src/features/extraction/ExtractionResult.vue'
-import {
-  emptyScript,
-  type Rule,
-  type ExtractionResult as Result,
-} from '../../../frontend/src/features/extraction/model'
-const rule: Rule = {
-  id: 'script',
-  name: '脚本',
-  target: 'title',
-  source: 'filename',
-  order: 1,
-  enabled: true,
-  kind: 'script',
-  overwrite: false,
-  config: {
-    code: 'function extract(ctx) {\n  return ctx.text;\n}',
-    params: {},
-  },
-  examples: [],
-}
-describe('observable script editor and snapshots', () => {
-  it('renders editable complete source and script parameters', async () => {
+import { createRuleDraft } from '../../../frontend/src/features/extraction/useRuleDraft'
+import { annotation, extraction } from '../fixtures/pipeline'
+describe('editable scripts and trace evidence', () => {
+  it('renders script editor with parameters and stage contract', async () => {
     const html = await renderToString(
-      h(RuleEditor, { modelValue: createRuleDraft(rule) }),
+      h(RuleEditor, { modelValue: createRuleDraft(annotation()) }),
     )
-    expect(html).toContain('JavaScript 脚本')
-    // CodeMirror creates its document on mount; SSR supplies its host and help.
     expect(html).toContain('script-code-host')
-    expect(html).toContain('Ctrl + Space')
-    expect(html).toContain('rule-params')
-    expect(html).toContain('脚本参考')
-    expect(html).not.toContain('5 个辅助函数')
-    expect(html).toContain('aria-expanded="false"')
-    expect(html).not.toContain('内置处理器')
-    expect(emptyScript).toContain('trace(')
-    expect(emptyScript).toContain('function extract(ctx)')
-    expect(emptyScript).toContain('return null')
+    expect(html).toContain('参数 JSON')
+    expect(html).toContain('候选身份')
+    expect(html).toContain('UTF-16')
+    expect(html).not.toContain('覆盖')
   })
-  it('offers independent references for extraction and source cleanup, including regex rules', async () => {
-    for (const kind of ['script', 'regex'] as const) {
-      const draft = createRuleDraft({ ...rule, kind, source: 'cleanFilename', config: kind === 'script' ? rule.config : { pattern: '.+', capture: 'value' } })
-      draft.sourceCode = 'function extract(ctx) { return ctx.text; }'
-      const html = await renderToString(h(RuleEditor, { modelValue: draft }))
-      expect(html).toContain('返回清理后的字符串')
-      expect(html).toContain('for="source-code"')
-      const ids = [...html.matchAll(/<section[^>]* id="([^"]+)"/g)].map(match => match[1])
-      expect(ids).toHaveLength(kind === 'script' ? 2 : 1)
-      expect(new Set(ids).size).toBe(ids.length)
-      for (const id of ids) expect(html).toContain(`aria-controls="${id}"`)
-    }
-  })
-  it('renders source line numbers and highlights the referenced line', async () => {
+  it('highlights historical source line', async () => {
     const html = await renderToString(
       h(ScriptCode, {
-        modelValue: rule.config.code!,
+        modelValue: 'function extract(ctx) {\n return []\n}',
         readonly: true,
         activeLine: 2,
       }),
     )
     expect(html).toContain('data-active="true"')
-    expect(html).toContain('>2</span>')
-    expect(html).toContain('return ctx.text')
+    expect(html).toContain('return []')
   })
-  it('shows event locations and the actual historical script snapshot', async () => {
-    const result: Result = {
-      metadata: {
-        tmdbId: null,
-        title: 'Film',
-        mediaType: null,
-        year: null,
-        season: null,
-        episodes: [],
-        releaseTag: null,
+  it('shows per-file results, candidates and event locations using shared snapshots', async () => {
+    const result = extraction()
+    result.documents[0]!.candidates = [
+      {
+        id: 'title:0',
+        ruleId: 'title',
+        role: 'title',
+        value: 'Film',
+        spans: [{ sourceId: 'name', start: 0, end: 4 }],
+        strength: 'explicit',
+        status: 'valid',
+        reason: '片名证据',
       },
-      steps: [
-        {
-          ruleId: rule.id,
-          ruleName: rule.name,
-          ruleConfig: rule,
-          order: 1,
-          target: 'title',
-          inputs: ['Film'],
-          status: 'matched',
-          matchedText: 'Film',
-          captures: {},
-          extractedValue: 'Film',
-          before: null,
-          after: 'Film',
-          applied: true,
-          reason: '提取成功',
-          startedAt: '2026-01-01',
-          durationMs: 1,
-          attempts: [
-            {
-              input: 'Film',
-              matched: true,
-              trace: [
-                {
-                  phase: 'extract',
-                  line: 2,
-                  column: 5,
-                  function: 'extract',
-                  operation: 'trace',
-                  message: '输入文本',
-                  data: 'Film',
-                },
-              ],
-            },
-          ],
-        },
-      ],
+    ]
+    result.files[0]!.decisions.title = {
+      candidates: [{ fileId: 'file-0', candidateId: 'title:0' }],
+      reason: '标题候选',
     }
+    result.steps = [
+      {
+        ruleId: 'title',
+        ruleName: '片名',
+        stage: 'annotate',
+        fileId: 'file-0',
+        ruleConfig: annotation(),
+        order: 10,
+        inputs: [],
+        status: 'matched',
+        extractedValue: [],
+        before: null,
+        after: null,
+        applied: true,
+        reason: '',
+        startedAt: '',
+        durationMs: 1,
+        attempts: [
+          {
+            input: '',
+            matched: true,
+            trace: [
+              {
+                phase: 'annotate',
+                operation: 'trace',
+                line: 2,
+                column: 5,
+                message: '读取候选',
+              },
+            ],
+          },
+        ],
+      },
+    ]
     const html = await renderToString(h(ExtractionResult, { result }))
     expect(html).toContain('L2:5')
-    expect(html).toContain('输入文本')
-    expect(html).toContain('本次完整脚本（快照）')
-    expect(html).toContain('return ctx.text')
+    expect(html).toContain('读取候选')
+    expect(html).toContain('片名证据')
+    expect(html).toContain('标题候选')
+    expect(html).toContain('脚本快照')
   })
 })

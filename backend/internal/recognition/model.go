@@ -1,5 +1,4 @@
-// Package recognition extracts metadata from path text. It has no filesystem,
-// database, network or media-service dependencies.
+// Package recognition interprets immutable path snapshots without filesystem or network access.
 package recognition
 
 import (
@@ -20,51 +19,61 @@ const (
 	ReleaseTag Target = "releaseTag"
 )
 
+func Targets() []Target {
+	return []Target{TMDBID, Title, MediaType, Year, Season, Episodes, ReleaseTag}
+}
+func Roles() []Target {
+	return append(Targets(), "resolution", "videoCodec", "audioCodec", "bitDepth", "dynamicRange", "language", "subtitleLanguage", "checksum")
+}
+
 type Source string
 
 const (
-	Filename        Source = "filename"
-	CleanFilename   Source = "cleanFilename"
-	ParentDirectory Source = "parentDirectory"
-	Directories     Source = "directories"
-	RelativePath    Source = "relativePath"
-	AbsolutePath    Source = "absolutePath"
+	Filename    Source = "filename"
+	Directories Source = "directories"
+	AllSources  Source = "all"
 )
 
+func Sources() []Source { return []Source{Filename, Directories, AllSources} }
+
 type Config struct {
-	Code       string          `json:"code,omitempty"`
-	SourceCode string          `json:"sourceCode,omitempty"`
-	Params     json.RawMessage `json:"params,omitempty"`
-	Pattern    string          `json:"pattern,omitempty"`
-	Capture    string          `json:"capture,omitempty"`
-	Value      json.RawMessage `json:"value,omitempty"`
+	Code    string          `json:"code,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Pattern string          `json:"pattern,omitempty"`
+	Capture string          `json:"capture,omitempty"`
+	Value   json.RawMessage `json:"value,omitempty"`
 }
 type Example struct {
-	Path     string          `json:"path"`
-	Root     string          `json:"root,omitempty"`
+	Paths    []string        `json:"paths"`
+	Root     string          `json:"root"`
+	Targets  []string        `json:"targets"`
 	Expected json.RawMessage `json:"expected"`
-}
-type ExampleResult struct {
-	RuleID   string `json:"ruleId"`
-	Path     string `json:"path"`
-	Expected any    `json:"expected"`
-	Actual   any    `json:"actual"`
-	Passed   bool   `json:"passed"`
-	Error    string `json:"error"`
 }
 type Rule struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description,omitempty"`
-	Target      Target    `json:"target"`
-	Source      Source    `json:"source"`
+	Stage       string    `json:"stage"`
+	Target      Target    `json:"target,omitempty"`
+	Source      Source    `json:"source,omitempty"`
 	Order       int       `json:"order"`
 	Enabled     bool      `json:"enabled"`
 	Kind        string    `json:"kind"`
 	Config      Config    `json:"config"`
-	Overwrite   bool      `json:"overwrite"`
 	Examples    []Example `json:"examples"`
 }
+type Pipeline struct {
+	Tokenizer  Rule   `json:"tokenizer"`
+	Annotators []Rule `json:"annotators"`
+	Resolver   Rule   `json:"resolver"`
+}
+
+func (p Pipeline) Rules() []Rule {
+	out := []Rule{p.Tokenizer}
+	out = append(out, p.Annotators...)
+	return append(out, p.Resolver)
+}
+
 type Metadata struct {
 	TMDBID     *int    `json:"tmdbId"`
 	Title      *string `json:"title"`
@@ -73,6 +82,82 @@ type Metadata struct {
 	Season     *int    `json:"season"`
 	Episodes   []int   `json:"episodes"`
 	ReleaseTag *string `json:"releaseTag"`
+}
+type Input struct{ Path, Root string }
+type BatchInput struct {
+	ContextRoot    string   `json:"contextRoot"`
+	SourceBoundary string   `json:"sourceBoundary"`
+	Paths          []string `json:"paths"`
+	Targets        []string `json:"targets"`
+}
+type TextSource struct {
+	ID    string `json:"id"`
+	Kind  Source `json:"kind"`
+	Text  string `json:"text"`
+	Depth int    `json:"depth"`
+}
+type Token struct {
+	ID       string  `json:"id"`
+	SourceID string  `json:"sourceId"`
+	ParentID *string `json:"parentId"`
+	Kind     string  `json:"kind"`
+	Text     string  `json:"text"`
+	Start    int     `json:"start"`
+	End      int     `json:"end"`
+}
+type Span struct {
+	SourceID string `json:"sourceId"`
+	Start    int    `json:"start"`
+	End      int    `json:"end"`
+}
+type Candidate struct {
+	ID       string `json:"id"`
+	RuleID   string `json:"ruleId"`
+	Role     Target `json:"role"`
+	Value    any    `json:"value"`
+	Spans    []Span `json:"spans"`
+	Strength string `json:"strength"`
+	Status   string `json:"status"`
+	Reason   string `json:"reason"`
+}
+type Document struct {
+	FileID     string       `json:"fileId"`
+	Path       string       `json:"path"`
+	Directory  string       `json:"directory"`
+	Sources    []TextSource `json:"sources"`
+	Tokens     []Token      `json:"tokens"`
+	Candidates []Candidate  `json:"candidates"`
+}
+type TreeNode struct {
+	Path    string   `json:"path"`
+	Parent  string   `json:"parent"`
+	FileIDs []string `json:"fileIds"`
+}
+type Reference struct {
+	FileID      string `json:"fileId"`
+	CandidateID string `json:"candidateId"`
+}
+type Decision struct {
+	Candidates []Reference `json:"candidates"`
+	Reason     string      `json:"reason"`
+}
+type FileResult struct {
+	FileID    string              `json:"fileId"`
+	Path      string              `json:"path"`
+	Metadata  Metadata            `json:"metadata"`
+	Decisions map[Target]Decision `json:"decisions"`
+}
+type BatchResult struct {
+	Error     string       `json:"error,omitempty"`
+	Context   BatchInput   `json:"context"`
+	Tree      []TreeNode   `json:"tree"`
+	Documents []Document   `json:"documents"`
+	Files     []FileResult `json:"files"`
+	Steps     []Step       `json:"steps"`
+}
+type Result struct {
+	Metadata Metadata `json:"metadata"`
+	Steps    []Step   `json:"steps"`
 }
 type Attempt struct {
 	Input       string            `json:"input"`
@@ -95,8 +180,10 @@ type Step struct {
 	RuleID         string            `json:"ruleId"`
 	RuleName       string            `json:"ruleName"`
 	Order          int               `json:"order"`
+	Stage          string            `json:"stage"`
+	FileID         string            `json:"fileId"`
 	RuleConfig     Rule              `json:"ruleConfig"`
-	Target         Target            `json:"target"`
+	Target         Target            `json:"target,omitempty"`
 	Inputs         []string          `json:"inputs"`
 	Attempts       []Attempt         `json:"attempts"`
 	Status         string            `json:"status"`
@@ -110,34 +197,7 @@ type Step struct {
 	StartedAt      time.Time         `json:"startedAt"`
 	DurationMS     float64           `json:"durationMs"`
 }
-type Result struct {
-	Metadata Metadata `json:"metadata"`
-	Steps    []Step   `json:"steps"`
-}
-type Input struct {
-	Path string
-	Root string
-}
-type Descriptor struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Target      Target   `json:"target"`
-	Description string   `json:"description"`
-	Sources     []Source `json:"sources"`
-	Config      Config   `json:"config"`
-}
-
-// Observer receives a completed immutable step, allowing an application to
-// persist progress without coupling extraction to storage.
 type Observer func(context.Context, Step) error
-
-func Targets() []Target {
-	return []Target{TMDBID, Title, MediaType, Year, Season, Episodes, ReleaseTag}
-}
-func Sources() []Source {
-	return []Source{Filename, CleanFilename, ParentDirectory, Directories, RelativePath, AbsolutePath}
-}
-
 type Trace struct {
 	ID          string   `json:"id"`
 	Path        string   `json:"path"`
@@ -150,9 +210,15 @@ type Trace struct {
 	Error       string   `json:"error,omitempty"`
 	StepCount   int      `json:"stepCount"`
 }
-
 type TestRequest struct {
-	Path  string  `json:"path"`
-	Root  string  `json:"root,omitempty"`
-	Rules *[]Rule `json:"rules,omitempty"`
+	BatchInput
+	Pipeline *Pipeline `json:"pipeline,omitempty"`
+}
+type ExampleResult struct {
+	RuleID   string   `json:"ruleId"`
+	Paths    []string `json:"paths"`
+	Expected any      `json:"expected"`
+	Actual   any      `json:"actual"`
+	Passed   bool     `json:"passed"`
+	Error    string   `json:"error"`
 }

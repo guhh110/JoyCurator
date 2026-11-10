@@ -1,3 +1,4 @@
+import { pipeline } from '../fixtures/pipeline'
 import { createSSRApp, h, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
@@ -8,6 +9,7 @@ import RuleEdit from '../../../frontend/src/features/extraction/RuleEdit.vue'
 import { keys } from '../../../frontend/src/app/query'
 import type { Rule } from '../../../frontend/src/features/extraction/model'
 const titleRule: Rule = {
+  stage: 'annotate',
   id: 'title',
   name: '标题规则',
   order: 10,
@@ -15,7 +17,6 @@ const titleRule: Rule = {
   target: 'title',
   source: 'filename',
   enabled: true,
-  overwrite: false,
   config: { code: 'function extract(ctx) { return ctx.text; }' },
   examples: [],
 }
@@ -24,12 +25,11 @@ async function render(rules: Rule[], component: Component, props = {}) {
     defaultOptions: { queries: { retry: false } },
   })
   client.setQueryData(keys.ruleLibrary, {
-    rules,
-    defaults: rules,
+    pipeline: pipeline(rules),
+    defaults: pipeline(rules),
     catalog: [],
     targets: ['title'],
     sources: ['filename'],
-    sourceScripts: {},
     scriptLanguage: 'javascript',
   })
   const router = createRouter({
@@ -49,7 +49,7 @@ async function render(rules: Rule[], component: Component, props = {}) {
 describe('recognition rule pages', () => {
   it('lists rules by field without trial or editor clutter', async () => {
     const html = await render([titleRule], RecognitionRules)
-    expect(html).toContain('按字段排列的识别规则')
+    expect(html).toContain('候选标注')
     expect(html).toContain('标题规则')
     expect(html).toContain('保存')
     expect(html).not.toContain('完整文件路径')
@@ -57,17 +57,15 @@ describe('recognition rule pages', () => {
     expect(html).not.toContain('<details')
     expect(html).not.toContain('更多操作')
     expect(html).toContain('恢复默认规则')
-    expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(8)
-    expect(html.match(/data-state="closed"/g)).toHaveLength(8)
   })
   it('shows every field even when the chain is empty', async () => {
     const html = await render([], RecognitionRules)
-    expect(html).toContain('季号')
-    expect(html).toContain('0 条规则')
+    expect(html).toContain('候选标注')
+    expect(html).toContain('元数据裁决')
   })
   it('edits one rule with its own trial on a separate page', async () => {
     const html = await render([titleRule], RuleEdit, { ruleId: 'title' })
-    expect(html).toContain('JavaScript 脚本')
+    expect(html).toContain('script-code-host')
     expect(html).toContain('用这条规则试跑')
     expect(html).toContain('保存')
   })

@@ -177,12 +177,21 @@ func executeScript(ctx context.Context, program *goja.Program, values map[string
 	vm := goja.New()
 	vm.SetParserOptions(parser.WithDisableSourceMaps)
 	vm.SetMaxCallStackSize(256)
-	deadline, cancel := context.WithTimeout(ctx, scriptTimeout)
+	timeout := scriptTimeout
+	if phase == "resolve" {
+		timeout = 5 * time.Second
+	}
+	deadline, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	stop := context.AfterFunc(deadline, func() { vm.Interrupt("脚本已取消或超过 250 ms 执行时间") })
+	stop := context.AfterFunc(deadline, func() { vm.Interrupt("脚本已取消或超过阶段执行时限") })
 	defer stop()
 	scriptBuiltins(vm, run)
 	finish := func(err error) (matchValue, error) {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		} else if deadline.Err() != nil {
+			err = fmt.Errorf("%s 脚本超过 %s", phase, timeout)
+		}
 		run.record(nil, "error", err.Error(), nil)
 		var stackError interface{ Stack() []goja.StackFrame }
 		if errors.As(err, &stackError) {
@@ -209,6 +218,13 @@ func executeScript(ctx context.Context, program *goja.Program, values map[string
 	if err != nil {
 		return finish(err)
 	}
+	limit := 4 << 20
+	if phase == "resolve" {
+		limit = 64 << 20
+	}
+	if len(raw) > limit {
+		return finish(errors.New("脚本输入超过阶段大小限制"))
+	}
 	// Parse and freeze input before user code can replace built-in JSON/Object functions.
 	factory, err := vm.RunString(inputFactory)
 	if err != nil {
@@ -219,7 +235,7 @@ func executeScript(ctx context.Context, program *goja.Program, values map[string
 	if err != nil {
 		return finish(err)
 	}
-	run.record(nil, "input", "脚本输入", values)
+	run.record(nil, "input", "脚本输入", map[string]any{"bytes": len(raw), "phase": phase})
 	if _, err = vm.RunProgram(program); err != nil {
 		return finish(err)
 	}
@@ -239,7 +255,11 @@ func executeScript(ctx context.Context, program *goja.Program, values map[string
 	// Read accessors inside a callable boundary: goja.Try alone does not catch
 	// uncatchable interruptions (for example an infinite loop in a getter).
 	reader, _ := goja.AssertFunction(vm.ToValue(func(call goja.FunctionCall) goja.Value {
-		value, err = scriptValue(call.Argument(0), 0)
+		budget := 4 << 20
+		if phase == "resolve" {
+			budget = 16 << 20
+		}
+		value, err = readScriptValue(call.Argument(0), 0, &budget)
 		return goja.Undefined()
 	}))
 	if _, readErr := reader(goja.Undefined(), returned); readErr != nil {
@@ -249,40 +269,19 @@ func executeScript(ctx context.Context, program *goja.Program, values map[string
 	if err != nil {
 		return finish(err)
 	}
-	run.record(nil, "return", "脚本返回值", value)
-	match := matchValue{value: value, trace: run.events, captures: map[string]string{}}
-	if fields, ok := value.(map[string]any); ok {
-		for key := range fields {
-			if key != "value" && key != "matchedText" && key != "captures" {
-				return finish(fmt.Errorf("脚本只能返回本规则目标值，不支持结果字段 %s", key))
-			}
-		}
-		var exists bool
-		match.value, exists = fields["value"]
-		if !exists {
-			return finish(errors.New("结果对象必须包含 value"))
-		}
-		if text, exists := fields["matchedText"]; exists {
-			var ok bool
-			match.text, ok = text.(string)
-			if !ok {
-				return finish(errors.New("matchedText 必须是字符串"))
-			}
-		}
-		if raw, exists := fields["captures"]; exists {
-			captures, ok := raw.(map[string]any)
-			if !ok {
-				return finish(errors.New("captures 必须是字符串映射"))
-			}
-			for key, value := range captures {
-				text, ok := value.(string)
-				if !ok {
-					return finish(errors.New("捕获内容必须是字符串"))
-				}
-				match.captures[key] = text
-			}
-		}
+	serialized, marshalErr := json.Marshal(value)
+	limit = 4 << 20
+	if phase == "resolve" {
+		limit = 16 << 20
 	}
+	if marshalErr != nil {
+		return finish(marshalErr)
+	}
+	if len(serialized) > limit {
+		return finish(errors.New("脚本输出超过阶段大小限制"))
+	}
+	run.record(nil, "return", "脚本返回值", map[string]any{"bytes": len(serialized)})
+	match := matchValue{value: value, trace: run.events}
 	return match, nil
 }
 
@@ -294,7 +293,7 @@ func scriptValue(value goja.Value, depth int) (any, error) {
 func readScriptValue(value goja.Value, depth int, budget *int) (any, error) {
 	*budget -= 16
 	if *budget < 0 {
-		return nil, errors.New("脚本结果总量超过 64 KiB")
+		return nil, errors.New("脚本结果超过阶段大小限制")
 	}
 	if depth > 12 {
 		return nil, errors.New("脚本结果嵌套过深")
@@ -306,7 +305,7 @@ func readScriptValue(value goja.Value, depth int, budget *int) (any, error) {
 		switch object.ClassName() {
 		case "Array":
 			length := object.Get("length").ToInteger()
-			if length > 1024 {
+			if length > 10000 {
 				return nil, errors.New("脚本列表过长")
 			}
 			result := make([]any, 0, length)
@@ -330,7 +329,7 @@ func readScriptValue(value goja.Value, depth int, budget *int) (any, error) {
 			for _, key := range keys {
 				*budget -= len(key)
 				if *budget < 0 {
-					return nil, errors.New("脚本结果总量超过 64 KiB")
+					return nil, errors.New("脚本结果超过阶段大小限制")
 				}
 				if len(key) > 32768 {
 					return nil, errors.New("脚本对象键过长")
@@ -350,7 +349,7 @@ func readScriptValue(value goja.Value, depth int, budget *int) (any, error) {
 	case string:
 		*budget -= len(v)
 		if *budget < 0 {
-			return nil, errors.New("脚本结果总量超过 64 KiB")
+			return nil, errors.New("脚本结果超过阶段大小限制")
 		}
 		if len(v) > 32768 {
 			return nil, errors.New("脚本结果字符串过长")

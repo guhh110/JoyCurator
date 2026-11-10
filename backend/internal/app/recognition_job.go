@@ -48,6 +48,7 @@ func (a *WorkspaceService) recognize(ctx context.Context, cancel context.CancelF
 		previous[item.Path] = item
 	}
 	scanned := []matching.Item{}
+	needsExtraction := []string{}
 	preserved := map[string]bool{}
 	for _, item := range task.Items {
 		if item.Execution != nil && (item.Execution.Locked || item.Execution.Completed) {
@@ -82,13 +83,21 @@ func (a *WorkspaceService) recognize(ctx context.Context, cancel context.CancelF
 			scanned = append(scanned, item)
 			return nil
 		}
-		item, err := a.extractItem(ctx, path, info, s, task.ID)
-		if err != nil {
-			return err
-		}
-		scanned = append(scanned, item)
+		needsExtraction = append(needsExtraction, path)
+		scanned = append(scanned, matching.Item{File: model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano()}})
 		return nil
 	})
+	if scanErr == nil && len(needsExtraction) > 0 {
+		var fresh map[string]matching.Item
+		fresh, scanErr = a.extractContexts(ctx, task.Paths, needsExtraction, s, task.ID)
+		if scanErr == nil {
+			for i, item := range scanned {
+				if next, ok := fresh[item.Path]; ok {
+					scanned[i] = next
+				}
+			}
+		}
+	}
 	if scanErr != nil {
 		task.State, task.Error = "failed", scanErr.Error()
 		if ctx.Err() != nil {
@@ -155,12 +164,7 @@ func (a *WorkspaceService) recognize(ctx context.Context, cancel context.CancelF
 	_ = persist()
 }
 
-func (a *WorkspaceService) extractItem(ctx context.Context, path string, info fs.FileInfo, s model.Settings, workspace string) (matching.Item, error) {
-	extracted, traceID, err := a.extract.ExtractFile(ctx, path, s.SourceRoot, workspace)
-	if err != nil {
-		return matching.Item{}, err
-	}
-	p := extracted.Metadata
+func itemFromMetadata(path string, info fs.FileInfo, p recognition.Metadata, traceID string) matching.Item {
 	title, mediaType, year, tmdbID := "", "", 0, 0
 	if p.Title != nil {
 		title = *p.Title
@@ -182,5 +186,5 @@ func (a *WorkspaceService) extractItem(ctx context.Context, path string, info fs
 	if title == "" && tmdbID == 0 {
 		group = "path:" + path
 	}
-	return matching.Item{File: model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: season, Episodes: p.Episodes}, Metadata: p, Group: group, Candidates: []model.Entry{}, State: "pending", TraceID: traceID}, nil
+	return matching.Item{File: model.File{Path: path, Size: info.Size(), MTime: info.ModTime().UnixNano(), Season: season, Episodes: p.Episodes}, Metadata: p, Group: group, Candidates: []model.Entry{}, State: "pending", TraceID: traceID}
 }

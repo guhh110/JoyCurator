@@ -45,21 +45,21 @@ flowchart LR
 ## 提取、匹配与工作区
 
 ```text
-Workspace.Start → scanner.Walk → recognition.ExtractFile → matching.Resolver
+Workspace.Start → 完整目录 scanner.Walk → recognition.ExtractTree → matching.Resolver
   → 工作区人工确认／季集修正 → organizer.BatchPreview → ExecuteBatch
 ```
 
 自动匹配和手工选择共用季集校验。原始 Metadata 与人工季集映射分开保存；预览直接使用已确认快照，不重新识别、不查询 TMDB、不探测视频。服务端保存工作区及 revision，浏览器只维护可编辑草稿和视图状态。工作区保存只提交变更文件；服务端基于原 revision 合并，拒绝修改已提交、已登记完成或状态不明的文件。作品批量操作只处理可编辑文件。`FileExecutions` 从持久化 Run 投影关联任务和锁定／完成状态，后台进度不写工作区、不增加编辑 revision；识别增量保存剥离临时投影，不覆盖运行状态。移出来源若含锁定文件则拒绝并报告任务。
 
-正式识别逐文件保存：
+正式识别按目录树保存共享轨迹：
 
 ```text
 获取一次当前 Engine → StartTrace(running)
-  → Engine.Extract：在内存收集完整步骤、规则和源码快照
+  → Engine.ExtractBatch：符号分词、词语标注、剩余区段片名标注、目录裁决；规则源码与上下文只保存一次
   → FinishTrace：一个事务插入全部步骤并更新结果
 ```
 
-正常取消、失败和优雅关闭保存已产生步骤。强制退出时当前文件可能只有运行摘要；重启标记 interrupted，不补造详情。事务失败全部回滚，不能出现一半步骤与已完成摘要。规则保存先编译再持久化替换，正在提取的文件继续使用开始时的引擎。试跑和样例不写正式历史或工作区。
+正常取消、失败和优雅关闭保存已产生步骤。强制退出时当前目录可能只有运行摘要；重启标记 interrupted，不补造详情。事务失败全部回滚，不能出现一半步骤与已完成摘要。规则保存先编译再持久化替换，正在处理的目录继续使用开始时的引擎。试跑和样例不写正式历史或工作区。
 
 TMDB Pool 复用连接池与请求起始限速，凭据、语言和诊断记录仍属于独立客户端快照。代理改变时关闭旧空闲连接，新请求使用新代理；已经发出的请求保留原快照。响应缓存仍为 24 小时，超时和重试语义保留。
 
@@ -92,10 +92,10 @@ python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|Ben
 
 ### 关系表与增量检查点
 
-- 设置、分类条件、当前规则与样例分别落表；空规则链有独立初始化标识，重启不重新填充默认规则。
+- 设置、分类条件、当前规则与样例分别落表；三阶段流水线有独立初始化标识；标注列表可为空，分词与裁决不可缺少。
 - 工作区摘要、路径、文件、Metadata、季集、选中作品及候选分别落表。作品标量与演员／国家／类型集合均为工作区私有快照，不按 TMDB ID 共享可变条目；Execution 仍为实时投影，不存入工作区。
 - Run 摘要、操作及撤销后代、归属路径、映射快照与已登记媒体分开保存。`sequence` 保持创建顺序，队列 `position` 独立表示本次入队顺序；Operation.ID 不充当存储主键。操作内容为 BLOB。
-- 提取轨迹的 Metadata、步骤、输入、捕获、尝试、事件及规则快照均关系化；每步保存自己的规则和样例。只有 Config.Params/Value、样例 Expected、步骤 Before/After/ExtractedValue、事件 Data 使用严格 JSON，编码失败或多余 JSON 输入直接报错。
+- 提取轨迹的 Metadata、步骤、输入、捕获、尝试、事件及规则快照均关系化；同一规则和样例仅首次步骤保存，其他步骤按规则 ID 引用。只有 Config.Params/Value、样例 Expected、步骤 Before/After/ExtractedValue、事件 Data 使用严格 JSON，编码失败或多余 JSON 输入直接报错。
 - 完整保存用于创建、结构变更与重试；`SaveCheckpoint` 仅保存 Run 摘要和指定位置的操作／映射，并原子登记已完成视频。`CheckpointWorkspace` 仅保存摘要和变化条目，以 revision 检查并在提交成功后增加 revision。后台执行投影不增加工作区 revision。
 - 子表使用所属外键、级联删除、显式 position 与归属位置唯一约束。工作区 traceId 为可清理的历史引用，清理轨迹不删除工作区。多表详情通过读取事务保持同一快照。所有结果集先关闭再进行下一次查询；列表不组装操作，详情按表批量读取；单个刮削产物通过递归 CTE 只读取自身操作及撤销链。
 

@@ -7,15 +7,15 @@ import (
 )
 
 type memoryStore struct {
-	rules              []Rule
+	rules              Pipeline
 	trace              Trace
 	steps              []Step
 	saveErr, finishErr error
 	afterStart         func()
 }
 
-func (s *memoryStore) LoadRules() ([]Rule, error) { return s.rules, nil }
-func (s *memoryStore) SaveRules(rules []Rule) error {
+func (s *memoryStore) LoadRules() (Pipeline, error) { return s.rules, nil }
+func (s *memoryStore) SaveRules(rules Pipeline) error {
 	if s.saveErr != nil {
 		return s.saveErr
 	}
@@ -49,7 +49,7 @@ func (s *memoryStore) TraceDetail(string) (Trace, []Step, error) {
 func (s *memoryStore) DeleteTrace(string) error { return nil }
 func extractionFixture(t *testing.T) (*Service, *memoryStore) {
 	t.Helper()
-	store := &memoryStore{rules: DefaultRules()}
+	store := &memoryStore{rules: DefaultPipeline()}
 	service, err := New(store, func() bool { return false })
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestInvalidOrFailedSaveKeepsCurrentChain(t *testing.T) {
 	service, store := extractionFixture(t)
 	before := service.Current()
 	rules := service.Current().Rules()
-	rules[0].Kind = "invalid"
+	rules.Tokenizer.Kind = "invalid"
 	if err := service.Save(rules); err == nil {
 		t.Fatal("invalid rules accepted")
 	}
@@ -69,7 +69,7 @@ func TestInvalidOrFailedSaveKeepsCurrentChain(t *testing.T) {
 		t.Fatal("invalid chain became active")
 	}
 	store.saveErr = errors.New("disk full")
-	if err := service.Save([]Rule{}); err == nil {
+	if err := service.Save(DefaultPipeline()); err == nil {
 		t.Fatal("storage failure ignored")
 	}
 	if service.Current() != before {
@@ -77,11 +77,13 @@ func TestInvalidOrFailedSaveKeepsCurrentChain(t *testing.T) {
 	}
 }
 
-func TestFileUsesOneChainWhileNextFileUsesSavedChain(t *testing.T) {
+func TestFileUsesOneSnapshotWhileNextUsesSavedPipeline(t *testing.T) {
 	service, store := extractionFixture(t)
-	count := len(service.Current().Rules())
+	count := len(service.Current().Rules().Rules())
 	store.afterStart = func() {
-		if err := service.Save([]Rule{}); err != nil {
+		next := DefaultPipeline()
+		next.Annotators = []Rule{}
+		if err := service.Save(next); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -93,7 +95,7 @@ func TestFileUsesOneChainWhileNextFileUsesSavedChain(t *testing.T) {
 		t.Fatal(store.trace)
 	}
 	next, _, err := service.ExtractFile(context.Background(), "/source/Show.S02E03.mkv", "/source", "workspace")
-	if err != nil || len(next.Steps) != 0 || next.Metadata.Title != nil {
+	if err != nil || len(next.Steps) != 2 || next.Metadata.Title != nil {
 		t.Fatal(next, err)
 	}
 }
@@ -103,7 +105,7 @@ func TestCancellationAndStorageFailurePreserveCompletedSteps(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	store.afterStart = cancel
 	result, _, err := service.ExtractFile(ctx, "/source/Show.S02E03.mkv", "/source", "workspace")
-	if !errors.Is(err, context.Canceled) || store.trace.Status != "cancelled" || len(store.steps) != len(service.Current().Rules()) || result.Steps[1].Status != "skipped" {
+	if !errors.Is(err, context.Canceled) || store.trace.Status != "cancelled" || len(store.steps) != 1 || result.Steps[0].Status != "skipped" {
 		t.Fatal(store.trace.Status, len(store.steps), err)
 	}
 	store.finishErr = errors.New("cannot append trace")

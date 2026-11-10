@@ -1,14 +1,114 @@
-// TMDB ID：显式的 tmdb-603、tmdb=603、tmdb 603 标记。
-// 先看文件名，再按近到远查看边界内的目录，先命中优先。
-const ID = "(?i)tmdb[-= ]?(\\d+)";
-
-function extract(ctx) {
-  for (const text of [ctx.filename, ...ctx.directories]) {
-    const match = reSearch(ID, text);
-    if (match) {
-      return {value: Number(match.groups[1]), matchedText: match.text, captures: {id: match.groups[1]}};
+// 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。
+function item(source, start, end, value, strength, reason, status) {
+  return {
+    value,
+    spans: [{ sourceId: source.id, start, end }],
+    strength: strength || 'explicit',
+    status: status || 'valid',
+    reason,
+  }
+}
+function words(ctx, source) {
+  return ctx.tokens
+    .filter(
+      (t) =>
+        t.sourceId === source.id && (t.kind === 'text' || t.kind === 'number'),
+    )
+    .sort((a, b) => a.start - b.start)
+}
+function runs(ctx, source) {
+  const parents = new Map(),
+    result = []
+  for (const t of ctx.tokens)
+    if (t.sourceId === source.id) {
+      const key = t.parentId,
+        list = parents.get(key) || []
+      list.push(t)
+      parents.set(key, list)
+    }
+  for (const [parentId, list] of parents) {
+    list.sort((a, b) => a.start - b.start)
+    let sequence = []
+    function flush() {
+      if (sequence.length)
+        result.push({
+          parentId,
+          words: sequence,
+          start: sequence[0].start,
+          end: sequence[sequence.length - 1].end,
+        })
+      sequence = []
+    }
+    for (const t of list) {
+      if (t.kind === 'group') flush()
+      else if (t.kind === 'text' || t.kind === 'number') sequence.push(t)
+    }
+    flush()
+  }
+  return result.sort((a, b) => a.start - b.start)
+}
+function overlaps(ctx, source, start, end, roles) {
+  return ctx.candidates.some(
+    (c) =>
+      roles.includes(c.role) &&
+      c.spans.some(
+        (s) => s.sourceId === source.id && start < s.end && end > s.start,
+      ),
+  )
+}
+function scan(ctx, source, pattern, roles = []) {
+  const result = []
+  for (const run of runs(ctx, source)) {
+    const chars = source.text.slice(run.start, run.end).split('')
+    for (const c of ctx.candidates)
+      if (roles.includes(c.role))
+        for (const s of c.spans)
+          if (s.sourceId === source.id)
+            for (
+              let i = Math.max(s.start, run.start);
+              i < Math.min(s.end, run.end);
+              i++
+            )
+              chars[i - run.start] = ' '
+    for (const m of chars.join('').matchAll(pattern)) {
+      m.index += run.start
+      result.push(m)
     }
   }
-  trace("没有显式 TMDB ID");
-  return null;
+  return result.sort((a, b) => a.index - b.index)
+}
+const technical = [
+  'resolution',
+  'videoCodec',
+  'audioCodec',
+  'bitDepth',
+  'dynamicRange',
+  'language',
+  'subtitleLanguage',
+  'checksum',
+  'releaseTag',
+]
+function isYear(n) {
+  return n >= 1900 && n <= 2099
+}
+
+function extract(ctx) {
+  const out = []
+  for (const s of ctx.sources)
+    for (const m of scan(ctx, s, /tmdb[-= ]?(\d+)/gi)) {
+      const n = Number(m[1]),
+        valid = n > 0 && n <= 999999999
+      out.push(
+        item(
+          s,
+          m.index,
+          m.index + m[0].length,
+          n,
+          'explicit',
+          valid ? 'TMDB 标记' : 'tmdbId 提取值类型或范围无效',
+          valid ? 'valid' : 'invalid',
+        ),
+      )
+    }
+  return out
 }

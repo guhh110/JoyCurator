@@ -4,188 +4,180 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
-	"testing"
-
 	r "joycurator/internal/recognition"
+	"reflect"
+	"strings"
+	"testing"
 )
 
 func regexRule(id string, order int, target r.Target, pattern string) r.Rule {
-	return r.Rule{ID: id, Name: id, Order: order, Enabled: true, Kind: "regex", Target: target, Source: r.Filename, Config: r.Config{Pattern: pattern, Capture: "value"}, Examples: []r.Example{}}
+	return r.Rule{ID: id, Name: id, Stage: "annotate", Order: order, Enabled: true, Kind: "regex", Target: target, Source: r.Filename, Config: r.Config{Pattern: pattern, Capture: "value"}, Examples: []r.Example{}}
 }
-func extract(t *testing.T, rules []r.Rule, path, root string) r.Result {
+func extract(t *testing.T, p r.Pipeline, path, root string) r.Result {
 	t.Helper()
-	engine, err := r.Compile(rules)
+	e, err := r.Compile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := engine.Extract(context.Background(), r.Input{Path: path, Root: root}, nil)
+	got, err := e.Extract(context.Background(), r.Input{Path: path, Root: root}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return got
 }
-func TestOrderSingleTargetAndConflict(t *testing.T) {
-	first := regexRule("first", 10, r.Season, `S(?P<value>\d+)`)
-	later := regexRule("later", 20, r.Season, `E(?P<value>\d+)`)
-	got := extract(t, []r.Rule{later, first}, "/Show.S02E03.mkv", "/")
-	if got.Metadata.Season == nil || *got.Metadata.Season != 2 || got.Metadata.MediaType != nil || len(got.Metadata.Episodes) != 0 {
-		t.Fatal(got.Metadata)
+func batch(t *testing.T, p r.Pipeline, paths, targets []string) r.BatchResult {
+	t.Helper()
+	e, err := r.Compile(p)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got.Steps[0].RuleID != "first" || got.Steps[1].Status != "matched" || got.Steps[1].Applied || got.Steps[1].ExtractedValue != float64(3) {
-		t.Fatal(got.Steps)
+	if targets == nil {
+		targets = paths
 	}
-	later.Overwrite = true
-	got = extract(t, []r.Rule{later, first}, "/Show.S02E03.mkv", "/")
-	if *got.Metadata.Season != 3 || !got.Steps[1].Applied || got.Steps[1].Before != float64(2) {
+	got, err := e.ExtractBatch(context.Background(), r.BatchInput{ContextRoot: "/source", SourceBoundary: "/source", Paths: paths, Targets: targets}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+func TestCandidatesRetainConflictsAndOrder(t *testing.T) {
+	p := r.DefaultPipeline()
+	p.Annotators = []r.Rule{regexRule("first", 10, r.Season, `S(?P<value>\d+)`), regexRule("later", 20, r.Season, `E(?P<value>\d+)`)}
+	got := batch(t, p, []string{"/source/Show.S02E03.mkv"}, nil)
+	if len(got.Documents[0].Candidates) != 2 || value(got.Files[0].Metadata.Season, -1) != 2 {
 		t.Fatal(got)
 	}
-	first.Order = 30
-	later.Overwrite = false
-	got = extract(t, []r.Rule{later, first}, "/Show.S02E03.mkv", "/")
-	if *got.Metadata.Season != 3 {
-		t.Fatal("order ignored")
+	p.Resolver.Config.Code = `function extract(ctx){const f=ctx.files[0],c=f.candidates[1];return [{fileId:f.fileId,metadata:{tmdbId:null,title:null,mediaType:null,year:null,season:c.value,episodes:[],releaseTag:null},decisions:{season:{candidates:[{fileId:f.fileId,candidateId:c.id}],reason:"选择后者"}}}];}`
+	got = batch(t, p, []string{"/source/Show.S02E03.mkv"}, nil)
+	if value(got.Files[0].Metadata.Season, -1) != 3 {
+		t.Fatal(got)
 	}
 }
-func TestErrorsDoNotEraseMetadataAndAllRulesAreObservable(t *testing.T) {
-	rules := []r.Rule{regexRule("good", 10, r.Season, `S(?P<value>\d+)`), regexRule("bad", 20, r.Season, `(?P<value>Show)`), regexRule("miss", 30, r.Year, `Year(?P<value>\d+)`), regexRule("disabled", 40, r.Title, `(?P<value>.+)`), regexRule("episodes", 50, r.Episodes, `E(?P<value>\d+)`)}
-	rules[3].Enabled = false
-	got := extract(t, rules, "/Show.S00E03.mkv", "/")
-	if *got.Metadata.Season != 0 || !reflect.DeepEqual(got.Metadata.Episodes, []int{3}) {
-		t.Fatal(got.Metadata)
+func TestBatchScreenshotAndVaryingNumbers(t *testing.T) {
+	paths := []string{"/source/斗破苍穹 第3季/[斗破苍穹 第3季][Fights Break Sphere III][01][HEVC][GB][1080P].mp4"}
+	got := batch(t, r.DefaultPipeline(), paths, nil)
+	m := got.Files[0].Metadata
+	if value(m.Title, "") != "斗破苍穹" || value(m.Season, -1) != 3 || !reflect.DeepEqual(m.Episodes, []int{1}) {
+		t.Fatal(m)
 	}
-	for i, want := range []string{"matched", "error", "not_matched", "disabled", "matched"} {
-		if got.Steps[i].Status != want {
-			t.Fatalf("step %d: %s", i, got.Steps[i].Status)
-		}
+	paths = []string{"/source/任意作品/[任意作品][202][01][1080p].mkv", "/source/任意作品/[任意作品][202][03][1080p].mkv", "/source/任意作品/[任意作品][202][03][720p].mkv"}
+	got = batch(t, r.DefaultPipeline(), paths, paths[:1])
+	if len(got.Files) != 1 || !reflect.DeepEqual(got.Files[0].Metadata.Episodes, []int{1}) || len(got.Files[0].Decisions[r.Episodes].Candidates) < 2 {
+		t.Fatal(got.Files)
 	}
-}
-func TestProtectedIDCannotBecomeEpisodeEvenWithOverwrite(t *testing.T) {
-	rule := regexRule("bad-id", 0, r.Episodes, `tmdb-(?P<value>\d+)`)
-	rule.Overwrite = true
-	rules := append([]r.Rule{rule}, r.DefaultRules()...)
-	got := extract(t, rules, "/source/The.Matrix.1999.tmdb-603.mkv", "/source")
-	if *got.Metadata.TMDBID != 603 || *got.Metadata.Title != "The Matrix" || *got.Metadata.Year != 1999 || got.Metadata.MediaType != nil || len(got.Metadata.Episodes) != 0 || got.Metadata.Season != nil {
-		t.Fatal(got.Metadata)
-	}
-	if got.Steps[0].Status != "error" || got.Steps[0].MatchedText != "tmdb-603" || got.Steps[0].Applied {
-		t.Fatal(got.Steps[0])
+	paths[0], paths[2] = paths[2], paths[0]
+	other := batch(t, r.DefaultPipeline(), paths, []string{got.Files[0].Path})
+	if !reflect.DeepEqual(got.Files, other.Files) {
+		t.Fatal("input order changed result")
 	}
 }
-func TestDirectoryBoundaryAndAttempts(t *testing.T) {
-	got := extract(t, r.DefaultRules(), "/outside [tmdb-999]/source/Show [tmdb-7]/Season 2/03.mkv", "/outside [tmdb-999]/source")
-	if *got.Metadata.TMDBID != 7 || *got.Metadata.Season != 2 || *got.Metadata.Title != "Show" {
-		t.Fatal(got.Metadata)
-	}
-	for _, step := range got.Steps {
-		for _, input := range step.Inputs {
-			if input == "outside [tmdb-999]" || input == "source" {
-				t.Fatal("boundary ignored")
-			}
-		}
-		if step.RuleID == "tmdb-id" && (len(step.Attempts) != 1 || step.Attempts[0].Input != "Show [tmdb-7]/Season 2/03.mkv" || step.MatchedText != "tmdb-7") {
-			t.Fatal(step)
-		}
-	}
-	for _, in := range []r.Input{{Path: "relative.mkv"}, {Path: "/a/file.mkv", Root: "/b"}, {Path: "/a/file.mkv", Root: "/a/file.mkv"}, {Path: "/a/"}, {Path: "/a\x00.mkv"}} {
-		if _, err := r.DefaultEngine().Extract(context.Background(), in, nil); err == nil {
-			t.Fatal("accepted invalid input", in)
-		}
-	}
-}
-func TestConversionsAndMergedEpisodes(t *testing.T) {
-	for _, tc := range []struct {
-		target r.Target
-		value  string
-		want   string
-	}{{r.Season, "零", `0`}, {r.Season, "二十三", `23`}, {r.Episodes, "0", `[0]`}, {r.Episodes, "0-2,4", `[0,1,2,4]`}, {r.Episodes, "1-3,5", `[1,2,3,5]`}, {r.MediaType, "movie", `"movie"`}} {
-		rule := regexRule("convert", 1, tc.target, `(?P<value>.+)`)
-		got := extract(t, []r.Rule{rule}, "/"+tc.value+".mkv", "/")
-		raw, _ := json.Marshal(got.Steps[0].After)
-		if string(raw) != tc.want {
-			t.Fatalf("%s: %s", tc.value, raw)
-		}
-	}
-	for _, value := range []string{"-1", "0,0", "1,1", "4-2", "0-1000", "1-1001", "10000"} {
-		got := extract(t, []r.Rule{regexRule("episodes", 1, r.Episodes, `(?P<value>.+)`)}, "/"+value+".mkv", "/")
-		if got.Steps[0].Status != "error" || len(got.Metadata.Episodes) != 0 {
-			t.Fatal(value, got)
+func TestSeparateWorksAndSeasons(t *testing.T) {
+	paths := []string{"/source/Alpha/Season 1/01.mkv", "/source/Alpha/Season 2/02.mkv", "/source/Beta/Season 3/01.mkv"}
+	got := batch(t, r.DefaultPipeline(), paths, nil)
+	for i, want := range []int{1, 2, 3} {
+		if value(got.Files[i].Metadata.Season, -1) != want {
+			t.Fatal(got.Files)
 		}
 	}
 }
 func TestValidationAndImmutableConfiguration(t *testing.T) {
-	base := regexRule("one", 10, r.Title, `(?P<value>.+)`)
-	for _, mutate := range []func(*r.Rule){func(v *r.Rule) { v.Config.Pattern = "(" }, func(v *r.Rule) { v.Config.Capture = "missing" }, func(v *r.Rule) { v.Target = "titles" }, func(v *r.Rule) { v.Config.Value = json.RawMessage(`"fixed"`) }, func(v *r.Rule) { v.Kind = "builtin"; v.Config = r.Config{} }, func(v *r.Rule) { v.Source = "filesystem" }} {
-		candidate := base
-		mutate(&candidate)
-		if _, err := r.Compile([]r.Rule{candidate}); err == nil {
-			t.Fatal(candidate)
+	p := r.DefaultPipeline()
+	e, _ := r.Compile(p)
+	p.Tokenizer.Config.Code = "changed"
+	copy := e.Rules()
+	copy.Resolver.Config.Code = "changed"
+	if e.Rules().Tokenizer.Config.Code == "changed" || e.Rules().Resolver.Config.Code == "changed" {
+		t.Fatal("mutable config")
+	}
+	for _, mutate := range []func(*r.Pipeline){func(p *r.Pipeline) { p.Tokenizer.Enabled = false }, func(p *r.Pipeline) { p.Annotators = nil }, func(p *r.Pipeline) { p.Resolver.Stage = "annotate" }, func(p *r.Pipeline) { p.Annotators[0].ID = p.Tokenizer.ID }, func(p *r.Pipeline) { p.Annotators[0].Config.Code = "invalid" }, func(p *r.Pipeline) { p.Annotators[0].Order = p.Annotators[1].Order }} {
+		p := r.DefaultPipeline()
+		mutate(&p)
+		if _, err := r.Compile(p); err == nil {
+			t.Fatal("invalid pipeline accepted")
 		}
 	}
-	other := base
-	other.ID = "two"
-	if _, err := r.Compile([]r.Rule{base, other}); err == nil {
-		t.Fatal("duplicate order")
-	}
-	other.Order = 20
-	other.ID = base.ID
-	if _, err := r.Compile([]r.Rule{base, other}); err == nil {
-		t.Fatal("duplicate id")
-	}
-	base.Config.Capture = ""
-	base.Config.Value = json.RawMessage(`"fixed"`)
-	engine, err := r.Compile([]r.Rule{base})
-	if err != nil {
-		t.Fatal(err)
-	}
-	base.Config.Value[1] = 'X'
-	copyRules := engine.Rules()
-	copyRules[0].Config.Value[1] = 'Y'
-	got, err := engine.Extract(context.Background(), r.Input{Path: "/file.mkv"}, nil)
-	if err != nil || *got.Metadata.Title != "fixed" || string(got.Steps[0].RuleConfig.Config.Value) != `"fixed"` {
+}
+func TestCancellationAndAnnotationFailure(t *testing.T) {
+	p := r.DefaultPipeline()
+	p.Annotators[0].Config.Code = `function extract(ctx){throw Error("broken")}`
+	e, _ := r.Compile(p)
+	got, err := e.Extract(context.Background(), r.Input{Path: "/source/Show.S01E02.mkv", Root: "/source"}, nil)
+	if err == nil || len(got.Steps) != len(p.Annotators)+1 || got.Metadata.Title != nil {
 		t.Fatal(got, err)
 	}
-}
-func TestCancellationPreservesCompletedStepsAndSnapshot(t *testing.T) {
-	engine, _ := r.Compile(r.DefaultRules())
 	ctx, cancel := context.WithCancel(context.Background())
-	count := 0
-	got, err := engine.Extract(ctx, r.Input{Path: "/Show.tmdb-603.S01E02.mkv"}, func(_ context.Context, step r.Step) error {
-		count++
-		if count == 1 {
-			cancel()
-			step.RuleConfig.Config.Code = "changed"
-		}
-		return nil
-	})
-	if !errors.Is(err, context.Canceled) || count != len(r.DefaultRules()) || *got.Metadata.TMDBID != 603 || got.Steps[0].RuleConfig.Config.Code != r.DefaultRules()[0].Config.Code {
-		t.Fatal(count, err)
+	e = r.DefaultEngine()
+	got, err = e.Extract(ctx, r.Input{Path: "/Show.mkv"}, func(_ context.Context, s r.Step) error { cancel(); return nil })
+	if !errors.Is(err, context.Canceled) || len(got.Steps) == 0 {
+		t.Fatal(err)
 	}
-	for _, step := range got.Steps[1:] {
-		if step.Status != "skipped" {
-			t.Fatal(step)
+}
+func TestResolverReferencesAndCoverage(t *testing.T) {
+	for _, code := range []string{`return []`, `return [{fileId:"extra",metadata:{episodes:[]},decisions:{}}]`, `return [{fileId:ctx.targetFileIds[0],metadata:{title:"x",episodes:[]},decisions:{title:{reason:"fake",candidates:[{fileId:"file-0",candidateId:"missing"}]}}}]`, `return [{fileId:ctx.targetFileIds[0],metadata:{title:"x",episodes:[]},decisions:{}}]`} {
+		p := r.DefaultPipeline()
+		p.Resolver.Config.Code = "function extract(ctx){" + code + "}"
+		e, err := r.Compile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = e.Extract(context.Background(), r.Input{Path: "/Show.mkv"}, nil); err == nil {
+			t.Fatal(code)
 		}
 	}
 }
-func TestEmptyChainUnknownValues(t *testing.T) {
-	got := extract(t, []r.Rule{}, "/Film.mkv", "/")
+func TestEpisodeIDProtectionAndInvalidExplicitSyntax(t *testing.T) {
+	p := r.DefaultPipeline()
+	p.Annotators = append([]r.Rule{regexRule("bad-id", 0, r.Episodes, `^(?P<value>603)$`)}, p.Annotators...)
+	e, _ := r.Compile(p)
+	_, err := e.Extract(context.Background(), r.Input{Path: "/Film.tmdb-603.mkv"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "TMDB") {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/Show.S01E05-E03.mkv", "/Show.S01E01-E1001.mkv", "/Film.2024.1080p-Group_1.mkv"} {
+		got := extract(t, r.DefaultPipeline(), path, "/")
+		if len(got.Metadata.Episodes) != 0 {
+			t.Fatal(path, got.Metadata)
+		}
+	}
+}
+func TestJSONUnknownContract(t *testing.T) {
+	p := r.DefaultPipeline()
+	p.Annotators = []r.Rule{}
+	got := extract(t, p, "/Film.mkv", "/")
 	raw, _ := json.Marshal(got.Metadata)
 	if string(raw) != `{"tmdbId":null,"title":null,"mediaType":null,"year":null,"season":null,"episodes":[],"releaseTag":null}` {
 		t.Fatal(string(raw))
 	}
 }
 
-func TestEpisodeMarkersDoNotAbsorbQualityOrTruncateLargeNumbers(t *testing.T) {
-	for _, path := range []string{"/Show.S01E03 1080p.mkv", "/Show.S01E03 2024.mkv"} {
-		got := extract(t, r.DefaultRules(), path, "/")
-		if !reflect.DeepEqual(got.Metadata.Episodes, []int{3}) {
-			t.Fatalf("%s: %+v", path, got.Metadata)
+func TestObserverFailureStopsImmediately(t *testing.T) {
+	stop := errors.New("observer failed")
+	count := 0
+	result, err := r.DefaultEngine().Extract(context.Background(), r.Input{Path: "/Show.mkv"}, func(context.Context, r.Step) error {
+		count++
+		if count == 2 {
+			return stop
+		}
+		return nil
+	})
+	if !errors.Is(err, stop) || count != 2 || len(result.Steps) != 2 {
+		t.Fatal(count, len(result.Steps), err)
+	}
+}
+func TestBatchValidationRejectsOverflowAndCanonicalDuplicates(t *testing.T) {
+	for _, in := range []r.BatchInput{{ContextRoot: "/source", SourceBoundary: "/source", Paths: []string{"/source/Film.mkv"}, Targets: []string{"/source/Film.mkv", "/source/a/../Film.mkv"}}, {ContextRoot: "/", SourceBoundary: "/source", Paths: []string{"/source/Film.mkv"}, Targets: []string{"/source/Film.mkv"}}, {ContextRoot: "/source", Paths: make([]string, 2001), Targets: []string{"/source/Film.mkv"}}} {
+		if _, err := r.DefaultEngine().ExtractBatch(context.Background(), in, nil); err == nil {
+			t.Fatal("invalid snapshot accepted")
 		}
 	}
-	for _, path := range []string{"/Show.S01E10001.mkv", "/Show.1x10001.mkv"} {
-		got := extract(t, r.DefaultRules(), path, "/")
-		if len(got.Metadata.Episodes) != 0 {
-			t.Fatalf("truncated episode %s: %+v", path, got.Metadata)
+}
+func TestSourceSelectionAndHostOwnedCandidateFields(t *testing.T) {
+	for _, body := range []string{`return [{id:"fake",value:"x",spans:[{sourceId:"name",start:0,end:1}],strength:"explicit",status:"valid",reason:"x"}]`, `return [{value:"x",spans:[{sourceId:"dir-0",start:0,end:1}],strength:"explicit",status:"valid",reason:"x"}]`} {
+		p := r.DefaultPipeline()
+		p.Annotators = []r.Rule{{ID: "custom", Name: "custom", Stage: "annotate", Target: r.Title, Source: r.Filename, Enabled: true, Kind: "script", Config: r.Config{Code: "function extract(ctx){" + body + "}"}}}
+		e, _ := r.Compile(p)
+		if _, err := e.Extract(context.Background(), r.Input{Path: "/source/Show/Film.mkv", Root: "/source"}, nil); err == nil {
+			t.Fatal("invalid candidate accepted")
 		}
 	}
 }

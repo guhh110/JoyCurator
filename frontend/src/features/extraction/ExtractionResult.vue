@@ -1,384 +1,351 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
-import ScriptCode from './ScriptCode.vue'
+import { computed, ref, watch } from 'vue'
 import Select from '../../components/ui/Select.vue'
-import EliText from '../../components/ui/EliText.vue'
-import type { ExtractionResult, ScriptEvent } from './model'
-import { targets, sources, statuses, valueText } from './model'
+import ScriptCode from './ScriptCode.vue'
+import { notify } from '../../app/toast'
+import {
+  targets,
+  roles,
+  stages,
+  statuses,
+  valueText,
+  type ExtractionResult,
+  type ScriptEvent,
+  type Target,
+} from './model'
 const props = withDefaults(
   defineProps<{
     result: ExtractionResult
     view?: 'all' | 'metadata' | 'steps' | 'json'
     editable?: boolean
-    // Limit the steps view to one rule (the drawer shows only the edited rule).
+    initialPath?: string
     ruleId?: string
   }>(),
   { view: 'all' },
 )
 const emit = defineEmits<{ locate: [ruleId: string, event?: ScriptEvent] }>()
-const activeCode = ref<
-  Record<string, { phase: string; line: number; request: number }>
->({})
-let focusRequest = 0
-function locate(ruleId: string, event: ScriptEvent) {
-  if (props.editable) emit('locate', ruleId, event)
-  activeCode.value[ruleId] = {
-    phase: event.phase,
-    line: event.line,
-    request: ++focusRequest,
-  }
-}
-const status = ref(''),
-  rule = ref(''),
-  copied = ref('')
-const json = computed(() => JSON.stringify(props.result, null, 2))
+const fileId = ref(''),
+  ruleId = ref(''),
+  candidateId = ref(''),
+  status = ref('')
+watch(
+  () => [props.result, props.initialPath],
+  () => {
+    fileId.value =
+      props.result.documents.find((d) => d.path === props.initialPath)
+        ?.fileId ??
+      props.result.files[0]?.fileId ??
+      props.result.documents[0]?.fileId ??
+      ''
+    candidateId.value = ''
+  },
+  { immediate: true },
+)
+const doc = computed(() =>
+    props.result.documents.find((d) => d.fileId === fileId.value),
+  ),
+  file = computed(() =>
+    props.result.files.find((f) => f.fileId === fileId.value),
+  )
 const visible = computed(() =>
   props.result.steps.filter(
-    (step) =>
-      (!status.value || step.status === status.value) &&
-      (!rule.value || step.ruleId === rule.value) &&
-      (!props.ruleId || step.ruleId === props.ruleId),
+    (s) =>
+      (!s.fileId || s.fileId === fileId.value) &&
+      (!props.ruleId || s.ruleId === props.ruleId) &&
+      (!ruleId.value || s.ruleId === ruleId.value) &&
+      (!status.value || s.status === status.value),
   ),
 )
-const details = ref<HTMLDetailsElement>(),
-  area = ref<HTMLTextAreaElement>()
+const snapshots = computed(
+  () =>
+    new Map(
+      props.result.steps
+        .filter((s) => s.ruleConfig.id)
+        .map((s) => [s.ruleId, s.ruleConfig]),
+    ),
+)
+const ruleOptions = computed(() =>
+  Array.from(
+    new Map(
+      props.result.steps.map((s) => [
+        s.ruleId,
+        { value: s.ruleId, label: s.ruleName },
+      ]),
+    ).values(),
+  ),
+)
+const activeLine = ref<Record<string, number>>({})
+function locate(id: string, event: ScriptEvent) {
+  activeLine.value[id] = event.line
+  if (props.editable) emit('locate', id, event)
+}
+function evidence(ref: { fileId: string; candidateId: string }) {
+  fileId.value = ref.fileId
+  candidateId.value = ref.candidateId
+}
+const fields = Object.entries(targets) as [Target, string][]
 async function copy() {
   try {
-    await navigator.clipboard.writeText(json.value)
-    copied.value = '已复制 JSON'
+    await navigator.clipboard.writeText(JSON.stringify(props.result, null, 2))
+    notify('已复制 JSON', 'success')
   } catch {
-    if (details.value) details.value.open = true
-    await nextTick()
-    area.value?.focus()
-    area.value?.select()
-    copied.value = '已选中 JSON，可手动复制'
+    notify('复制失败，请手动选择 JSON', 'error')
   }
 }
 </script>
 <template>
-  <div class="extraction-output">
-    <section v-if="view === 'all' || view === 'metadata'" class="pane metadata">
-      <h2>文件元数据</h2>
-      <p v-if="result.root" class="tiny muted extraction-root"><span>解析边界：</span><EliText :text="result.root" ellipsis="start" /></p>
-      <dl>
-        <template v-for="(label, key) in targets" :key="key"
-          ><dt>{{ label }}</dt>
-          <dd>{{ valueText(result.metadata[key]) }}</dd></template
-        >
-      </dl>
-    </section>
-    <section
-      v-if="view === 'all' || view === 'steps'"
-      class="pane execution-steps"
-    >
-      <header v-if="!ruleId" class="pane-head">
-        <h2>
-          规则执行过程
-          <span class="count"
-            >{{ visible.length }}/{{ result.steps.length }}</span
-          >
-        </h2>
-        <div class="filters">
-          <Select v-model="rule" label="筛选规则" :options="[{ value: '', label: '所有规则' }, ...result.steps.map(step => ({ value: step.ruleId, label: step.ruleName }))]" />
-          <Select v-model="status" label="筛选执行结果" :options="[{ value: '', label: '所有结果' }, ...Object.entries(statuses).map(([value, label]) => ({ value, label }))]" />
+  <div class="output">
+    <p v-if="result.error" class="notice error">{{ result.error }}</p>
+    <label class="file-select"
+      >文件<Select
+        label="选择文件"
+        ellipsis="start"
+        v-model="fileId"
+        :options="
+          result.documents.map((d) => ({
+            value: d.fileId,
+            label: d.path,
+          }))
+        "
+    /></label>
+    <section v-if="view === 'all' || view === 'metadata'" class="pane">
+      <h2>元数据裁决</h2>
+      <div v-if="file" class="metadata">
+        <div v-for="[key, label] in fields" :key="key" class="field">
+          <strong>{{ label }}</strong
+          ><span>{{ valueText(file.metadata[key]) }}</span>
+          <div v-if="file.decisions[key]">
+            <span>{{ file.decisions[key]!.reason }}</span
+            ><button
+              v-for="ref in file.decisions[key]!.candidates"
+              :key="ref.fileId + ref.candidateId"
+              class="text-button"
+              @click="evidence(ref)"
+            >
+              {{ ref.fileId }} · {{ ref.candidateId }}
+            </button>
+          </div>
         </div>
+      </div>
+      <p v-else class="padding muted">该文件仅提供上下文。</p>
+      <template v-if="doc"
+        ><details open class="padding">
+          <summary>候选（{{ doc.candidates.length }}）</summary>
+          <article
+            v-for="c in doc.candidates"
+            :key="c.id"
+            :class="{
+              highlight: c.id === candidateId,
+              invalid: c.status === 'invalid',
+            }"
+            class="candidate"
+          >
+            <strong>{{ roles[c.role] }} · {{ valueText(c.value) }}</strong
+            ><span
+              >{{ c.status === 'invalid' ? '无效' : c.strength }} ·
+              {{ c.reason }}</span
+            ><span
+              v-for="s in c.spans"
+              :key="s.sourceId + s.start"
+              class="muted"
+              >{{ s.sourceId }} [{{ s.start }}, {{ s.end }}) ·
+              {{
+                doc.sources
+                  .find((source) => source.id === s.sourceId)
+                  ?.text.slice(s.start, s.end)
+              }}</span
+            >
+          </article>
+        </details>
+        <details class="padding">
+          <summary>分词（{{ doc.tokens.length }}）</summary>
+          <div class="tokens">
+            <span
+              v-for="t in doc.tokens"
+              :key="t.id"
+              :title="`${t.id} · ${t.sourceId} [${t.start}, ${t.end}) · parent: ${t.parentId ?? '—'}`"
+              :class="t.kind"
+              >{{ t.kind }} · {{ t.text }}</span
+            >
+          </div>
+        </details></template
+      >
+    </section>
+    <section v-if="view === 'all' || view === 'steps'" class="pane">
+      <header class="pane-head">
+        <h2>执行过程</h2>
+        <Select
+          label="筛选规则"
+          v-model="ruleId"
+          :options="[{ value: '', label: '全部规则' }, ...ruleOptions]"
+        /><Select
+          label="筛选状态"
+          v-model="status"
+          :options="[
+            { value: '', label: '全部状态' },
+            ...Object.entries(statuses).map(([value, label]) => ({
+              value,
+              label,
+            })),
+          ]"
+        />
       </header>
-      <p v-if="!visible.length" class="muted padding">没有符合条件的步骤。</p>
       <details
-        v-for="s in visible"
-        :key="s.ruleId"
-        class="step"
-        :open="!!ruleId || undefined"
+        v-for="(s, i) in visible"
+        :key="s.fileId + s.ruleId + i"
+        class="padding"
       >
         <summary>
-          <span class="step-order">{{ s.order }}</span
-          ><strong>{{ s.ruleName }}</strong
-          ><span class="badge" :class="s.status">{{
-            statuses[s.status] || s.status
-          }}</span
-          ><span class="muted tiny"
-            >{{ targets[s.target] }} · {{ s.durationMs }} ms</span
-          >
+          {{ stages[s.stage] }} · {{ s.ruleName }} ·
+          {{ statuses[s.status] ?? s.status }} · {{ s.durationMs }} ms
         </summary>
-        <div class="step-body">
-          <button
-            v-if="editable"
-            class="button small"
-            @click="emit('locate', s.ruleId)"
-          >
-            编辑此规则
-          </button>
-          <p>
-            {{ s.reason }}
-            <strong v-if="s.applied" class="purple">· 已采用</strong>
-          </p>
-          <dl>
-            <dt>来源</dt>
-            <dd>{{ sources[s.ruleConfig.source] }}</dd>
-            <dt>原值 → 提取值 → 结果</dt>
-            <dd>
-              {{ valueText(s.before) }} → {{ valueText(s.extractedValue) }} →
-              {{ valueText(s.after) }}
-            </dd>
-            <dt>命中文本</dt>
-            <dd>{{ s.matchedText || '—' }}</dd>
-            <dt>开始时间</dt>
-            <dd>{{ s.startedAt }}</dd>
-          </dl>
-          <div v-for="(attempt, i) in s.attempts" :key="i" class="attempt">
-            <span class="tiny muted"
-              >尝试 {{ i + 1 }} ·
-              {{ attempt.matched ? '命中' : '未命中' }}</span
+        <button
+          v-if="editable"
+          class="text-button"
+          @click="emit('locate', s.ruleId)"
+        >
+          编辑规则
+        </button>
+        <p v-if="s.reason" class="red">{{ s.reason }}</p>
+        <details>
+          <summary>本步骤输出</summary>
+          <pre>{{ JSON.stringify(s.extractedValue, null, 2) }}</pre>
+        </details>
+        <div v-for="(attempt, a) in s.attempts" :key="a">
+          <p v-if="attempt.error" class="red">{{ attempt.error }}</p>
+          <article v-for="(event, e) in attempt.trace" :key="e" class="log">
+            <button
+              v-if="event.line"
+              class="text-button"
+              @click="locate(s.ruleId, event)"
             >
-            <EliText v-if="['absolutePath', 'relativePath'].includes(s.ruleConfig.source)" :text="attempt.input" ellipsis="start" class="attempt-path" />
-            <pre v-else>{{ attempt.input }}</pre>
-            <pre v-if="attempt.captures">{{
-              JSON.stringify(attempt.captures, null, 2)
+              L{{ event.line }}:{{ event.column }}
+            </button>
+            {{ event.message }}
+            <pre v-if="event.data !== undefined">{{
+              JSON.stringify(event.data, null, 2)
             }}</pre>
-            <details v-if="attempt.trace?.length" open class="script-log">
-              <summary>脚本过程（{{ attempt.trace.length }} 条）</summary>
-              <article
-                v-for="(event, index) in attempt.trace"
-                :key="index"
-                class="script-event"
-              >
-                <header>
-                  <button
-                    v-if="event.line"
-                    class="text-button"
-                    @click="locate(s.ruleId, event)"
-                  >
-                    {{ event.phase === 'source' ? '来源' : '脚本' }} L{{
-                      event.line
-                    }}:{{ event.column }}</button
-                  ><span class="tiny muted"
-                    >{{ event.operation }} · {{ event.function }}</span
-                  >
-                </header>
-                <p>{{ event.message }}</p>
-                <pre v-if="event.data !== undefined">{{
-                  JSON.stringify(event.data, null, 2)
-                }}</pre>
-              </article>
-            </details>
-            <p v-if="attempt.error" class="red">{{ attempt.error }}</p>
-          </div>
-          <details
-            v-if="s.ruleConfig.config.code"
-            :open="activeCode[s.ruleId]?.phase === 'extract'"
-            class="script-snapshot"
-          >
-            <summary>本次完整脚本（快照）</summary>
-            <ScriptCode
-              :model-value="s.ruleConfig.config.code"
-              :focus-key="activeCode[s.ruleId]?.request"
-              readonly
-              :active-line="
-                activeCode[s.ruleId]?.phase === 'extract'
-                  ? activeCode[s.ruleId]?.line
-                  : undefined
-              "
-            />
-          </details>
-          <details
-            v-if="s.ruleConfig.config.sourceCode"
-            :open="activeCode[s.ruleId]?.phase === 'source'"
-            class="script-snapshot"
-          >
-            <summary>本次来源清理脚本（快照）</summary>
-            <ScriptCode
-              :model-value="s.ruleConfig.config.sourceCode"
-              :focus-key="activeCode[s.ruleId]?.request"
-              readonly
-              :active-line="
-                activeCode[s.ruleId]?.phase === 'source'
-                  ? activeCode[s.ruleId]?.line
-                  : undefined
-              "
-            />
-          </details>
-          <details>
-            <summary>本次规则配置</summary>
-            <pre>{{ JSON.stringify(s.ruleConfig, null, 2) }}</pre>
-          </details>
+          </article>
         </div>
+        <details v-if="snapshots.get(s.ruleId)?.config.code">
+          <summary>脚本快照</summary>
+          <ScriptCode
+            :model-value="snapshots.get(s.ruleId)!.config.code!"
+            readonly
+            :active-line="activeLine[s.ruleId]"
+          />
+        </details>
       </details>
     </section>
-    <section v-if="view === 'all' || view === 'json'" class="pane raw">
-      <header class="pane-head">
-        <h2>完整 JSON</h2>
-        <button class="button small" @click="copy">复制 JSON</button>
-      </header>
-      <p v-if="copied" class="padding tiny" role="status">{{ copied }}</p>
-      <details ref="details">
-        <summary>展开 JSON</summary>
-        <textarea
-          ref="area"
-          :value="json"
-          rows="16"
-          readonly
-          aria-label="调试结果 JSON"
-        />
+    <section v-if="view === 'all' || view === 'json'" class="pane padding">
+      <button class="button small" @click="copy">复制 JSON</button>
+      <details>
+        <summary>完整 JSON</summary>
+        <pre tabindex="0">{{ JSON.stringify(result, null, 2) }}</pre>
       </details>
     </section>
   </div>
 </template>
 <style scoped>
-.script-log summary {
-  cursor: pointer;
-}
-.script-event {
-  border-top: 1px solid var(--line);
-  margin-top: 12px;
-  padding-top: 12px;
-}
-.script-event header {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.script-event p {
-  margin: 8px 0;
-}
-.script-event pre {
-  max-height: 220px;
-  overflow: auto;
-}
-.script-snapshot {
-  margin: 16px 0;
-}
-.script-snapshot > summary {
-  margin-bottom: 12px;
-}
-.extraction-output {
+.output {
   display: grid;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
   min-width: 0;
 }
-.extraction-root { display:flex; align-items:center; min-width:0; }
-.extraction-root > span:first-child { flex-shrink:0; }
-.attempt-path { display:flex; margin:12px 0; font-family:monospace; font-size:12px; }
-.metadata,
-.padding {
-  padding: 20px;
+.file-select {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.file-select > :last-child {
+  flex: 1;
+  min-width: 0;
 }
 h2 {
   font-size: 17px;
-  margin: 0;
+  padding: 18px;
 }
-dl {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  gap: 10px 16px;
-  font-size: 13px;
-}
-dt {
-  color: var(--muted);
-}
-dd {
-  margin: 0;
-  overflow-wrap: anywhere;
+.pane-head h2 {
+  padding: 0;
 }
 .pane-head {
   height: auto;
-  min-height: 60px;
   gap: 12px;
   flex-wrap: wrap;
+  padding: 16px;
 }
-.filters {
-  display: flex;
-  gap: 8px;
-}
-.filters :deep(.ui-select-anchor) {
-  max-width: 220px;
-  font-size: 12px;
-}
-.step {
-  border-top: 1px solid var(--line);
+.padding {
   padding: 16px 20px;
+  border-top: 1px solid var(--line);
 }
-.step > summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+summary {
   cursor: pointer;
   font-size: 13px;
+  margin-bottom: 10px;
 }
-.step-order {
-  color: var(--muted);
-  width: 28px;
-}
-.badge {
-  font-size: 11px;
-  padding: 3px 8px;
-  background: #f0eff5;
-  border-radius: 5px;
-}
-.matched {
-  background: #e5f6ed;
-  color: #187946;
-}
-.error {
-  background: #fff0f0;
-  color: #b12525;
-}
-.step-body {
-  padding: 8px 0 0;
+.field {
+  display: grid;
+  grid-template-columns: 90px minmax(80px, 1fr) minmax(0, 2fr);
+  gap: 14px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
-.step-body > p {
-  line-height: 1.7;
+.field > div {
+  display: grid;
+  gap: 5px;
 }
-.attempt {
+.candidate {
+  display: grid;
+  gap: 6px;
   padding: 12px;
-  background: #f6f7fb;
-  border-radius: 6px;
-  margin: 12px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.highlight {
+  background: #eee9fc;
+}
+.invalid {
+  color: var(--red);
+}
+.tokens {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tokens span {
+  padding: 6px;
+  background: #f2effa;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tokens .group {
+  border: 1px solid var(--purple);
 }
 pre {
+  max-height: 400px;
+  overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 12px;
-  line-height: 1.6;
 }
-.raw > details {
-  padding: 20px;
-}
-.raw summary,
-.step-body summary {
-  cursor: pointer;
-  color: var(--purple);
-  font-size: 13px;
-}
-textarea {
-  margin-top: 14px;
-  font-family: monospace;
+.log {
+  border-top: 1px solid var(--line);
+  padding: 8px;
   font-size: 12px;
 }
 @media (max-width: 600px) {
-  dl {
-    grid-template-columns: 1fr;
-    gap: 4px;
+  .field {
+    grid-template-columns: 80px 1fr;
   }
-  dd {
-    margin-bottom: 8px;
-  }
-  .filters {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-  .filters :deep(.ui-select-anchor) {
-    flex: 1;
-    min-width: 0;
-  }
-  .step {
-    padding: 16px;
-  }
-  .step > summary strong {
-    flex: 1;
-    min-width: 120px;
+  .field > div,
+  .field > .muted {
+    grid-column: 1/-1;
   }
 }
 </style>

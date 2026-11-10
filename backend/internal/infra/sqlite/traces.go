@@ -67,15 +67,15 @@ func (a *Store) TraceHistory(page int, path, workspace string) ([]recognition.Tr
 	where := " WHERE 1=1"
 	args := []any{}
 	if path != "" {
-		where += " AND f_path=?"
-		args = append(args, path)
+		where += " AND (t.f_path=? OR EXISTS(SELECT 1 FROM step_inputs i WHERE i.root=t.id AND i.value=?))"
+		args = append(args, path, path)
 	}
 	if workspace != "" {
 		where += " AND f_workspace_id=?"
 		args = append(args, workspace)
 	}
 	var total int
-	if err := tx.QueryRow("SELECT COUNT(*) FROM extraction_traces"+where, args...).Scan(&total); err != nil {
+	if err := tx.QueryRow("SELECT COUNT(*) FROM extraction_traces t"+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	args = append(args, (page-1)*20)
@@ -104,7 +104,7 @@ func (a *Store) TraceHistory(page int, path, workspace string) ([]recognition.Tr
 	}
 
 	// Read all metadata and episode rows for this page together. No step content is read.
-	selected := "SELECT id FROM extraction_traces" + where + " ORDER BY sequence DESC LIMIT 20 OFFSET ?"
+	selected := "SELECT id FROM extraction_traces t" + where + " ORDER BY sequence DESC LIMIT 20 OFFSET ?"
 	rows, err = tx.Query("SELECT owner,"+columnsTraceMetadata+" FROM trace_metadata WHERE root IN ("+selected+")", args...)
 	if err != nil {
 		return nil, 0, err

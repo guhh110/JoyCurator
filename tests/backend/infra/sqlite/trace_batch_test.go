@@ -13,7 +13,7 @@ func TestBatchedTraceChildrenRemainOrderedAndRollBackOnLateFailure(t *testing.T)
 	if err := s.StartTrace(v); err != nil {
 		t.Fatal(err)
 	}
-	step := recognition.Step{RuleConfig: recognition.DefaultRules()[0], Inputs: []string{}, Captures: map[string]string{}, Attempts: []recognition.Attempt{}}
+	step := recognition.Step{RuleConfig: recognition.DefaultPipeline().Tokenizer, Inputs: []string{}, Captures: map[string]string{}, Attempts: []recognition.Attempt{}}
 	for i := 0; i < 200; i++ {
 		step.Inputs = append(step.Inputs, fmt.Sprint(i))
 		step.Attempts = append(step.Attempts, recognition.Attempt{Input: fmt.Sprint(i), Captures: map[string]string{"x": "y"}, Trace: []recognition.ScriptEvent{{Message: fmt.Sprint(i), Data: map[string]any{"x": true}}}})

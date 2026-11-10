@@ -42,7 +42,7 @@ const tabs = [{ value: 'steps', label: '执行过程' }, { value: 'metadata', la
         <div class="history-tabs" role="group" aria-label="历史详情内容">
           <button v-for="tab in tabs" :key="tab.value" :aria-pressed="view === tab.value" @click="view = tab.value">{{ tab.label }}</button>
         </div>
-        <ExtractionOutput :key="traceId" :result="detail" :view="view" />
+        <ExtractionOutput :key="traceId" :result="detail" :view="view" :initial-path="typeof route.query.file==='string'?route.query.file:typeof route.query.path==='string'?route.query.path:undefined" />
       </template>
     </QueryState>
   </section>

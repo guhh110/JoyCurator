@@ -6,32 +6,46 @@ export type Target =
   | 'season'
   | 'episodes'
   | 'releaseTag'
-export type Source =
-  | 'filename'
-  | 'cleanFilename'
-  | 'parentDirectory'
-  | 'directories'
-  | 'relativePath'
-  | 'absolutePath'
+export type Role =
+  | Target
+  | 'resolution'
+  | 'videoCodec'
+  | 'audioCodec'
+  | 'bitDepth'
+  | 'dynamicRange'
+  | 'language'
+  | 'subtitleLanguage'
+  | 'checksum'
+export type Source = 'filename' | 'directories' | 'all'
+export type Stage = 'tokenize' | 'annotate' | 'resolve'
 export interface Rule {
   id: string
   name: string
   description?: string
-  target: Target
-  source: Source
+  stage: Stage
+  target?: Role
+  source?: Source
   order: number
   enabled: boolean
   kind: 'script' | 'regex'
-  overwrite: boolean
   config: {
     code?: string
-    sourceCode?: string
     params?: Record<string, unknown>
     pattern?: string
     capture?: string
     value?: unknown
   }
-  examples: { path: string; root?: string; expected: unknown }[]
+  examples: {
+    paths: string[]
+    root: string
+    targets: string[]
+    expected: unknown
+  }[]
+}
+export interface Pipeline {
+  tokenizer: Rule
+  annotators: Rule[]
+  resolver: Rule
 }
 export interface Metadata {
   tmdbId: number | null
@@ -42,37 +56,45 @@ export interface Metadata {
   episodes: number[]
   releaseTag: string | null
 }
-export interface Step {
-  ruleId: string
-  ruleName: string
-  order: number
-  ruleConfig: Rule
-  target: Target
-  inputs: string[]
-  attempts: {
-    input: string
-    matched: boolean
-    matchedText?: string
-    captures?: Record<string, string>
-    error?: string
-    trace?: ScriptEvent[]
-  }[]
-  status: string
-  matchedText: string
-  captures: Record<string, string>
-  extractedValue: unknown
-  before: unknown
-  after: unknown
-  applied: boolean
-  reason: string
-  startedAt: string
-  durationMs: number
+export interface Span {
+  sourceId: string
+  start: number
+  end: number
 }
-export interface ExtractionResult {
-  path?: string
-  root?: string
+export interface Token extends Span {
+  id: string
+  parentId: string | null
+  kind: 'text' | 'number' | 'separator' | 'group'
+  text: string
+}
+export interface Candidate {
+  id: string
+  ruleId: string
+  role: Role
+  value: unknown
+  spans: Span[]
+  strength: 'explicit' | 'contextual' | 'heuristic'
+  status: 'valid' | 'invalid'
+  reason: string
+}
+export interface Document {
+  fileId: string
+  path: string
+  directory: string
+  sources: { id: string; kind: Source; text: string; depth: number }[]
+  tokens: Token[]
+  candidates: Candidate[]
+}
+export interface FileResult {
+  fileId: string
+  path: string
   metadata: Metadata
-  steps: Step[]
+  decisions: Partial<
+    Record<
+      Target,
+      { candidates: { fileId: string; candidateId: string }[]; reason: string }
+    >
+  >
 }
 export interface ScriptEvent {
   phase: string
@@ -83,21 +105,50 @@ export interface ScriptEvent {
   message: string
   data?: unknown
 }
-export interface Catalog {
-  id: string
-  name: string
-  target: Target
-  description: string
-  sources: Source[]
-  config: Rule['config']
+export interface Step {
+  ruleId: string
+  ruleName: string
+  stage: Stage
+  fileId: string
+  order: number
+  ruleConfig: Rule
+  target?: Role
+  inputs: string[]
+  attempts: {
+    input: string
+    matched: boolean
+    error?: string
+    trace?: ScriptEvent[]
+  }[]
+  status: string
+  extractedValue: unknown
+  before: unknown
+  after: unknown
+  applied: boolean
+  reason: string
+  startedAt: string
+  durationMs: number
 }
+export interface ExtractionResult {
+  context: {
+    contextRoot: string
+    sourceBoundary: string
+    paths: string[]
+    targets: string[]
+  }
+  tree: { path: string; parent: string; fileIds: string[] }[]
+  documents: Document[]
+  files: FileResult[]
+  steps: Step[]
+  error?: string
+}
+export type Catalog = Rule
 export interface RuleLibrary {
-  rules: Rule[]
-  defaults: Rule[]
-  catalog: Catalog[]
-  targets: Target[]
+  pipeline: Pipeline
+  defaults: Pipeline
+  catalog: Rule[]
+  targets: Role[]
   sources: Source[]
-  sourceScripts: Partial<Record<Source, string>>
   scriptLanguage: string
 }
 export interface Trace {
@@ -107,7 +158,6 @@ export interface Trace {
   status: string
   startedAt: string
   finishedAt?: string
-  metadata: Metadata
   error?: string
   stepCount: number
 }
@@ -118,19 +168,31 @@ export const targets: Record<Target, string> = {
   year: '年份',
   season: '季号',
   episodes: '集数',
-  releaseTag: '发布标签',
+  releaseTag: '发布组',
+}
+export const roles: Record<Role, string> = {
+  ...targets,
+  resolution: '分辨率',
+  videoCodec: '视频编码与来源',
+  audioCodec: '音频编码',
+  bitDepth: '位深',
+  dynamicRange: '动态范围',
+  language: '语言',
+  subtitleLanguage: '字幕语言',
+  checksum: '校验码',
+}
+export const stages: Record<Stage, string> = {
+  tokenize: '分词',
+  annotate: '候选标注',
+  resolve: '元数据裁决',
 }
 export const sources: Record<Source, string> = {
   filename: '文件名',
-  cleanFilename: '清理后文件名',
-  parentDirectory: '父目录',
-  directories: '逐级父目录（近到远）',
-  relativePath: '边界内相对路径',
-  absolutePath: '绝对路径',
+  directories: '父目录',
+  all: '全部来源',
 }
 export const statuses: Record<string, string> = {
-  matched: '命中',
-  not_matched: '未命中',
+  matched: '完成',
   disabled: '禁用',
   skipped: '跳过',
   error: '错误',
@@ -142,32 +204,15 @@ export function valueText(value: unknown): string {
       ? value
       : JSON.stringify(value)
 }
-// Execution order is field-major: every field runs in this sequence, so a later
-// field (mediaType) can read earlier ones (season, episodes) from ctx.metadata.
-export const fieldOrder: Target[] = [
-  'tmdbId',
-  'season',
-  'episodes',
-  'mediaType',
-  'title',
-  'year',
-  'releaseTag',
-]
-// Stable sort by field, keeping the existing relative order inside each field.
-export function fieldMajor<T>(items: T[], target: (item: T) => Target): T[] {
-  return items
-    .map((item, index) => ({ item, index }))
-    .sort(
+export function pipelineRules(p: Pipeline): Rule[] {
+  return [
+    p.tokenizer,
+    ...[...p.annotators].sort(
       (a, b) =>
-        fieldOrder.indexOf(target(a.item)) -
-          fieldOrder.indexOf(target(b.item)) || a.index - b.index,
-    )
-    .map(({ item }) => item)
+        Number(a.target === 'title') - Number(b.target === 'title') ||
+        a.order - b.order,
+    ),
+    p.resolver,
+  ]
 }
-
-export const emptyScript = `function extract(ctx) {
-  trace("输入文本", ctx.text)
-  // 返回本规则的目标值；未命中时返回 null。
-  return null
-}
-`
+export const emptyScript = `function extract(ctx) {\n  trace("片段数量", ctx.tokens.length)\n  return []\n}\n`

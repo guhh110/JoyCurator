@@ -2,29 +2,13 @@ import { effectScope } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useExtraction } from '../../../frontend/src/features/extraction/useExtraction'
 import { valueText } from '../../../frontend/src/features/extraction/model'
-import type { ExtractionResult } from '../../../frontend/src/features/extraction/model'
+import { extraction as result } from '../fixtures/pipeline'
 
 const scopes: ReturnType<typeof effectScope>[] = []
 function workspace() {
   const scope = effectScope()
   scopes.push(scope)
   return { scope, state: scope.run(useExtraction)! }
-}
-function result(title: string): ExtractionResult {
-  return {
-    path: `/nas/${title}.mkv`,
-    root: '/',
-    metadata: {
-      title,
-      year: null,
-      mediaType: null,
-      tmdbId: null,
-      season: null,
-      episodes: [],
-      releaseTag: null,
-    },
-    steps: [],
-  }
 }
 function response(title: string) {
   return new Response(JSON.stringify(result(title)), {
@@ -59,11 +43,13 @@ describe('recognition debug request lifecycle', () => {
     const [url, options] = fetch.mock.calls[0]!
     expect(url).toBe('/api/extraction/test')
     expect(JSON.parse(options.body)).toEqual({
-      path: '/nas/Film.mkv',
-      root: '/nas',
+      paths: ['/nas/Film.mkv'],
+      targets: ['/nas/Film.mkv'],
+      sourceBoundary: '/nas',
+      contextRoot: '/nas',
     })
     expect(options.signal).toBeInstanceOf(AbortSignal)
-    expect(state.result.value?.metadata.title).toBe('Film')
+    expect(state.result.value?.files[0]?.metadata.title).toBe('Film')
     expect(state.busy.value).toBe(false)
   })
   it('cancels and ignores a response that arrives after cancellation', async () => {
@@ -98,7 +84,7 @@ describe('recognition debug request lifecycle', () => {
     await second
     old.resolve(response('Old'))
     await first
-    expect(state.result.value?.metadata.title).toBe('New')
+    expect(state.result.value?.files[0]?.metadata.title).toBe('New')
     expect(fetch.mock.calls[0]![1].signal.aborted).toBe(true)
   })
   it('aborts when the owning component scope is disposed', async () => {

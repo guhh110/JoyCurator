@@ -53,7 +53,8 @@ func reidentifyFixture(t *testing.T) (*App, matching.Workspace) {
 	if err := a.store.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
 	}
-	rules := []recognition.Rule{{ID: "new-title", Name: "new title", Target: recognition.Title, Source: recognition.Filename, Enabled: true, Order: 10, Kind: "regex", Config: recognition.Config{Pattern: ".+", Value: []byte(`"Fresh"`)}}}
+	rules := recognition.DefaultPipeline()
+	rules.Annotators = []recognition.Rule{{Stage: "annotate", ID: "new-title", Name: "new title", Target: recognition.Title, Source: recognition.Filename, Enabled: true, Order: 10, Kind: "regex", Config: recognition.Config{Pattern: ".+", Value: []byte(`"Fresh"`)}}}
 	if err := a.dependencies.Recognition.Save(rules); err != nil {
 		t.Fatal(err)
 	}
@@ -106,11 +107,11 @@ func TestReidentifyOnlySelectedRowsAndPreserveManualSnapshots(t *testing.T) {
 			t.Fatal("old trace reused")
 		}
 		_, oldSteps, err := a.dependencies.Recognition.Detail(w.Items[i].TraceID)
-		if err != nil || len(oldSteps) != len(recognition.DefaultRules()) {
+		if err != nil || len(oldSteps) != len(recognition.DefaultPipeline().Rules()) {
 			t.Fatal("old trace overwritten", err)
 		}
 		_, steps, err := a.dependencies.Recognition.Detail(final.Items[i].TraceID)
-		if err != nil || len(steps) != 1 || steps[0].RuleID != "new-title" {
+		if err != nil || len(steps) != 7 || steps[1].RuleID != "new-title" {
 			t.Fatal(steps, err)
 		}
 	}

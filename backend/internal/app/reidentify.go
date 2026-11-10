@@ -118,6 +118,17 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 		}
 		_ = persist()
 	}
+	wanted := []string{}
+	for _, item := range task.Items {
+		if item.State == "reidentifying" {
+			wanted = append(wanted, item.Path)
+		}
+	}
+	freshItems, extractErr := a.extractContexts(ctx, task.Paths, wanted, s, task.ID)
+	if extractErr != nil {
+		failure(extractErr)
+		return
+	}
 	memo := matching.NewResolver(client)
 	resolved := map[string]matching.Item{}
 	processed := 0
@@ -139,11 +150,7 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 			failure(errors.New("来源文件不可用：" + old.Path))
 			return
 		}
-		fresh, err := a.extractItem(ctx, old.Path, info, s, task.ID)
-		if err != nil {
-			failure(err)
-			return
-		}
+		fresh := freshItems[old.Path]
 		if old.Edited {
 			// Refresh raw metadata/trace while keeping every manual decision and snapshot.
 			fresh.Entry, fresh.Candidates, fresh.Group = old.Entry, old.Candidates, old.Group

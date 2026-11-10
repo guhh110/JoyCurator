@@ -71,25 +71,6 @@ func prepare(in Input) (pathInput, error) {
 	}
 	return p, nil
 }
-func (p pathInput) sources(source Source) []string {
-	switch source {
-	case Filename:
-		return []string{p.filename}
-	case CleanFilename:
-		return []string{p.filename}
-	case ParentDirectory:
-		if len(p.directories) > 0 {
-			return p.directories[:1]
-		}
-	case Directories:
-		return p.directories
-	case RelativePath:
-		return []string{p.relative}
-	case AbsolutePath:
-		return []string{p.path}
-	}
-	return []string{}
-}
 func NormalizeTitle(s string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
@@ -98,11 +79,30 @@ func NormalizeTitle(s string) string {
 		return -1
 	}, s)
 }
-func protected(text string, start, end int) bool {
-	for _, span := range idRE.FindAllStringIndex(text, -1) {
-		if start < span[1] && end > span[0] {
-			return true
-		}
+
+func pathDir(file string) string {
+	if strings.HasPrefix(file, "/") {
+		return path.Dir(file)
 	}
-	return false
+	return filepath.Dir(file)
+}
+func pathClean(file string) string {
+	if strings.HasPrefix(file, "/") {
+		return path.Clean(file)
+	}
+	return filepath.Clean(file)
+}
+func pathJoin(base, name string) string {
+	if strings.HasPrefix(base, "/") {
+		return path.Join(base, name)
+	}
+	return filepath.Join(base, name)
+}
+func pathWithin(root, file string) bool {
+	if strings.HasPrefix(root, "/") && strings.HasPrefix(file, "/") {
+		root = path.Clean(root)
+		return file == root || strings.HasPrefix(file, strings.TrimSuffix(root, "/")+"/")
+	}
+	rel, err := filepath.Rel(root, file)
+	return err == nil && (rel == "." || filepath.IsLocal(rel))
 }

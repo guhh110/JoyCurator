@@ -516,6 +516,7 @@ const workType = (group: Group) =>
                       :to="{
                         name: 'extraction-history-detail',
                         params: { traceId: file.traceId },
+                        query:{file:file.path},
                       }"
                       aria-label="查看识别过程"
                       title="查看识别过程"

@@ -47,7 +47,7 @@ func TestWorkspaceExposesMetadata(t *testing.T) {
 		a.Handler(nil).ServeHTTP(response, request)
 		return response
 	}
-	if response := call("/api/extraction/test", `{"path":"/absent/Show.S00E01.mkv"}`); response.Code != 200 || !strings.Contains(response.Body.String(), `"metadata"`) {
+	if response := call("/api/extraction/test", `{"paths":["/absent/Show.S00E01.mkv"],"targets":["/absent/Show.S00E01.mkv"]}`); response.Code != 200 || !strings.Contains(response.Body.String(), `"metadata"`) {
 		t.Fatal(response.Code, response.Body.String())
 	}
 	for _, path := range []string{"/api/scan", "/api/preview", "/api/execute"} {

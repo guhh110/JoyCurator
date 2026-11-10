@@ -24,7 +24,7 @@ func New(store Store, closing func() bool) (*Service, error) {
 	return &Service{store: store, engine: engine, closing: closing}, nil
 }
 func (a *Service) Current() *Engine { a.mu.RLock(); defer a.mu.RUnlock(); return a.engine }
-func (a *Service) Save(rules []Rule) error {
+func (a *Service) Save(rules Pipeline) error {
 	engine, err := Compile(rules)
 	if err != nil {
 		return err

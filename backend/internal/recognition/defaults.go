@@ -2,33 +2,26 @@ package recognition
 
 import "encoding/json"
 
-// DefaultRules is one rule per field. Each script reads the filename and the
-// directories itself, so the rules use the relative path as their source.
-// Season and episodes run before the media type, which reuses their result.
-func DefaultRules() []Rule {
-	examples := map[string][]Example{
-		"tmdb-id":     {{Path: "/source/Show [tmdb-7]/Season 2/03.mkv", Root: "/source", Expected: json.RawMessage(`7`)}},
-		"season":      {{Path: "/Show.S00E01.mkv", Expected: json.RawMessage(`0`)}, {Path: "/source/Show/第二季/07.mkv", Root: "/source", Expected: json.RawMessage(`2`)}},
-		"episodes":    {{Path: "/Show.S02E03-E05.mkv", Expected: json.RawMessage(`[3,4,5]`)}, {Path: "/fan人修仙/第一季/第一集.mp4", Root: "/", Expected: json.RawMessage(`[1]`)}, {Path: "/source/The.Matrix.1999.tmdb-603.mkv", Root: "/source", Expected: json.RawMessage(`null`)}},
-		"media-type":  {{Path: "/Show.1x03.mkv", Expected: json.RawMessage(`"tv"`)}, {Path: "/The.Matrix.1999.mkv", Expected: json.RawMessage(`null`)}},
-		"title":       {{Path: "/[Group] 1917.2019.1080p.mkv", Expected: json.RawMessage(`"1917"`)}},
-		"year":        {{Path: "/2001.A.Space.Odyssey.1968.mkv", Expected: json.RawMessage(`1968`)}},
-		"release-tag": {{Path: "/Film.2020.1080p-GROUP.mkv", Expected: json.RawMessage(`"GROUP"`)}},
+func DefaultPipeline() Pipeline {
+	catalog := Catalog()
+	p := Pipeline{Tokenizer: catalog[0], Annotators: []Rule{}, Resolver: catalog[len(catalog)-1]}
+	for i, r := range catalog[1 : len(catalog)-1] {
+		r.Order = (i + 1) * 10
+		p.Annotators = append(p.Annotators, r)
 	}
-	rules := []Rule{}
-	for _, id := range []string{"tmdb-id", "season", "episodes", "media-type", "title", "year", "release-tag"} {
-		d, _ := descriptor(id)
-		rules = append(rules, Rule{ID: id, Name: d.Name, Description: d.Description, Target: d.Target, Source: RelativePath, Order: (len(rules) + 1) * 10, Enabled: true, Kind: "script", Config: d.Config, Examples: examples[id]})
-	}
-	return rules
+	p.Tokenizer.Examples = []Example{{Paths: []string{"/source/Film.mkv"}, Root: "/source", Targets: []string{"/source/Film.mkv"}, Expected: json.RawMessage(`[[{"id":"t0","sourceId":"name","parentId":null,"kind":"text","text":"Film","start":0,"end":4}]]`)}}
+	p.Annotators[0].Examples = []Example{{Paths: []string{"/source/Film.tmdb-7.mkv"}, Root: "/source", Targets: []string{"/source/Film.tmdb-7.mkv"}, Expected: json.RawMessage(`[[{"id":"tmdb-id:0","ruleId":"tmdb-id","role":"tmdbId","value":7,"spans":[{"sourceId":"name","start":5,"end":11}],"strength":"explicit","status":"valid","reason":"TMDB 标记"}]]`)}}
+	p.Tokenizer.Examples = append(p.Tokenizer.Examples, Example{Paths: []string{"/source/第3集.HD1080P.mkv"}, Root: "/source", Targets: []string{"/source/第3集.HD1080P.mkv"}, Expected: json.RawMessage(`[[{"id":"t0","sourceId":"name","parentId":null,"kind":"text","text":"第3集","start":0,"end":3},{"id":"t1","sourceId":"name","parentId":null,"kind":"separator","text":".","start":3,"end":4},{"id":"t2","sourceId":"name","parentId":null,"kind":"text","text":"HD1080P","start":4,"end":11}]]`)})
+	p.Resolver.Examples = []Example{{Paths: []string{"/source/Show.S00E01.mkv"}, Root: "/source", Targets: []string{"/source/Show.S00E01.mkv"}, Expected: json.RawMessage(`[{"fileId":"file-0","path":"/source/Show.S00E01.mkv","metadata":{"tmdbId":null,"title":"Show","mediaType":"tv","year":null,"season":0,"episodes":[1],"releaseTag":null},"decisions":{"title":{"candidates":[{"fileId":"file-0","candidateId":"title:0"}],"reason":"来源片名"},"season":{"candidates":[{"fileId":"file-0","candidateId":"season:0"}],"reason":"季集标记"},"episodes":{"candidates":[{"fileId":"file-0","candidateId":"episodes:0"}],"reason":"季集标记"},"mediaType":{"candidates":[{"fileId":"file-0","candidateId":"season:0"},{"fileId":"file-0","candidateId":"episodes:0"}],"reason":"季号或集数提供剧集依据"}}}]`)}}
+	return p
 }
 
 var defaultEngine = func() *Engine {
-	engine, err := Compile(DefaultRules())
+	e, err := Compile(DefaultPipeline())
 	if err != nil {
 		panic(err)
 	}
-	return engine
+	return e
 }()
 
 func DefaultEngine() *Engine { return defaultEngine }

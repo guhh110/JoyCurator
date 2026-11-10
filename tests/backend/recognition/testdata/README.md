@@ -4,8 +4,8 @@
 
 ## 当前覆盖
 
-- `paths.json`：97 条通过样本，包括原 `paths_test.go` 的全部 31 条路径；逐项比较全部 7 个元数据字段及执行错误。
-- `known-gaps.json`：3 条待修复样本，保留期望结果和问题说明，不把当前错误输出写成正确答案，也不计入识别通过数。
+- `paths.json`：100 条通过样本，包括原 `paths_test.go` 的全部 31 条路径；逐项比较全部 7 个元数据字段、无效候选诊断及执行错误。
+- `known-gaps.json`：当前为空，原 3 条问题已修复并加入 paths.json。
 - 覆盖电影、剧集、动漫、中文数字、TMDB ID、防画质误识别、年份、目录上下文、解析边界、字段冲突、发布标签、非法输入值。
 - 这些是人工设计的命名样本，不代表真实媒体库识别准确率；后续应持续加入脱敏后的真实失败路径。
 
@@ -37,13 +37,9 @@
 
 `errors` 是「规则 ID → 预期错误信息片段」字典。正常样本使用 `{}`，任何意外执行错误都会失败。非法集号等样本应同时断言剩余有效元数据和明确错误，不能把报错与正常未命中混为一谈。
 
-## 待修复问题
+## 已修复问题
 
-1. `release-case`：发布组 `Group_1` 末尾数字被识别为第 1 集，媒体类型随之误判为 `tv`。
-2. `invalid-descending-range`：`S01E05-E03` 倒序范围被尾部集号兜底识别成第 3 集。
-3. `invalid-too-many-episodes`：`S01E01-E1001` 超大范围被尾部集号兜底识别成第 1001 集。
-
-待修复记录用 `sample` 保存同格式样本，额外提供 `issue` 和 `differences`（允许仍不符合期望的字段名，执行错误用 `errors`）。测试不跳过它们：出现额外差异会失败；全部修好后也会提示失败，要求将该样本移入 `paths.json`、删除对应待修复记录。使用 `-v` 可看到当前差异。
+发布组 Group_1 不再产生集号；倒序或超大显式集数范围保留无效候选，不再由尾部集号重新解释。三项期望均作为通过样本保留。
 
 ## 当前策略与含糊命名
 
@@ -62,7 +58,7 @@ python3 tests/run_backend.py test -run '^TestRecognitionPathCorpus$' -v ./intern
 
 # 单类或单个样本，便于改规则后快速验证
 python3 tests/run_backend.py test -run 'TestRecognitionPathCorpus/ids/' -v ./internal/recognition
-python3 tests/run_backend.py test -run 'TestRecognitionKnownGaps/invalid-descending-range' -v ./internal/recognition
+python3 tests/run_backend.py test -run 'TestRecognitionPathCorpus/invalid/' -v ./internal/recognition
 
 # 全部识别测试，包括样本接口、运行时、取消和竞态
 python3 tests/run_backend.py test -race ./internal/recognition

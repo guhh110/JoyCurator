@@ -347,14 +347,16 @@
     "category": "boundary",
     "path": "/source/第一集.mp4",
     "root": "/source",
-    "reason": "无边界内父目录，不把第一集猜成集号。",
+    "reason": "第N集是显式集号，无边界内父目录仍可识别，不补季号和片名。",
     "expected": {
       "tmdbId": null,
-      "title": "第一集",
-      "mediaType": null,
+      "title": null,
+      "mediaType": "tv",
       "year": null,
       "season": null,
-      "episodes": [],
+      "episodes": [
+        1
+      ],
       "releaseTag": null
     },
     "errors": {}
@@ -627,10 +629,10 @@
     "category": "movies",
     "path": "/source/Spider-Man.2002.1080p.mkv",
     "root": "/source",
-    "reason": "片名内部连字符保留，不把含点后缀当发布组。",
+    "reason": "片名词之间统一空格，不把含点后缀当发布组。",
     "expected": {
       "tmdbId": null,
-      "title": "Spider-Man",
+      "title": "Spider Man",
       "mediaType": null,
       "year": 2002,
       "season": null,
@@ -1638,7 +1640,9 @@
       "mediaType": "tv",
       "year": null,
       "season": 1,
-      "episodes": [0],
+      "episodes": [
+        0
+      ],
       "releaseTag": null
     },
     "errors": {}
@@ -1714,7 +1718,9 @@
       "mediaType": "tv",
       "year": null,
       "season": null,
-      "episodes": [0],
+      "episodes": [
+        0
+      ],
       "releaseTag": null
     },
     "errors": {}
@@ -1774,6 +1780,61 @@
     },
     "errors": {
       "tmdb-id": "tmdbId 提取值类型或范围无效"
+    }
+  },
+  {
+    "id": "release-case",
+    "category": "release-tags",
+    "path": "/source/Film.2024.1080p-Group_1.mkv",
+    "root": "/source",
+    "reason": "发布标签保留大小写与下划线。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Film",
+      "mediaType": null,
+      "year": 2024,
+      "season": null,
+      "episodes": [],
+      "releaseTag": "Group_1"
+    },
+    "errors": {}
+  },
+  {
+    "id": "invalid-descending-range",
+    "category": "invalid",
+    "path": "/source/Show.S01E05-E03.mkv",
+    "root": "/source",
+    "reason": "倒序范围拒绝。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "episodes": "合并集范围无效"
+    }
+  },
+  {
+    "id": "invalid-too-many-episodes",
+    "category": "invalid",
+    "path": "/source/Show.S01E01-E1001.mkv",
+    "root": "/source",
+    "reason": "单文件不能扩展出超过 1000 集。",
+    "expected": {
+      "tmdbId": null,
+      "title": "Show",
+      "mediaType": "tv",
+      "year": null,
+      "season": 1,
+      "episodes": [],
+      "releaseTag": null
+    },
+    "errors": {
+      "episodes": "合并集范围无效"
     }
   }
 ]

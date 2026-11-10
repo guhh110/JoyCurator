@@ -41,7 +41,7 @@ func openStore(t testing.TB) *Store {
 
 func TestTraceSnapshotsPaginationAndCascade(t *testing.T) {
 	store := openStore(t)
-	rule := recognition.DefaultRules()[0]
+	rule := recognition.DefaultPipeline().Tokenizer
 	for i := 0; i < 21; i++ {
 		id := model.Key()
 		if err := store.StartTrace(recognition.Trace{ID: id, Path: "/source/file.mkv", Root: "/source", Status: "running"}); err != nil {
@@ -59,7 +59,7 @@ func TestTraceSnapshotsPaginationAndCascade(t *testing.T) {
 	if err != nil || len(next) != 1 || total != 21 {
 		t.Fatal(len(next), total, err)
 	}
-	if err := store.SaveRules([]recognition.Rule{}); err != nil {
+	if err := store.SaveRules(emptyPipeline()); err != nil {
 		t.Fatal(err)
 	}
 	_, steps, err := store.TraceDetail(page[0].ID)
@@ -103,5 +103,32 @@ func TestWorkspaceRevisionAndCachePort(t *testing.T) {
 	value, err = store.LoadCache(ctx, "key", 30)
 	if err != nil || value != nil {
 		t.Fatal(value, err)
+	}
+}
+
+func emptyPipeline() recognition.Pipeline {
+	p := recognition.DefaultPipeline()
+	p.Annotators = []recognition.Rule{}
+	return p
+}
+func pipelineWith(r recognition.Rule) recognition.Pipeline {
+	p := emptyPipeline()
+	p.Tokenizer = r
+	return p
+}
+
+func TestSharedTraceCanBeFoundByContextFilePath(t *testing.T) {
+	store := openStore(t)
+	trace := recognition.Trace{ID: "tree", Path: "/source/Show", Status: "running"}
+	if err := store.StartTrace(trace); err != nil {
+		t.Fatal(err)
+	}
+	trace.Status = "completed"
+	if err := store.FinishTrace(trace, []recognition.Step{{Inputs: []string{"/source/Show/01.mkv"}}}); err != nil {
+		t.Fatal(err)
+	}
+	items, total, err := store.TraceHistory(1, "/source/Show/01.mkv", "")
+	if err != nil || total != 1 || len(items) != 1 || items[0].ID != "tree" {
+		t.Fatal(items, total, err)
 	}
 }

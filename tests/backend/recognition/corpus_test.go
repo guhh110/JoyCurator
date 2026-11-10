@@ -41,7 +41,7 @@ func readPathSamples(data []byte) ([]pathSample, error) {
 	}
 	ids, inputs := map[string]bool{}, map[string]bool{}
 	ruleIDs := map[string]bool{}
-	for _, rule := range r.DefaultRules() {
+	for _, rule := range r.DefaultPipeline().Rules() {
 		ruleIDs[rule.ID] = true
 	}
 	for _, sample := range samples {
@@ -118,6 +118,16 @@ func sampleDifferences(sample pathSample, got r.Result) map[string]string {
 		if step.Status == "error" {
 			errors[step.RuleID] = step.Reason
 		}
+		if step.Stage == "annotate" {
+			raw, _ := json.Marshal(step.ExtractedValue)
+			var candidates []r.Candidate
+			_ = json.Unmarshal(raw, &candidates)
+			for _, c := range candidates {
+				if c.Status == "invalid" {
+					errors[step.RuleID] = c.Reason
+				}
+			}
+		}
 	}
 	if len(errors) != len(sample.Errors) {
 		differences["errors"] = fmt.Sprintf("expected %v, actual %v", sample.Errors, errors)
@@ -181,55 +191,9 @@ func TestRecognitionCorpusFormat(t *testing.T) {
 	}
 }
 
-// Known gaps keep the desired result, not a snapshot of incorrect output.
-// Only the listed differences are tolerated; a fix must promote the sample.
-func TestRecognitionKnownGaps(t *testing.T) {
-	var gaps []struct {
-		Issue       string     `json:"issue"`
-		Sample      pathSample `json:"sample"`
-		Differences []string   `json:"differences"`
-	}
-	decoder := json.NewDecoder(bytes.NewReader(readCorpusFile(t, "known-gaps.json")))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&gaps); err != nil {
-		t.Fatal(err)
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		t.Fatal("trailing known-gap data", err)
-	}
-	all := loadPathSamples(t)
-	for _, gap := range gaps {
-		all = append(all, gap.Sample)
-	}
-	raw, _ := json.Marshal(all)
-	if _, err := readPathSamples(raw); err != nil {
-		t.Fatal(err)
-	}
-	if len(all) < 100 {
-		t.Fatal("corpus lost samples", len(all))
-	}
-	for _, gap := range gaps {
-		t.Run(gap.Sample.ID, func(t *testing.T) {
-			if strings.TrimSpace(gap.Issue) == "" || len(gap.Differences) == 0 {
-				t.Fatal("known gap requires an issue and explicit differing fields")
-			}
-			got, err := r.DefaultEngine().Extract(context.Background(), r.Input{Path: gap.Sample.Path, Root: gap.Sample.Root}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			differences := sampleDifferences(gap.Sample, got)
-			if len(differences) == 0 {
-				t.Fatal("gap fixed: move this sample from known-gaps.json to paths.json")
-			}
-			if len(differences) != len(gap.Differences) {
-				t.Fatalf("known gap changed: expected fields %v, actual %v", gap.Differences, differences)
-			}
-			for _, field := range gap.Differences {
-				if _, ok := differences[field]; !ok {
-					t.Errorf("known gap changed: expected difference in %s, actual %v", field, differences)
-				}
-			}
-			t.Logf("KNOWN GAP (not a passing recognition): %s; %v", gap.Issue, differences)
-		})
+func TestRecognitionKnownGapsPromoted(t *testing.T) {
+	var gaps []any
+	if err := json.Unmarshal(readCorpusFile(t, "known-gaps.json"), &gaps); err != nil || len(gaps) != 0 {
+		t.Fatal("all known gaps must be covered by passing corpus", err)
 	}
 }
