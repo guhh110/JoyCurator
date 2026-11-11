@@ -39,38 +39,38 @@ export const scriptContextFields: readonly ScriptFieldReference[] = [
     type: 'Candidate[]',
     summary: '已有候选',
     description:
-      '已有标注及词内原文范围，保留冲突与无效解释。valid 表示值合法，不等于采纳；heuristic 集数须目录佐证，片名候选保留这些数字，裁决确认后再排除。',
+      '已有核心元数据候选及原文范围，供片名与自定义标注使用；默认普通标注互不读取。valid 表示值合法，不等于采纳；推测集数须目录佐证，片名保留数字直到建议确定。',
   },
   {
     name: 'contextRoot',
     type: 'string',
     summary: '上下文目录',
-    description: '裁决输入，完整目录树根。',
+    description: '建议输入，完整目录树根。',
   },
   {
     name: 'sourceBoundary',
     type: 'string',
     summary: '解析边界',
-    description: '裁决输入，来源文本不包含此目录及其父级。',
+    description: '建议输入，来源文本不包含此目录及其父级。',
   },
   {
     name: 'tree',
     type: 'TreeNode[]',
     summary: '目录树',
-    description: '裁决输入，节点含 path、parent、fileIds。',
+    description: '建议输入，节点含 path、parent、fileIds。',
   },
   {
     name: 'files',
     type: 'Document[]',
     summary: '全部上下文文件',
     description:
-      '裁决输入，含全部文件的 sources、tokens、candidates，包括非目标文件。默认在同目录相同命名结构、有明确季集依据且集数值变化时采纳唯一数字位置，再裁决片名。',
+      '建议输入，含全部文件的 sources、tokens、candidates，包括非目标文件。默认集中处理 TMDB、年份与季集的范围冲突；在同目录相同命名结构、有明确季集依据且集数值变化时采纳唯一数字位置，再建议片名。',
   },
   {
     name: 'targetFileIds',
     type: 'string[]',
-    summary: '待裁决目标',
-    description: '裁决须逐个返回结果；不得遗漏、重复或增加其他文件。',
+    summary: '待建议目标',
+    description: '建议须逐个返回结果；不得遗漏、重复或增加其他文件。',
   },
   {
     name: 'params',

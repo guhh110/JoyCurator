@@ -29,7 +29,7 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 		return nil, errors.New("请先选择作品")
 	}
 	for _, item := range items {
-		if item.State != "ready" || item.Removed || item.Entry == nil || matching.EntryGroup(*item.Entry) != matching.EntryGroup(entry) || !a.sources.SourceAllowed(item.Path, s) {
+		if !item.Confirmed() || item.State != "ready" || item.Removed || item.Entry == nil || matching.EntryGroup(*item.Entry) != matching.EntryGroup(entry) || !a.sources.SourceAllowed(item.Path, s) {
 			return nil, errors.New("预览包含源目录之外或目标目录内的文件，请重新添加")
 		}
 	}
@@ -120,7 +120,7 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 		row := Row{Source: f.Path, Season: f.Season, Episodes: f.Episodes, Artifacts: []string{}, Issues: []string{}, Action: "create"}
 		fail := func(msg string) { row.Issues = append(row.Issues, msg); plan.Issues = append(plan.Issues, msg) }
 		info, e := a.access.Stat(f.Path)
-		if e != nil || !info.Mode().IsRegular() || info.Size() != f.Size || info.ModTime().UnixNano() != f.MTime {
+		if e != nil || !info.Mode().IsRegular() || info.Size() != f.Size || info.ModTime().UnixNano() != f.MTime || fsops.Identity(info)!=item.Identity {
 			fail("源文件已变化，请重新添加：" + filepath.Base(f.Path))
 			plan.Rows = append(plan.Rows, row)
 			continue
@@ -207,7 +207,19 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 			plan.Issues = append(plan.Issues, "目标磁盘空间不足")
 		}
 	}
+	inferMappingLayouts(plan.Mappings, s.TargetRoot)
 	return plan, nil
 }
 
-// Child previews are included in their parent and never independently cached.
+// Infer layouts from actual target paths, including custom naming rules.
+
+func inferMappingLayouts(mappings []model.MediaMapping, target string) {
+	items := make([]matching.Item, len(mappings))
+	for i, m := range mappings {
+		items[i] = matching.Item{File: model.File{Path: m.Path, Season: m.Season, Episodes: m.Episodes}, Layout: m.Layout, Entry: &model.Entry{Type: m.Type, TMDBID: m.TMDBID}}
+	}
+	matching.InferLayouts(items, target)
+	for i := range mappings {
+		mappings[i].Layout = items[i].Layout
+	}
+}

@@ -26,7 +26,7 @@ describe('pipeline actions', () => {
       }),
     )
     expect(html).toContain('分词')
-    expect(html).toContain('元数据裁决')
+    expect(html).toContain('建议脚本')
     expect(html.match(/>\s*删除\s*</g)).toHaveLength(1)
     expect(html).not.toContain('覆盖')
   })

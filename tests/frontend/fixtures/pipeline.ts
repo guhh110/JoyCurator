@@ -30,7 +30,7 @@ export function pipeline(annotators: Rule[] = [annotation()]): Pipeline {
     annotators,
     resolver: {
       id: 'resolver',
-      name: '元数据裁决',
+      name: '建议脚本',
       stage: 'resolve',
       order: 0,
       enabled: true,
@@ -48,7 +48,6 @@ export function extraction(title = 'Film'): ExtractionResult {
     year: null,
     season: null,
     episodes: [],
-    releaseTag: null,
   }
   return {
     context: {

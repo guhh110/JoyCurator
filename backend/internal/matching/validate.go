@@ -41,18 +41,7 @@ func (m *Resolver) Validate(ctx context.Context, item *Item) {
 		m.seasons[id] = seasons
 	}
 	m.log.Add("validate", "seasons", "info", "获取作品季列表，季号大于 0 的季均计为常规季", map[string]any{"tmdbId": id, "seasons": seasons, "memoHit": ok})
-	if item.Season < 0 {
-		regular := RegularSeasons(seasons)
-		if len(regular) == 1 {
-			item.Season = regular[0].Number
-			item.Reason += "；唯一常规季自动补全"
-			m.log.Add("validate", "infer-season", "matched", "缺少季号，使用唯一常规季", map[string]any{"regularSeasonCount": len(regular), "season": item.Season})
-		} else {
-			m.log.Add("validate", "infer-season", "review", "常规季不唯一，无法自动补全季号", map[string]any{"regularSeasonCount": len(regular), "regularSeasons": regular})
-			item.State, item.Reason = "review", "缺少季号，该作品有多季或没有常规季，请选择"
-			return
-		}
-	}
+
 	if item.Metadata.Season != nil {
 		m.log.Add("validate", "explicit-season", "info", "保留路径中的明确季号", map[string]any{"season": item.Season})
 	}

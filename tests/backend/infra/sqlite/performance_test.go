@@ -128,7 +128,7 @@ func BenchmarkWorkspaceCheckpoint(b *testing.B) {
 	for _, size := range []int{10, 2000} {
 		b.Run(fmt.Sprint(size), func(b *testing.B) {
 			s := openStore(b)
-			w := matching.Workspace{ID: "checkpoint", State: "running"}
+			w := matching.Workspace{Purpose: "organize", ID: "checkpoint", State: "running"}
 			for i := 0; i < size; i++ {
 				w.Items = append(w.Items, matching.Item{File: model.File{Path: fmt.Sprintf("/source/%d", i)}, State: "pending"})
 			}

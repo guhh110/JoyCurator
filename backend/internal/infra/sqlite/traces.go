@@ -41,13 +41,13 @@ func (a *Store) FinishTrace(t recognition.Trace, steps []recognition.Step) error
 	})
 }
 func (a *Store) DeleteTrace(id string) error {
-	r, err := a.db.Exec("DELETE FROM extraction_traces WHERE id=? AND f_status<>'running'", id)
+	r, err := a.db.Exec("DELETE FROM extraction_traces WHERE id=? AND f_status<>'running' AND NOT EXISTS(SELECT 1 FROM workspace_items WHERE f_trace_id=extraction_traces.id) AND NOT EXISTS(SELECT 1 FROM workspace_confirmations WHERE f_trace_id=extraction_traces.id)", id)
 	if err != nil {
 		return err
 	}
 	n, err := r.RowsAffected()
 	if err == nil && n != 1 {
-		return errors.New("轨迹不存在或尚在运行，不能清理")
+		return errors.New("轨迹不存在、仍在运行或被工作区引用，不能清理")
 	}
 	return err
 }

@@ -39,7 +39,7 @@ func waitRecognitionWithin(t testing.TB, a *App, id string, timeout time.Duratio
 		time.Sleep(time.Millisecond * 5)
 	}
 	t.Fatal("recognition timed out")
-	return matching.Workspace{}
+	return matching.Workspace{Purpose: "organize"}
 }
 func TestRecognitionPersistedWorkspace(t *testing.T) {
 	a, root := fixture(t)
@@ -60,12 +60,12 @@ func TestRecognitionPersistedWorkspace(t *testing.T) {
 			seedRecognitionCache(t, a, "/search/tv?"+q.Encode(), body)
 		}
 	}
-	task, err := a.dependencies.Workspace.Start([]string{file.Path}, "")
+	task, err := a.dependencies.Workspace.Start([]string{file.Path}, "", "organize")
 	if err != nil {
 		t.Fatal(err)
 	}
 	task = waitRecognition(t, a, task.ID)
-	if task.State != "completed" || task.Completed != 1 || len(task.Items) != 1 || !task.Items[0].Selected {
+	if task.State != "completed" || task.Completed != 1 || len(task.Items) != 1 || task.Items[0].Selected || task.Items[0].Entry != nil || len(task.Items[0].Candidates) != 1 {
 		t.Fatalf("%+v", task)
 	}
 	update := matching.Update{Revision: task.Revision, Items: []matching.Edit{{Path: file.Path, Group: "custom", Type: "movie", TMDBID: 1, Season: -1, Selected: false}}}
@@ -80,7 +80,7 @@ func TestRecognitionPersistedWorkspace(t *testing.T) {
 	if err != nil || restored.Items[0].Group != "custom" {
 		t.Fatal(restored, err)
 	}
-	if _, err = a.dependencies.Workspace.Start([]string{filepath.Join(root, "target")}, ""); err == nil {
+	if _, err = a.dependencies.Workspace.Start([]string{filepath.Join(root, "target")}, "", "organize"); err == nil {
 		t.Fatal("unauthorized path accepted")
 	}
 }
@@ -89,7 +89,8 @@ func TestWorkspaceSelectionKeepsValidationUntilSeasonChanges(t *testing.T) {
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "series.mkv")
 	file.Season, file.Episodes = 2, []int{1}
-	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{file.Path}, Items: []matching.Item{{File: file, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2}, State: "ready", Reason: "previous validation"}}}
+	task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "completed", Paths: []string{file.Path}, Items: []matching.Item{{File: file, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2}, State: "ready", Reason: "previous validation"}}}
+	seedConfirmedFiles(t, a, &task)
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}
@@ -111,11 +112,12 @@ func TestWorkspaceSelectionKeepsValidationUntilSeasonChanges(t *testing.T) {
 func TestRecognitionRetryKeepsManualEdits(t *testing.T) {
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "manual.mkv")
-	task := matching.Workspace{ID: model.Key(), State: "cancelled", Paths: []string{file.Path}, Items: []matching.Item{{File: file, Group: "custom", Entry: &model.Entry{Type: "movie", TMDBID: 1}, State: "ready", Reason: "manual", Selected: false}}, Total: 1}
+	task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "cancelled", Paths: []string{file.Path}, Items: []matching.Item{{File: file, Group: "custom", Entry: &model.Entry{Type: "movie", TMDBID: 1}, State: "ready", Reason: "manual", Selected: false}}, Total: 1}
+	seedConfirmedFiles(t, a, &task)
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.dependencies.Workspace.Start(nil, task.ID); err != nil {
+	if _, err := a.dependencies.Workspace.Start(nil, task.ID, "organize"); err != nil {
 		t.Fatal(err)
 	}
 	task = waitRecognition(t, a, task.ID)
@@ -150,17 +152,18 @@ func TestRecognitionRetryPreservesFailedManualMapping(t *testing.T) {
 	a, root := fixture(t)
 	file := mediaFile(t, a, root, "unrelated-name.mkv")
 	file.Season, file.Episodes = 1, []int{1, 2}
-	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{file.Path}, Items: []matching.Item{{File: file, Group: "custom", Entry: &model.Entry{Type: "tv", TMDBID: 2}, State: "failed", Reason: "network", Edited: true, Selected: false}}, Total: 1}
+	task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "completed", Paths: []string{file.Path}, Items: []matching.Item{{File: file, Group: "custom", Entry: &model.Entry{Type: "tv", TMDBID: 2}, State: "failed", Reason: "network", Edited: true, Selected: false}}, Total: 1}
 	seedRecognitionCache(t, a, "/tv/2?language=zh-CN", `{"seasons":[{"season_number":1}]}`)
+	seedConfirmedFiles(t, a, &task)
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.dependencies.Workspace.Start(nil, task.ID); err != nil {
+	if _, err := a.dependencies.Workspace.Start(nil, task.ID, "organize"); err != nil {
 		t.Fatal(err)
 	}
 	task = waitRecognition(t, a, task.ID)
 	item := task.Items[0]
-	if item.Group != "custom" || item.Entry == nil || item.Entry.TMDBID != 2 || item.Season != 1 || len(item.Episodes) != 2 || item.Selected || item.State != "ready" {
+	if item.Group != "custom" || item.Entry == nil || item.Entry.TMDBID != 2 || item.Season != 1 || len(item.Episodes) != 2 || item.Selected || item.State != "review" {
 		t.Fatal(item)
 	}
 }
@@ -168,14 +171,15 @@ func TestRecognitionAddPathsPreservesExistingWorkspace(t *testing.T) {
 	a, root := fixture(t)
 	first := mediaFile(t, a, root, "first.mkv")
 	second := mediaFile(t, a, root, "second.mkv")
-	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{first.Path}, Items: []matching.Item{
+	task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "completed", Paths: []string{first.Path}, Items: []matching.Item{
 		{File: first, Group: "custom", Entry: &model.Entry{Type: "movie", TMDBID: 1}, State: "ready", Edited: true},
 		{File: second, Group: "unmatched", State: "unmatched", Reason: "未找到匹配作品"},
 	}}
+	seedConfirmedFiles(t, a, &task)
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.dependencies.Workspace.Start([]string{second.Path}, task.ID); err != nil {
+	if _, err := a.dependencies.Workspace.Start([]string{second.Path}, task.ID, "organize"); err != nil {
 		t.Fatal(err)
 	}
 	task = waitRecognition(t, a, task.ID)
@@ -202,10 +206,11 @@ func TestRecognitionRemoveSourceKeepsOtherSources(t *testing.T) {
 	inner := mediaFile(t, a, root, filepath.Join("4k", "inner.mkv"))
 	outerDir := filepath.Dir(outer.Path)
 	innerDir := filepath.Dir(inner.Path)
-	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{outerDir, innerDir}, Items: []matching.Item{
+	task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "completed", Paths: []string{outerDir, innerDir}, Items: []matching.Item{
 		{File: outer, Group: "a", State: "review"},
 		{File: inner, Group: "b", State: "review"},
 	}}
+	seedConfirmedFiles(t, a, &task)
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}

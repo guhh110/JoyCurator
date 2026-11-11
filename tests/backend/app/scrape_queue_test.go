@@ -22,7 +22,7 @@ func TestQueuedScrapeReusesOnlyUnchangedRecordedSharedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, _ := os.Stat(video)
-	mapping := model.MediaMapping{Path: video, Type: "movie", TMDBID: 1, Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano(), RunID: "organized", State: "pending"}
+	mapping := model.MediaMapping{Layout: model.MediaLayout{WorkDir: filepath.Dir(video)}, Path: video, Type: "movie", TMDBID: 1, Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano(), RunID: "organized", State: "pending"}
 	if err := a.store.SaveMapping(mapping); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestTwoQueuedEpisodeScrapesReuseSharedNFOAtDispatch(t *testing.T) {
 			t.Fatal(err)
 		}
 		info, _ := os.Stat(path)
-		if err := a.store.SaveMapping(model.MediaMapping{Path: path, Type: "tv", TMDBID: 2, Season: 1, Episodes: []int{i + 1}, Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano(), RunID: "organized", State: "pending"}); err != nil {
+		if err := a.store.SaveMapping(model.MediaMapping{Layout: model.MediaLayout{WorkDir: filepath.Dir(filepath.Dir(path)), SeasonDir: filepath.Dir(path)}, Path: path, Type: "tv", TMDBID: 2, Season: 1, Episodes: []int{i + 1}, Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano(), RunID: "organized", State: "pending"}); err != nil {
 			t.Fatal(err)
 		}
 		paths = append(paths, path)

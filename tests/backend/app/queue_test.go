@@ -90,7 +90,7 @@ func TestWorkspaceAllowsIndependentEditsAndImportWhileQueueRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) { return emptySearch{}, nil }
-	imported, err := workspace.Start([]string{path}, "")
+	imported, err := workspace.Start([]string{path}, "", "organize")
 	if err != nil {
 		t.Fatal("organize blocked import", err)
 	}

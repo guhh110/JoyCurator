@@ -47,49 +47,14 @@ function runs(ctx, source) {
   }
   return result.sort((a, b) => a.start - b.start)
 }
-function overlaps(ctx, source, start, end, roles) {
-  return ctx.candidates.some(
-    (c) =>
-      roles.includes(c.role) &&
-      c.spans.some(
-        (s) => s.sourceId === source.id && start < s.end && end > s.start,
-      ),
-  )
-}
-function scan(ctx, source, pattern, roles = []) {
+function scan(ctx, source, pattern) {
   const result = []
-  for (const run of runs(ctx, source)) {
-    const chars = source.text.slice(run.start, run.end).split('')
-    for (const c of ctx.candidates)
-      if (roles.includes(c.role))
-        for (const s of c.spans)
-          if (s.sourceId === source.id)
-            for (
-              let i = Math.max(s.start, run.start);
-              i < Math.min(s.end, run.end);
-              i++
-            )
-              chars[i - run.start] = ' '
-    for (const m of chars.join('').matchAll(pattern)) {
+  for (const run of runs(ctx, source))
+    for (const m of source.text.slice(run.start, run.end).matchAll(pattern)) {
       m.index += run.start
       result.push(m)
     }
-  }
   return result.sort((a, b) => a.index - b.index)
-}
-const technical = [
-  'resolution',
-  'videoCodec',
-  'audioCodec',
-  'bitDepth',
-  'dynamicRange',
-  'language',
-  'subtitleLanguage',
-  'checksum',
-  'releaseTag',
-]
-function isYear(n) {
-  return n >= 1900 && n <= 2099
 }
 function number(text) {
   if (/^\d+$/.test(text)) return Number(text)
@@ -154,7 +119,6 @@ function extract(ctx) {
       ctx,
       s,
       /s(\d+)e(\d+)((?:\s*(?:-\s*e?|e)\d+)*)|\b(\d+)x(\d+)/gi,
-      ['tmdbId', ...technical],
     )) {
       let n = Number(m[1] || m[4]),
         episode = m[2] || m[5],
@@ -175,7 +139,6 @@ function extract(ctx) {
       ctx,
       s,
       /(?:^|[ ._\-\[【(])s(\d{1,3})(?=$|[ ._\-\]】)])/gi,
-      ['tmdbId', ...technical],
     ))
       out.push(
         item(
@@ -191,7 +154,6 @@ function extract(ctx) {
       ctx,
       s,
       /第\s*([0-9零〇一二两三四五六七八九十百千]+)\s*季|season\s*(\d+)/gi,
-      ['tmdbId', ...technical],
     )) {
       let n
       try {

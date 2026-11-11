@@ -32,6 +32,8 @@ func waitRelease(ctx context.Context, release <-chan struct{}) error {
 	}
 }
 func scrapeRun(video model.MediaMapping) Run {
+	original := video
+	video.Original = &original
 	return Run{ID: model.Key(), Purpose: "scrape", Mode: "scrape", Title: "scrape", State: "queued", Version: 1, Mappings: []model.MediaMapping{video}, Ops: []Work{{Operation: Operation{Kind: "nfo", Mode: "copy", Target: video.Path + ".nfo", Content: []byte("nfo"), Status: "pending"}, Owner: video.Path}}, Total: 1}
 }
 func enqueueTest(t *testing.T, s *Service, r Run) {

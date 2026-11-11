@@ -17,7 +17,7 @@ export function useScrape() {
   const active = ref<ScrapeWork | null>(null)
   const selected = ref<string[]>([])
   const content = ref<ScrapeContent>('all')
-  const onlyMissing = ref(false)
+  const onlyMissing = ref(true)
   const expandedSeason = ref<number | null>(null)
   const expandedEpisode = ref('')
   const stateFilter = ref<ScrapeStateFilter>('all')

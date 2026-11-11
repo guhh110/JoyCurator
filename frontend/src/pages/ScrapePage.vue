@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AutomaticRecognitionPage from './AutomaticRecognitionPage.vue'
 import { ref, watch, nextTick } from 'vue'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleAlert, Film, FolderOpen, Image as ImageIcon, Layers3, FileText, RefreshCw, Search } from '@lucide/vue'
 import { bytes } from '../api'
@@ -8,6 +9,10 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import { useScrape } from '../features/scrape/useScrape'
 const { content, onlyMissing, skippedArtifacts, query, search, works, cursor, loadingMore, active, selected, expandedSeason, expandedEpisode, stateFilter, fileSearch, preview, artifactSearch, showArtifacts, busy, worksQuery, detail, current, counts, seasons, activeSeasonItems, activeEpisodeItems, hasMultipleVersionsInWork, bulkReady, artifactCounts, filteredArtifacts, stateNames, tabs, fileName, parentName, workTitle, episodeLabel, openWork, closeWork, loadMore, bulk, toggle, prepare, execute } = useScrape()
+const directory = ref(false)
+const directoryWorkspace = ref<InstanceType<typeof AutomaticRecognitionPage> | null>(null)
+async function chooseDirectory() { directory.value = true; await nextTick(); directoryWorkspace.value?.openBrowser() }
+async function showRegistered() { if (await directoryWorkspace.value?.canLeave() !== false) directory.value = false }
 const previewElement = ref<HTMLElement | null>(null)
 watch(preview, async value => {
   if (!value) return
@@ -17,13 +22,15 @@ watch(preview, async value => {
 </script>
 <template>
   <section class="scrape-page" aria-label="媒体刮削">
-    <PageHeader title="媒体刮削" eyebrow="LIBRARY / SCRAPE" description="按作品和季度挑选需要补齐的媒体资料。" />
-    <div class="scrape-shell" :class="{ 'has-detail': active }">
+    <PageHeader v-if="!directory" title="媒体刮削" />
+    <div class="scrape-navigation"><button class="button small" :aria-pressed="!directory" @click="showRegistered">已登记作品</button><button class="button small" :aria-pressed="directory" @click="directory = true">目录刮削</button><button v-if="!directory" class="button primary" @click="chooseDirectory"><FolderOpen :size="16" />选择目录</button></div>
+    <AutomaticRecognitionPage v-if="directory" ref="directoryWorkspace" purpose="scrape" />
+    <div v-else class="scrape-shell" :class="{ 'has-detail': active }">
       <aside class="catalog pane" aria-label="作品列表">
         <div class="catalog-heading"><div><span class="eyebrow">01 / LIBRARY</span><h2>片库</h2></div><span class="catalog-total">{{ works.length }} 部已加载</span></div>
         <label class="search-field"><Search :size="16" /><input v-model="search" type="search" placeholder="搜索作品、文件名或 TMDB ID" aria-label="搜索作品或文件" /></label>
         <QueryState :loading="worksQuery.isPending.value || worksQuery.isFetching.value && !worksQuery.data.value" :error="worksQuery.error.value" @retry="worksQuery.refetch()">
-          <div v-if="!works.length" class="catalog-empty"><Layers3 :size="28" /><p>{{ query ? '没有匹配的作品，试试其他关键词。' : '暂无已整理的视频。' }}</p><RouterLink v-if="!query" class="button small" to="/recognition">前往整理工作区</RouterLink></div>
+          <div v-if="!works.length" class="catalog-empty"><Layers3 :size="28" /><p>{{ query ? '没有匹配的作品，试试其他关键词。' : '暂无已登记的视频。' }}</p><RouterLink v-if="!query" class="button small" to="/recognition">前往整理工作区</RouterLink></div>
           <div v-else class="work-list">
             <button v-for="work in works" :key="`${work.type}:${work.tmdbId}`" class="work-row" :class="{ active: active?.type === work.type && active?.tmdbId === work.tmdbId }" @click="openWork(work)">
               <span class="work-glyph" :class="work.type"><Film v-if="work.type === 'movie'" :size="18" /><Layers3 v-else :size="18" /></span>
@@ -119,6 +126,7 @@ watch(preview, async value => {
   </section>
 </template>
 <style scoped>
+.scrape-navigation{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.scrape-navigation .primary{margin-left:auto}.scrape-navigation [aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
 .scrape-page { --accent:#247b72; --accent-soft:#e9f5f1; --ink:#1d3035; --hairline:#dce9e5; display:grid;gap:16px;min-width:0 }
 .eyebrow { color:var(--accent);font-size:10px;font-weight:750;letter-spacing:.15em }
 .scrape-shell { display:grid;grid-template-columns:minmax(250px,320px) minmax(0,1fr);gap:16px;align-items:start;min-width:0;min-height:500px }

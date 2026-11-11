@@ -82,10 +82,11 @@ func previewRequest(t testing.TB, a *App, kind string, id int, mode, policy stri
 	if kind == "movie" {
 		entry.Title = "长夜旅途"
 	}
-	task := matching.Workspace{ID: model.Key(), State: "completed", Items: make([]matching.Item, 0, len(files))}
+	task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "completed", Items: make([]matching.Item, 0, len(files))}
 	for _, file := range files {
 		task.Items = append(task.Items, matching.Item{File: file, Entry: entry, State: "ready", Selected: true})
 	}
+	seedConfirmedFiles(t, a, &task)
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}

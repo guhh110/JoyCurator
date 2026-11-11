@@ -61,7 +61,7 @@ describe('recognition rule pages', () => {
   it('shows every field even when the chain is empty', async () => {
     const html = await render([], RecognitionRules)
     expect(html).toContain('候选标注')
-    expect(html).toContain('元数据裁决')
+    expect(html).toContain('建议脚本')
   })
   it('edits one rule with its own trial on a separate page', async () => {
     const html = await render([titleRule], RuleEdit, { ruleId: 'title' })

@@ -1,454 +1,202 @@
-import {
-  computed,
-  onActivated,
-  onDeactivated,
-  onUnmounted,
-  ref,
-  watch,
-} from 'vue'
-
-import { api } from '../../api'
-import type { Recognition, RecognitionItem } from '../../model'
-import {
-  recognitionEdits,
-  recognitionGroups,
-} from '../../recognition'
+import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-
+import { api } from '../../api'
+import type { MediaLayout, Recognition, RecognitionItem } from '../../model'
+import { recognitionEdits, recognitionGroups, sourceSummaries } from '../../recognition'
 import { useRuntime } from '../../app/runtime'
 import { useAction } from '../../app/useAction'
 import { keys } from '../../app/query'
 import { confirmAction } from '../../app/confirm'
-import { useWorkspaceSources } from './useWorkspaceSources'
-import { useSeasonComparison } from './useSeasonComparison'
-import { useWorkSelection } from './useWorkSelection'
 import { useWorkspacePreview } from './useWorkspacePreview'
+import { useScrapeBatchPreview } from '../scrape/useScrapeBatchPreview'
 import { useReidentification } from './useReidentification'
-import { useEpisodeOffset } from './useEpisodeOffset'
+import { useConfirmation } from './useConfirmation'
 
-export function useWorkspace() {
+export const parentDirectory = (path: string) => path.slice(0, path.lastIndexOf('/')) || '/'
+export const fileLocked = (file: RecognitionItem) => !!file.execution?.locked || !!file.execution?.completed
+export const isConfirmed = (file: RecognitionItem) => !!file.confirmation && !!file.entry
+export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
   const runtime = useRuntime()
   const { act: perform, busy, message: error, success: notice } = useAction()
-  const active = ref(true)
-  const queue = runtime.queue
-  // A mutable edit draft; taskQuery remains the authoritative server snapshot.
-  const task = ref<Recognition | null>(null)
-  let baseline: ReturnType<typeof recognitionEdits> = []
-  function acceptTask(value: Recognition) { task.value = JSON.parse(JSON.stringify(value)); baseline = recognitionEdits(value.items) }
-  const browser = ref(false)
-  const filter = ref('all'),
-    query = ref(''),
-    focus = ref(''),
-    groupPage = ref(1),
-    filePage = ref(1)
-  const transfer = ref<RecognitionItem | null>(null),
-    transferGroup = ref('new')
-  const freshImport = ref(false)
-  let alive = true
+  const active = ref(true), task = ref<Recognition | null>(null)
+  const step = ref<1 | 2 | 3>(1), browser = ref(false), pendingPaths = ref<string[]>([])
+  const directory = ref(''), query = ref(''), status = ref<'pending' | 'confirmed'>('pending')
+  let alive = true, baseline: ReturnType<typeof recognitionEdits> = []
   const recognizing = computed(() => task.value?.state === 'running')
-  const locked = computed(
-    () =>
-      busy.value ||
-      recognizing.value,
-  )
-  const groups = computed(() => recognitionGroups(task.value?.items || []))
-  const { source, sources, scoped, chooseSource, removeSource } = useWorkspaceSources({ task, groups, act, invalidatePreview: () => { preview.value = null }, changeFilter })
-  const filtered = computed(() =>
-    scoped.value.filter(
-      (group) =>
-        (filter.value === 'all' ||
-          group.files.some((file) => file.state === filter.value)) &&
-        `${group.title} ${group.files.map((file) => file.path).join(' ')}`
-          .toLowerCase()
-          .includes(query.value.toLowerCase()),
-    ),
-  )
-  const visibleGroups = computed(() =>
-    filtered.value.slice((groupPage.value - 1) * 30, groupPage.value * 30),
-  )
-  // Works per status within the chosen source, matching how the filter works.
-  const stateCounts = computed(() => {
-    const counts: Record<string, number> = { all: scoped.value.length }
-    for (const group of scoped.value)
-      for (const state of new Set(group.files.map((file) => file.state)))
-        counts[state] = (counts[state] || 0) + 1
-    return counts
-  })
-  const current = computed(
-    () =>
-      scoped.value.find((group) => group.id === focus.value) ||
-      filtered.value[0],
-  )
-  const visibleFiles = computed(
-    () =>
-      current.value?.files.slice(
-        (filePage.value - 1) * 40,
-        filePage.value * 40,
-      ) || [],
-  )
-  const selected = computed(
-    () =>
-      task.value?.items.filter(
-        (file) => file.selected && !file.removed && file.state === 'ready' && !file.execution?.locked && !file.execution?.completed,
-      ) || [],
-  )
-  const pendingCount = computed(
-    () =>
-      task.value?.items.filter(
-        (file) => !file.removed && file.state !== 'ready',
-      ).length || 0,
-  )
-  const readyCount = computed(
-    () =>
-      task.value?.items.filter(
-        (file) => !file.removed && file.state === 'ready' && !file.execution?.locked && !file.execution?.completed,
-      ).length || 0,
-  )
-  const modes: Record<string, string> = {
-    copy: '复制',
-    move: '移动',
-    hardlink: '硬链接',
+  const locked = computed(() => busy.value || recognizing.value)
+  const files = computed(() => task.value?.items.filter(file => !file.removed) || [])
+  const editable = computed(() => files.value.filter(file => !fileLocked(file)))
+  const pendingCount = computed(() => editable.value.filter(file => !isConfirmed(file)).length)
+  const ready = computed(() => editable.value.filter(file => isConfirmed(file) && file.state === 'ready'))
+  const selected = computed(() => ready.value.filter(file => file.selected))
+  const directories = computed(() => recognitionGroups(files.value, 'directories').map(group => ({ ...group, pending: group.files.filter(file => !isConfirmed(file) && !fileLocked(file)).length })))
+  const current = computed(() => directories.value.find(group => group.id === directory.value))
+  const currentFiles = computed(() => (current.value?.files || []).filter(file => (status.value === 'confirmed' ? isConfirmed(file) : !isConfirmed(file)) && file.path.toLowerCase().includes(query.value.toLowerCase())))
+  const sources = computed(() => sourceSummaries(task.value?.items || [], task.value?.paths || []))
+  const workGroups = computed(() => recognitionGroups(editable.value.filter(isConfirmed)))
+  const modes = { copy: '复制', move: '移动', hardlink: '硬链接' }
+  function acceptTask(value: Recognition) {
+    task.value = JSON.parse(JSON.stringify(value))
+    baseline = recognitionEdits(value.items)
   }
   const taskQuery = useQuery({
-    queryKey: computed(() => keys.recognition(task.value?.id || 'latest')),
-    queryFn: ({ signal }) =>
-      api<Recognition | null>(
-        task.value?.id ? `/recognitions/${task.value.id}` : '/recognitions',
-        undefined,
-        'GET',
-        { signal },
-      ),
-    enabled: computed(() => active.value && !busy.value),
-    staleTime: 1000,
-    refetchInterval: (query) =>
-      query.state.data?.state === 'running' || queue.value?.active
-        ? 1200
-        : false,
+    queryKey: computed(() => keys.recognition(task.value?.id || 'latest', purpose)),
+    queryFn: ({ signal }) => api<Recognition | null>(task.value?.id ? `/recognitions/${task.value.id}` : `/recognitions?purpose=${purpose}`, undefined, 'GET', { signal }),
+    enabled: computed(() => active.value && !busy.value), staleTime: 1000,
+    refetchInterval: query => query.state.data?.state === 'running' || runtime.queue.value?.active ? 1200 : false,
   })
-  const loading = taskQuery.isPending
-  watch(
-    taskQuery.data,
-    (value) => {
-      if (!alive || busy.value || value === undefined) return
-      if (value === null) {
-        if (!task.value) task.value = null
-        return
-      }
-      if (
-        !task.value ||
-        (task.value.id === value.id && value.revision >= task.value.revision)
-      )
-        acceptTask(value)
-    },
-    { immediate: true },
-  )
+  watch(taskQuery.data, value => {
+    if (!alive || busy.value || value === undefined) return
+    if (value && (!task.value || value.id === task.value.id && value.revision >= task.value.revision)) acceptTask(value)
+  }, { immediate: true })
   async function act(fn: () => Promise<void>) {
     await perform(async () => {
       await runtime.client.cancelQueries({ queryKey: ['recognitions'] })
       await fn()
-      if (alive && task.value)
-        runtime.client.setQueryData(
-          keys.recognition(task.value.id),
-          JSON.parse(JSON.stringify(task.value)),
-        )
+      if (alive && task.value) runtime.client.setQueryData(keys.recognition(task.value.id, purpose), JSON.parse(JSON.stringify(task.value)))
     })
   }
   const previewState = useWorkspacePreview({ task, busy, act, notice, runtime })
-  const { preview, mode, previewPage, previewRows, duplicatePolicy, previewReady, prepare, changeDuplicatePolicy, execute } = previewState
+  const scrapePreviewState = useScrapeBatchPreview({ task, busy, act, notice, runtime })
+  function invalidatePreviews() { previewState.invalidate(); scrapePreviewState.invalidate() }
+  watch(() => files.value.map(file => `${file.path}:${!!file.execution?.locked}:${!!file.execution?.completed}`).join('|'), invalidatePreviews)
+  watch(() => runtime.settingsQuery?.data.value?.version, invalidatePreviews)
+  const confirmation = useConfirmation({ task, busy, act, accept: acceptTask, invalidate: invalidatePreviews })
+  async function discardDraft() {
+    if (busy.value || confirmation.saving.value) return false
+    if (confirmation.dirty.value && !await confirmAction({ title: '放弃未确认修改？', description: '已确认的文件会保留。', confirmLabel: '放弃并继续', cancelLabel: '继续编辑' })) return false
+    confirmation.close()
+    return true
+  }
+  async function loadDirectory() {
+    if (!task.value || recognizing.value || !current.value) return
+    const usable = current.value.files.filter(file => !fileLocked(file))
+    if (!confirmation.open.value) await confirmation.start(usable, file => !isConfirmed(file))
+    else if (!confirmation.stale.value) await confirmation.add(usable, file => !isConfirmed(file))
+  }
+  async function chooseDirectory(path: string) {
+    if (locked.value || confirmation.loading.value || directory.value === path && confirmation.open.value) return
+    // Navigation adds a scope to the same batch; it never discards its edits.
+    directory.value = path; query.value = ''
+    await loadDirectory()
+  }
+  async function reloadDraft() {
+    if (!await discardDraft()) return
+    await poll()
+    await loadDirectory()
+  }
+  async function goStep(value: 1 | 2 | 3) {
+    if (locked.value || confirmation.loading.value || value === step.value) return
+    if (step.value === 2 && !await discardDraft()) return
+    if (value === 2 && !files.value.length || value === 3 && !workGroups.value.length) return
+    invalidatePreviews(); step.value = value
+    if (value === 2) await loadDirectory()
+  }
+  watch(() => [task.value?.id, task.value?.state] as const, async (value, old) => {
+    if (!task.value) return
+    const newTask = value[0] !== old?.[0]
+    if (recognizing.value) { step.value = 1; confirmation.close(); invalidatePreviews(); return }
+    if (newTask || old?.[1] === 'running') {
+      directory.value = directories.value.find(group => group.pending)?.id || directories.value[0]?.id || ''
+      status.value = pendingCount.value ? 'pending' : 'confirmed'
+      step.value = files.value.length ? 2 : 1
+      await loadDirectory()
+    }
+  }, { immediate: true })
+  async function confirmBatch() {
+    const previous = directory.value
+    const count = confirmation.chosen.value.length
+    if (!await confirmation.confirm()) return
+    notice.value = `已确认 ${count} 个文件`
+    const remaining = directories.value.find(group => group.id === previous && group.pending) || directories.value.find(group => group.pending)
+    directory.value = remaining?.id || previous
+    status.value = pendingCount.value ? 'pending' : 'confirmed'
+    await loadDirectory()
+  }
   async function save(items?: RecognitionItem[]) {
     if (!task.value) return
-    preview.value = null
+    invalidatePreviews()
     const original = task.value
     const changes = recognitionEdits(items ?? original.items).filter(edit => {
-      const file = original.items.find(item => item.path === edit.path)
-      return !file?.execution?.locked && !file?.execution?.completed && JSON.stringify(baseline.find(item => item.path === edit.path)) !== JSON.stringify(edit)
+      const file = original.items.find(file => file.path === edit.path)
+      return file && !fileLocked(file) && JSON.stringify(baseline.find(value => value.path === edit.path)) !== JSON.stringify(edit)
     })
     if (!changes.length) return
-    try {
-      const value = await api<Recognition>(
-        `/recognitions/${original.id}`,
-        {
-          revision: original.revision,
-          items: changes,
-        },
-        'PUT',
-      )
-      if (alive) acceptTask(value)
-    } catch (e) {
-      // Reload the authoritative snapshot after a rejected edit (including edits
-      // made from another tab), so an optimistic checkbox cannot look saved.
-      const value = await api<Recognition>(
-        `/recognitions/${original.id}`,
-      ).catch(() => null)
-      if (alive && value) acceptTask(value)
-      throw e
+    try { acceptTask(await api<Recognition>(`/recognitions/${original.id}`, { revision: original.revision, items: changes }, 'PUT')) }
+    catch (value) {
+      const saved = await api<Recognition>(`/recognitions/${original.id}`).catch(() => null)
+      if (alive && saved) acceptTask(saved)
+      throw value
     }
   }
-  const { comparisonSeason, groupSeasons, groupSeasonsLoading, groupSeasonsError, detailView, episodeQuery, retryComparison, viewSeason, assignEpisode } = useSeasonComparison({ current, active, locked, runtime, act, save })
-  const { searchGroup, searchQuery, searchYear, searchKind, searchResults, searchBusy, editing, editSeason, editEpisodes, seasons, openSearch, search, pick, openEdit, saveEdit, closeSearch, closeEdit } = useWorkSelection({ task, current, focus, filePage, runtime, act, save })
-  const offsetEditor = useEpisodeOffset({
-    task,
-    locked,
-    saveError: error,
-    commit: async (items, id, revision) => {
-      let saved = false
-      await act(async () => {
-        if (task.value?.id !== id || task.value.revision !== revision)
-          throw new Error('工作区已更新，请关闭弹窗后重新打开')
-        await save(items)
-        if (current.value?.entry?.tmdbId === offsetEditor.context.value?.tmdbId)
-          comparisonSeason.value = offsetEditor.season.value
-        saved = true
-        notice.value = '季集映射已保存，请检查文件校验状态后重新生成整理预览'
-      })
-      return saved
-    },
-  })
-  const reidentification = useReidentification({
-    task, locked,
-    commit: async (paths, id, revision) => {
-      let submitted = false
-      await act(async () => {
-        if (task.value?.id !== id || task.value.revision !== revision)
-          throw new Error('工作区已更新，请关闭弹窗后重新打开')
-        const value = await api<Recognition>(`/recognitions/${id}/reidentify`, { revision, paths })
-        if (alive) acceptTask(value)
-        preview.value = null
-        submitted = true
-        notice.value = `已开始重新识别 ${paths.length} 个文件，人工修正会保留`
-        await runtime.refreshQueue()
-      })
-      return submitted
-    },
-  })
-  function openOffset() {
-    if (!current.value || groupSeasonsLoading.value) return
-    offsetEditor.open(current.value.files, groupSeasons.value, comparisonSeason.value, source.value)
-  }
-  function openBrowser(fresh = false) {
-    freshImport.value = fresh
-    browser.value = true
-  }
-  async function start(paths: string[]) {
+  function openBrowser() { browser.value = true }
+  function addPaths(paths: string[]) {
     browser.value = false
+    pendingPaths.value = purpose === 'scrape' ? paths.slice(0, 1) : [...new Set([...pendingPaths.value, ...paths])].filter(path => !task.value?.paths.includes(path))
+  }
+  async function scanSources() {
+    if (!pendingPaths.value.length || locked.value) return
+    const replacing = purpose === 'scrape' && task.value && pendingPaths.value[0] !== task.value.paths[0]
+    if (replacing && !await confirmAction({ title: '更换刮削目录？', description: '将为新目录打开新的工作区。', confirmLabel: '更换目录' })) return
     await act(async () => {
-      const value = await api<Recognition>('/recognitions', {
-        paths,
-        id: freshImport.value ? '' : task.value?.id || '',
-      })
+      const value = await api<Recognition>('/recognitions', { paths: pendingPaths.value, purpose, id: replacing ? '' : task.value?.id || '' })
       if (!alive) return
-      acceptTask(value)
+      acceptTask(value); pendingPaths.value = []; invalidatePreviews()
       await runtime.refreshQueue()
-      preview.value = null
-      source.value = ''
-      focus.value = ''
-      filePage.value = 1
-      groupPage.value = 1
+    })
+  }
+  async function removeSource(path: string) {
+    if (!await confirmAction({ title: '移出来源？', description: path, confirmLabel: '移出来源', destructive: true })) return
+    await act(async () => {
+      if (!task.value) return
+      acceptTask(await api<Recognition>(`/recognitions/${task.value.id}/sources/remove`, { path, revision: task.value.revision }))
+      invalidatePreviews(); confirmation.close()
+      directory.value = directories.value.find(group => group.pending)?.id || directories.value[0]?.id || ''
+      notice.value = '来源已移出'
     })
   }
   async function poll() {
-    const [result] = await Promise.all([
-      taskQuery.refetch(),
-      runtime.queueQuery.refetch(),
-    ])
-    if (
-      result.data &&
-      alive &&
-      (!task.value || result.data.id === task.value.id) &&
-      result.data.revision >= (task.value?.revision ?? 0)
-    )
-      acceptTask(result.data)
+    const result = await taskQuery.refetch()
+    if (result.data && alive && (!task.value || result.data.id === task.value.id) && result.data.revision >= (task.value?.revision ?? 0)) acceptTask(result.data)
   }
   async function retry() {
-    await act(async () => {
-      if (task.value)
-        acceptTask(await api<Recognition>(`/recognitions/${task.value.id}/retry`, {}))
-      preview.value = null
-    })
+    await act(async () => { if (task.value) acceptTask(await api<Recognition>(`/recognitions/${task.value.id}/retry`, {})); invalidatePreviews() })
   }
-  async function cancelRecognition() {
-    await act(async () => {
-      if (task.value) await api(`/recognitions/${task.value.id}/cancel`, {})
-      await poll()
-    })
-  }
-  function fileLocked(file: RecognitionItem) { return !!file.execution?.locked || !!file.execution?.completed }
+  async function cancelRecognition() { await act(async () => { if (task.value) await api(`/recognitions/${task.value.id}/cancel`, {}); await poll() }); if (step.value === 2) await loadDirectory() }
   async function selectFile(file: RecognitionItem) {
-    if (fileLocked(file)) return
+    if (fileLocked(file) || !isConfirmed(file) || file.state !== 'ready') return
+    await act(async () => { file.selected = !file.selected; await save() })
+  }
+  async function selectReady(value: boolean) { await act(async () => { for (const file of ready.value) file.selected = value; await save() }) }
+  async function saveLayouts(changes: { paths: string[]; layout: MediaLayout }[]) {
     await act(async () => {
-      file.selected = !file.selected
+      for (const change of changes) for (const file of editable.value) if (change.paths.includes(file.path)) file.layout = change.layout
       await save()
+      notice.value = '输出目录已保存'
     })
   }
-  async function selectReady(value: boolean) {
+  const reidentification = useReidentification({ task, locked, commit: async (paths, id, revision) => {
+    let submitted = false
+    if (!await discardDraft()) return false
     await act(async () => {
-      for (const group of filtered.value)
-        for (const file of group.files)
-          if (!fileLocked(file)) file.selected = value && file.state === 'ready'
-      await save()
+      if (task.value?.id !== id || task.value.revision !== revision) throw new Error('工作区已更新，请重新选择文件')
+      acceptTask(await api<Recognition>(`/recognitions/${id}/reidentify`, { revision, paths }))
+      invalidatePreviews(); submitted = true; notice.value = `已开始重新识别 ${paths.length} 个文件`
+      await runtime.refreshQueue()
     })
+    return submitted
+  } })
+  async function execute() {
+    if (purpose === 'scrape') await scrapePreviewState.execute()
+    else await previewState.execute()
+    if (!error.value) { await poll(); step.value = 2; confirmation.close(); await loadDirectory() }
   }
-  async function selectGroup(id: string) {
-    await act(async () => {
-      const group = scoped.value.find((g) => g.id === id)
-      if (!group) return
-      const ready = group.files.filter((file) => file.state === 'ready' && !fileLocked(file))
-      const value = !ready.every((file) => file.selected)
-      for (const file of ready) file.selected = value
-      await save()
-    })
-  }
-  async function removeFile(file: RecognitionItem) {
-    if (fileLocked(file)) return
-    if (!await confirmAction({
-      title: '移出文件？',
-      description: `将「${file.path.split('/').pop()}」移出整理工作区？磁盘上的文件不会被删除。`,
-      confirmLabel: '移出文件',
-      destructive: true,
-    })) return
-    await act(async () => {
-      file.removed = true
-      file.selected = false
-      await save()
-      filePage.value = 1
-    })
-  }
-  async function moveGroup() {
-    await act(async () => {
-      if (!transfer.value) return
-      const file = task.value?.items.find(item => item.path === transfer.value!.path)
-      if (!file || fileLocked(file)) throw new Error('文件已提交整理或不在当前工作区')
-      const target = groups.value.find(
-        (group) => group.id === transferGroup.value,
-      )
-      file.group =
-        target?.id ||
-        `custom:${Date.now()}:${Math.random().toString(16).slice(2)}`
-      file.entry = target?.entry || null
-      file.selected = !!target?.entry
-      const id = file.group
-      await save()
-      transfer.value = null
-      focus.value = id
-      filePage.value = 1
-    })
-  }
-  function chooseGroup(id: string) {
-    focus.value = id
-    filePage.value = 1
-  }
-  function openTransfer(file: RecognitionItem) {
-    if (fileLocked(file)) return
-    transfer.value = file
-    transferGroup.value = 'new'
-  }
-  function changeFilter() {
-    focus.value = ''
-    groupPage.value = 1
-    filePage.value = 1
-  }
-  onActivated(() => {
-    active.value = true
-  })
-  onDeactivated(() => {
-    active.value = false
-    browser.value = false
-    closeSearch()
-    closeEdit()
-    transfer.value = null
-    preview.value = null
-    offsetEditor.close()
-    reidentification.close()
-  })
-  onUnmounted(() => {
-    alive = false
-  })
-
-  return {
-    reidentification,
-    previewState,
-    runtime,
-    busy,
-    error,
-    notice,
-    task,
-    preview,
-    browser,
-    filter,
-    query,
-    mode,
-    groupPage,
-    filePage,
-    searchGroup,
-    searchQuery,
-    searchYear,
-    searchKind,
-    searchResults,
-    searchBusy,
-    editing,
-    editSeason,
-    editEpisodes,
-    seasons,
-    transfer,
-    transferGroup,
-    comparisonSeason,
-    detailView,
-    viewSeason,
-    episodeQuery,
-    retryComparison,
-    assignEpisode,
-    groupSeasons,
-    groupSeasonsLoading,
-    groupSeasonsError,
-    recognizing,
-    locked,
-    groups,
-    fileLocked,
-    source,
-    sources,
-    filtered,
-    visibleGroups,
-    stateCounts,
-    current,
-    visibleFiles,
-    selected,
-    pendingCount,
-    readyCount,
-    modes,
-    previewPage,
-    previewRows,
-    duplicatePolicy,
-    changeDuplicatePolicy,
-    previewReady,
-    taskQuery,
-    loading,
-    act,
-    save,
-    openBrowser,
-    start,
-    poll,
-    retry,
-    cancelRecognition,
-    selectFile,
-    selectReady,
-    selectGroup,
-    removeFile,
-    openSearch,
-    search,
-    pick,
-    openEdit,
-    saveEdit,
-    offsetEditor,
-    openOffset,
-    moveGroup,
-    prepare,
-    execute,
-    chooseGroup,
-    openTransfer,
-    closeSearch,
-    closeEdit,
-    changeFilter,
-    chooseSource,
-    removeSource,
-  }
+  onActivated(() => { active.value = true; if (step.value === 2) void loadDirectory() })
+  onDeactivated(() => { active.value = false; browser.value = false; confirmation.close(); reidentification.close(); invalidatePreviews(); if (step.value === 3) step.value = 2 })
+  onUnmounted(() => { alive = false })
+  return { purpose, runtime, task, taskQuery, loading: taskQuery.isPending, busy, locked, recognizing, error, notice,
+    step, browser, pendingPaths, files, editable, pendingCount, ready, selected, sources, directories, directory, current, currentFiles, query, status, workGroups, modes,
+    confirmation, previewState, scrapePreviewState, reidentification, act, save, fileLocked, isConfirmed,
+    openBrowser, addPaths, scanSources, removeSource, goStep, chooseDirectory, reloadDraft, loadDirectory, discardDraft, confirmBatch, poll, retry, cancelRecognition, selectFile, selectReady, saveLayouts, execute, invalidatePreviews }
 }
+export type Workspace = ReturnType<typeof useWorkspace>

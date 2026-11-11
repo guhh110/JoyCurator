@@ -19,15 +19,15 @@ func TestSingleTargetReadsFullParentTreeAndSharesTrace(t *testing.T) {
 	if err = os.MkdirAll(filepath.Join(dir, "子目录"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	first := filepath.Join(dir, "[组]作品01.第一季.[202].1080p.mkv")
-	second := filepath.Join(dir, "[组]作品03.第一季.[202].720p.mkv")
+	first := filepath.Join(dir, "[组]作品.01.第一季.[202].1080p.mkv")
+	second := filepath.Join(dir, "[组]作品.03.第一季.[202].1080p.mkv")
 	other := filepath.Join(dir, "子目录", "Other.S02E04.mkv")
 	for _, p := range []string{first, second, other, filepath.Join(dir, ".hidden.mkv")} {
 		if err = os.WriteFile(p, []byte("video"), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	got, err := a.dependencies.Workspace.extractContexts(context.Background(), []string{first}, []string{first}, s, "batch")
+	got, err := a.dependencies.Workspace.extractContexts(context.Background(), []string{first}, []string{first}, s, "batch", "organize")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestSingleTargetReadsFullParentTreeAndSharesTrace(t *testing.T) {
 	if err != nil || len(restored.Documents) != 3 || len(restored.Files) != 1 || len(restored.Files[0].Decisions[recognition.Episodes].Candidates) < 2 {
 		t.Fatal(restored, err)
 	}
-	got, err = a.dependencies.Workspace.extractContexts(context.Background(), []string{dir, first}, []string{first, second}, s, "batch")
+	got, err = a.dependencies.Workspace.extractContexts(context.Background(), []string{dir, first}, []string{first, second}, s, "batch", "organize")
 	if err != nil || got[first].TraceID != got[second].TraceID {
 		t.Fatal(got, err)
 	}
@@ -55,7 +55,7 @@ func TestSingleTargetReadsFullParentTreeAndSharesTrace(t *testing.T) {
 	if err = os.WriteFile(last, []byte("video"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	got, err = a.dependencies.Workspace.extractContexts(context.Background(), []string{dir, disjoint}, []string{first, last}, s, "batch")
+	got, err = a.dependencies.Workspace.extractContexts(context.Background(), []string{dir, disjoint}, []string{first, last}, s, "batch", "organize")
 	if err != nil || got[first].TraceID == got[last].TraceID {
 		t.Fatal(got, err)
 	}

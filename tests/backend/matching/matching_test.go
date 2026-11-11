@@ -131,7 +131,7 @@ func TestRecognitionSeasonValidation(t *testing.T) {
 		state         string
 		wantSeason    int
 	}{
-		{"unique season", `[{"season_number":0},{"season_number":2}]`, -1, []int{1}, "ready", 2},
+		{"unique season stays unconfirmed", `[{"season_number":0},{"season_number":2}]`, -1, []int{1}, "review", -1},
 		{"multiple seasons", `[{"season_number":1},{"season_number":2}]`, -1, []int{1}, "review", -1},
 		{"specials", `[{"season_number":0},{"season_number":1}]`, 0, []int{1}, "ready", 0},
 		{"invalid episode", `[{"season_number":1}]`, 1, []int{3}, "review", 1},

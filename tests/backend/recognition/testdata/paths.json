@@ -11,8 +11,7 @@
       "mediaType": null,
       "year": 2019,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -32,8 +31,7 @@
         3,
         4,
         5
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -52,8 +50,7 @@
       "episodes": [
         1,
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -71,8 +68,7 @@
       "season": 0,
       "episodes": [
         1
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -90,8 +86,7 @@
       "season": 1,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -107,8 +102,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -124,8 +118,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -141,8 +134,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 0,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -160,8 +152,7 @@
       "season": null,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -179,8 +170,7 @@
       "season": 1,
       "episodes": [
         1
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -198,8 +188,7 @@
       "season": 1,
       "episodes": [
         10
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -217,8 +206,7 @@
       "season": 1,
       "episodes": [
         12
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -236,8 +224,7 @@
       "season": 1,
       "episodes": [
         23
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -255,8 +242,7 @@
       "season": 1,
       "episodes": [
         203
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -274,8 +260,7 @@
       "season": 1,
       "episodes": [
         1001
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -293,8 +278,7 @@
       "season": 1,
       "episodes": [
         9999
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -312,8 +296,7 @@
       "season": 1,
       "episodes": [
         20
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -331,8 +314,7 @@
       "season": 1,
       "episodes": [
         1
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -350,8 +332,7 @@
       "season": null,
       "episodes": [
         1
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -367,8 +348,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -384,8 +364,7 @@
       "mediaType": null,
       "year": 2019,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -401,8 +380,7 @@
       "mediaType": null,
       "year": 2019,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -418,8 +396,7 @@
       "mediaType": null,
       "year": 1968,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -435,8 +412,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -452,8 +428,7 @@
       "mediaType": null,
       "year": 1999,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -469,8 +444,7 @@
       "mediaType": null,
       "year": 1999,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -486,8 +460,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -505,8 +478,7 @@
       "season": 1,
       "episodes": [
         2
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -522,8 +494,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -539,8 +510,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -556,8 +526,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -573,8 +542,7 @@
       "mediaType": null,
       "year": 1999,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -590,8 +558,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -607,8 +574,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -624,8 +590,7 @@
       "mediaType": null,
       "year": 2002,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -641,8 +606,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -660,8 +624,7 @@
       "season": 2,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -679,8 +642,7 @@
       "season": 2,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -700,8 +662,7 @@
         3,
         4,
         5
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -722,8 +683,7 @@
         3,
         4,
         5
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -741,8 +701,7 @@
       "season": 999,
       "episodes": [
         9999
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -760,8 +719,7 @@
       "season": 2,
       "episodes": [
         4
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -777,8 +735,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -794,8 +751,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 0,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -813,8 +769,7 @@
       "season": null,
       "episodes": [
         4
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -832,8 +787,7 @@
       "season": null,
       "episodes": [
         4
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -849,8 +803,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -868,8 +821,7 @@
       "season": null,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -885,8 +837,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -904,8 +855,7 @@
       "season": null,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -923,8 +873,7 @@
       "season": null,
       "episodes": [
         102
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -940,8 +889,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -957,8 +905,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -974,8 +921,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -991,8 +937,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1008,8 +953,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1025,8 +969,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1044,8 +987,7 @@
       "season": 2,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -1061,8 +1003,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1071,15 +1012,14 @@
     "category": "quality",
     "path": "/source/Film.1080p.mkv",
     "root": "/source",
-    "reason": "分辨率不是尾部集号。",
+    "reason": "技术混合词不生成推测集数；未标注文字保留在片名中。",
     "expected": {
       "tmdbId": null,
-      "title": "Film",
+      "title": "Film 1080p",
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1095,8 +1035,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1114,8 +1053,7 @@
       "season": 1,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -1133,8 +1071,7 @@
       "season": 1,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -1150,8 +1087,7 @@
       "mediaType": null,
       "year": 1900,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1167,8 +1103,7 @@
       "mediaType": null,
       "year": 2099,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1184,8 +1119,7 @@
       "mediaType": null,
       "year": 1999,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1201,8 +1135,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1218,8 +1151,7 @@
       "mediaType": null,
       "year": 1999,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1235,8 +1167,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1252,8 +1183,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1269,8 +1199,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1286,8 +1215,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1303,8 +1231,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 0,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1320,8 +1247,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 0,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1337,8 +1263,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 23,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1356,8 +1281,7 @@
       "season": 3,
       "episodes": [
         4
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -1373,8 +1297,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 3,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1392,8 +1315,7 @@
       "season": 2,
       "episodes": [
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -1409,8 +1331,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1426,8 +1347,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1443,8 +1363,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 2,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1460,8 +1379,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 3,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1470,15 +1388,14 @@
     "category": "release-tags",
     "path": "/source/Film.2020.1080p-GROUP.mkv",
     "root": "/source",
-    "reason": "末尾发布组正常识别。",
+    "reason": "不识别发布组；年份分隔后，片名仍选择首段正文。",
     "expected": {
       "tmdbId": null,
       "title": "Film",
       "mediaType": null,
       "year": 2020,
       "season": null,
-      "episodes": [],
-      "releaseTag": "GROUP"
+      "episodes": []
     },
     "errors": {}
   },
@@ -1487,7 +1404,7 @@
     "category": "release-tags",
     "path": "/source/Show.S02E03.1080p-GROUP.mkv",
     "root": "/source",
-    "reason": "剧集季集与发布组独立提取。",
+    "reason": "明确季集照常识别，发布组文字不单独标注。",
     "expected": {
       "tmdbId": null,
       "title": "Show",
@@ -1496,8 +1413,7 @@
       "season": 2,
       "episodes": [
         3
-      ],
-      "releaseTag": "GROUP"
+      ]
     },
     "errors": {}
   },
@@ -1506,15 +1422,14 @@
     "category": "release-tags",
     "path": "/source/Film.2024.1080p-123.mkv",
     "root": "/source",
-    "reason": "纯数字不作为发布组；无目录佐证的尾部数字不直接判定集数。",
+    "reason": "独立数字仅生成推测集数，无目录佐证时集数未知。",
     "expected": {
       "tmdbId": null,
       "title": "Film",
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1523,7 +1438,7 @@
     "category": "release-tags",
     "path": "/source/Show.S01E01-E03.mkv",
     "root": "/source",
-    "reason": "合并集终点 E03 不是发布组。",
+    "reason": "明确合并集完整识别。",
     "expected": {
       "tmdbId": null,
       "title": "Show",
@@ -1534,8 +1449,7 @@
         1,
         2,
         3
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -1544,15 +1458,14 @@
     "category": "release-tags",
     "path": "/source/Film.2024-1080p.mkv",
     "root": "/source",
-    "reason": "画质后缀不是发布组。",
+    "reason": "技术混合词保留原文，不生成集数候选。",
     "expected": {
       "tmdbId": null,
       "title": "Film",
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1568,8 +1481,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1585,8 +1497,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {}
   },
@@ -1604,8 +1515,7 @@
       "season": 1,
       "episodes": [
         0
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -1621,8 +1531,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 1,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {
       "episodes": "集数超出范围或重复"
@@ -1640,8 +1549,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {
       "season": "季集标记中的数字超出范围",
@@ -1660,8 +1568,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {
       "season": "季集标记中的数字超出范围",
@@ -1682,8 +1589,7 @@
       "season": null,
       "episodes": [
         0
-      ],
-      "releaseTag": null
+      ]
     },
     "errors": {}
   },
@@ -1699,8 +1605,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {
       "episodes": "中文集号无效"
@@ -1718,8 +1623,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {
       "tmdb-id": "tmdbId 提取值类型或范围无效"
@@ -1737,8 +1641,7 @@
       "mediaType": null,
       "year": null,
       "season": null,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {
       "tmdb-id": "tmdbId 提取值类型或范围无效"
@@ -1756,8 +1659,7 @@
       "mediaType": null,
       "year": 2024,
       "season": null,
-      "episodes": [],
-      "releaseTag": "Group_1"
+      "episodes": []
     },
     "errors": {}
   },
@@ -1773,8 +1675,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 1,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {
       "episodes": "合并集范围无效"
@@ -1792,8 +1693,7 @@
       "mediaType": "tv",
       "year": null,
       "season": 1,
-      "episodes": [],
-      "releaseTag": null
+      "episodes": []
     },
     "errors": {
       "episodes": "合并集范围无效"

@@ -10,8 +10,9 @@ type WorkspaceStore interface {
 	Workspace(string) (matching.Workspace, error)
 	SaveWorkspace(*matching.Workspace) error
 	CheckpointWorkspace(*matching.Workspace, []int) error
-	LatestWorkspace() (*matching.Workspace, error)
+	LatestWorkspace(string) (*matching.Workspace, error)
 	FileExecutions(string) (map[string]matching.FileExecution, error)
+	Mapping(string) (*model.MediaMapping, error)
 }
 type SettingsReader interface {
 	Load() (model.Settings, error)

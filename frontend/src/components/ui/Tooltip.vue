@@ -11,8 +11,8 @@ const anchor = ref<HTMLElement>()
 const portalTarget = ref<HTMLElement | string>('body')
 const open = ref(false)
 onMounted(() => {
-  // Native dialogs live in the top layer; their tooltips must stay inside it.
-  portalTarget.value = anchor.value?.closest('dialog') || 'body'
+  // Keep floating content within the active dialog's focus and pointer scope.
+  portalTarget.value = anchor.value?.closest('dialog, [role="dialog"]') || 'body'
 })
 </script>
 

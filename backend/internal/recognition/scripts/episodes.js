@@ -47,47 +47,15 @@ function runs(ctx, source) {
   }
   return result.sort((a, b) => a.start - b.start)
 }
-function overlaps(ctx, source, start, end, roles) {
-  return ctx.candidates.some(
-    (c) =>
-      roles.includes(c.role) &&
-      c.spans.some(
-        (s) => s.sourceId === source.id && start < s.end && end > s.start,
-      ),
-  )
-}
-function scan(ctx, source, pattern, roles = []) {
+function scan(ctx, source, pattern) {
   const result = []
-  for (const run of runs(ctx, source)) {
-    const chars = source.text.slice(run.start, run.end).split('')
-    for (const c of ctx.candidates)
-      if (roles.includes(c.role))
-        for (const s of c.spans)
-          if (s.sourceId === source.id)
-            for (
-              let i = Math.max(s.start, run.start);
-              i < Math.min(s.end, run.end);
-              i++
-            )
-              chars[i - run.start] = ' '
-    for (const m of chars.join('').matchAll(pattern)) {
+  for (const run of runs(ctx, source))
+    for (const m of source.text.slice(run.start, run.end).matchAll(pattern)) {
       m.index += run.start
       result.push(m)
     }
-  }
   return result.sort((a, b) => a.index - b.index)
 }
-const technical = [
-  'resolution',
-  'videoCodec',
-  'audioCodec',
-  'bitDepth',
-  'dynamicRange',
-  'language',
-  'subtitleLanguage',
-  'checksum',
-  'releaseTag',
-]
 function isYear(n) {
   return n >= 1900 && n <= 2099
 }
@@ -149,14 +117,12 @@ function number(text) {
 
 function extract(ctx) {
   const out = [],
-    s = ctx.sources[0],
-    protectedRoles = ['tmdbId', 'season', 'year', ...technical]
+    s = ctx.sources[0]
   let marked = false
   for (const m of scan(
     ctx,
     s,
     /s(\d+)e(\d+)((?:\s*(?:-\s*e?|e)\d+)*)|\b(\d+)x(\d+)/gi,
-    ['tmdbId', ...technical],
   )) {
     marked = true
     let values = [Number(m[2] || m[5])],
@@ -198,7 +164,6 @@ function extract(ctx) {
     ctx,
     s,
     /第\s*([0-9零〇一二两三四五六七八九十百千]{1,16})\s*[集话話]/g,
-    protectedRoles,
   )) {
     try {
       out.push(
@@ -233,22 +198,23 @@ function extract(ctx) {
       const raw = m[2] || m[3],
         start = run.start + m.index + m[0].length - m[1].length,
         end = start + m[1].length
-      if (overlaps(ctx, s, start, end, protectedRoles)) continue
       out.push(item(s, start, end, raw.length <= 4 ? [Number(raw)] : null,
         'explicit', raw.length <= 4 ? '显式集号' : '集数超出范围',
         raw.length <= 4 ? 'valid' : 'invalid'))
     }
   }
   if (out.length) return out
-  for (const t of words(ctx, s))
-    for (const m of t.text.matchAll(/\d+/g)) {
-      const start = t.start + m.index,
-        end = start + m[0].length,
-        n = Number(m[0])
-      if (m[0].length > 4 || isYear(n) ||
-          /v$/i.test(t.text.slice(0, m.index)) ||
-          overlaps(ctx, s, start, end, protectedRoles)) continue
-      out.push(item(s, start, end, [n], 'heuristic', '数字片段，待目录裁决'))
-    }
+  function guess(start, raw) {
+    const n = Number(raw)
+    if (raw.length > 4 || isYear(n)) return
+    if (out.some((c) => c.spans[0].start === start && c.spans[0].end === start + raw.length)) return
+    out.push(item(s, start, start + raw.length, [n], 'heuristic', '数字片段，待目录裁决'))
+  }
+  for (const t of words(ctx, s)) {
+    if (t.kind === 'number') guess(t.start, t.text)
+    // 季标记后的紧邻数字是可解释的位置，不扫描其他混合词中的数字。
+    for (const m of t.text.matchAll(/第[0-9零〇一二两三四五六七八九十百千]+季(\d+)/g))
+      guess(t.start + m.index + m[0].length - m[1].length, m[1])
+  }
   return out
 }

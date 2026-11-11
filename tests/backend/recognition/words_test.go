@@ -52,18 +52,14 @@ func TestSharedChinesePathWithWordAnnotations(t *testing.T) {
 	if value(m.Title, "") != "斗破苍穹 三年之约" || value(m.Year, 0) != 2021 || !reflect.DeepEqual(m.Episodes, []int{1}) || value(m.MediaType, "") != "tv" || m.Season != nil || m.TMDBID != nil {
 		t.Fatal(m)
 	}
-	resolution := false
 	titles := []string{}
 	for _, c := range got.Documents[0].Candidates {
-		if c.Role == "resolution" && c.Value == "HD1080P" {
-			resolution = true
-		}
 		if c.Role == r.Title && c.Spans[0].SourceID == "name" {
 			titles = append(titles, c.Value.(string))
 		}
 	}
-	if !resolution || !reflect.DeepEqual(titles, []string{"斗破苍穹 三年之约", "无水印 去片头片尾纯享版", "酷安 此间微凉"}) {
-		t.Fatal(resolution, titles)
+	if !reflect.DeepEqual(titles, []string{"斗破苍穹 三年之约", "HD1080P", "无水印 去片头片尾纯享版 AAC H264 AVC 酷安 此间微凉"}) {
+		t.Fatal(titles)
 	}
 	restored, err := r.RestoreBatch(got.Steps)
 	if err != nil || !reflect.DeepEqual(restored.Files, got.Files) {
@@ -86,6 +82,57 @@ func TestWordAnnotationsAcrossSeparatorsAndWithinWords(t *testing.T) {
 		if value(m.Title, "") != tc.title || value(m.TMDBID, -1) != tc.id || value(m.Season, -1) != tc.season || !reflect.DeepEqual(m.Episodes, tc.episodes) {
 			t.Fatal(tc.path, m)
 		}
+	}
+}
+
+func TestHyphenatedExplicitEpisode(t *testing.T) {
+	root := "/target"
+	path := root + "/电视剧/国漫/仙逆 (2023) [tmdb-223911]/Season 01/仙逆 - S01E01.mp4"
+	got, err := r.DefaultEngine().ExtractBatch(context.Background(), r.BatchInput{SourceBoundary: root, Paths: []string{path}, Targets: []string{path}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := got.Files[0].Metadata
+	if value(m.Title, "") != "仙逆" || value(m.Year, 0) != 2023 || value(m.TMDBID, 0) != 223911 || value(m.Season, -1) != 1 || !reflect.DeepEqual(m.Episodes, []int{1}) || value(m.MediaType, "") != "tv" {
+		t.Fatalf("metadata: %+v; candidates: %+v", m, got.Documents[0].Candidates)
+	}
+	for _, tc := range []struct {
+		suffix   string
+		season   int
+		episodes []int
+		invalid  bool
+	}{
+		{"s01e01", 1, []int{1}, false},
+		{"S01E01-E03", 1, []int{1, 2, 3}, false},
+		{"S01E01E03", 1, []int{1, 3}, false},
+		{"1x02", 1, []int{2}, false},
+		{"第01集", -1, []int{1}, false},
+		{"01话", -1, []int{1}, false},
+		{"EP01", -1, []int{1}, false},
+		{"E_01", -1, []int{1}, false},
+		{"S01", 1, []int{}, false},
+		{"第一季", 1, []int{}, false},
+		{"Season01", 1, []int{}, false},
+		{"S01E99999", -1, []int{}, true},
+		{"S01E03-E01", 1, []int{}, true},
+		{"S01E01-Group_1", 1, []int{1}, false},
+	} {
+		t.Run(tc.suffix, func(t *testing.T) {
+			got := batch(t, r.DefaultPipeline(), []string{"/source/Show - " + tc.suffix + ".mkv"}, nil)
+			m := got.Files[0].Metadata
+			if value(m.Title, "") != "Show" || value(m.Season, -1) != tc.season || !reflect.DeepEqual(m.Episodes, tc.episodes) {
+				t.Fatalf("metadata: %+v; candidates: %+v", m, got.Documents[0].Candidates)
+			}
+			invalid := false
+			for _, c := range got.Documents[0].Candidates {
+				if c.Role == r.Episodes && c.Status == "invalid" && c.Strength == "explicit" {
+					invalid = true
+				}
+			}
+			if invalid != tc.invalid {
+				t.Fatal(got.Documents[0].Candidates)
+			}
+		})
 	}
 }
 

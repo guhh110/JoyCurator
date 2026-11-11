@@ -13,7 +13,11 @@ type FileExecution struct {
 	ManualReview bool   `json:"manualReview"`
 }
 type Item struct {
-	Execution *FileExecution `json:"execution,omitempty"`
+	Confirmation *Confirmation       `json:"confirmation"`
+	Identity     string              `json:"identity"`
+	Layout       model.MediaLayout   `json:"layout"`
+	Original     *model.MediaMapping `json:"original,omitempty"`
+	Execution    *FileExecution      `json:"execution,omitempty"`
 	model.File
 	Metadata   recognition.Metadata `json:"metadata"`
 	Group      string               `json:"group"`
@@ -27,6 +31,7 @@ type Item struct {
 	TraceID    string               `json:"traceId,omitempty"`
 }
 type Workspace struct {
+	Purpose   string   `json:"purpose"`
 	ID        string   `json:"id"`
 	Revision  int      `json:"revision"`
 	State     string   `json:"state"`
@@ -38,14 +43,15 @@ type Workspace struct {
 	Created   string   `json:"created"`
 }
 type Edit struct {
-	Path     string `json:"path"`
-	Group    string `json:"group"`
-	Type     string `json:"type"`
-	TMDBID   int    `json:"tmdbId"`
-	Season   int    `json:"season"`
-	Episodes []int  `json:"episodes"`
-	Selected bool   `json:"selected"`
-	Removed  bool   `json:"removed"`
+	Layout   model.MediaLayout `json:"layout"`
+	Path     string            `json:"path"`
+	Group    string            `json:"group"`
+	Type     string            `json:"type"`
+	TMDBID   int               `json:"tmdbId"`
+	Season   int               `json:"season"`
+	Episodes []int             `json:"episodes"`
+	Selected bool              `json:"selected"`
+	Removed  bool              `json:"removed"`
 }
 
 type Update struct {

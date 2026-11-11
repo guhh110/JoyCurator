@@ -109,7 +109,7 @@ async function copy() {
         "
     /></label>
     <section v-if="view === 'all' || view === 'metadata'" class="pane">
-      <h2>元数据裁决</h2>
+      <h2>识别建议</h2>
       <div v-if="file" class="metadata">
         <div v-for="[key, label] in fields" :key="key" class="field">
           <strong>{{ label }}</strong

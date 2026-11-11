@@ -61,12 +61,14 @@ func TestDirectoryTrimsOnlyConfirmedEpisodeRanges(t *testing.T) {
 		want  []int
 	}{
 		{[]string{"三体1.mkv", "三体2.mkv"}, "三体1", nil},
-		{[]string{"三体1.S01.mkv", "三体3.S01.mkv"}, "三体", []int{1}},
-		{[]string{"前03后.S01.mkv", "前05后.S01.mkv"}, "前", []int{3}},
-		{[]string{"𠮷祥03.S01.mkv", "𠮷祥05.S01.mkv"}, "𠮷祥", []int{3}},
+		{[]string{"三体1.S01.mkv", "三体3.S01.mkv"}, "三体1", nil},
+		{[]string{"前03后.S01.mkv", "前05后.S01.mkv"}, "前03后", nil},
+		{[]string{"𠮷祥03.S01.mkv", "𠮷祥05.S01.mkv"}, "𠮷祥03", nil},
 		{[]string{"作品03.S01.mkv", "作品03.S01.1080p.mkv"}, "作品03", nil},
 		{[]string{"作品03.S01.mkv"}, "作品03", nil},
-		{[]string{"作品03.mkv", "作品第04集.mkv"}, "作品", []int{3}},
+		{[]string{"作品03.mkv", "作品第04集.mkv"}, "作品03", nil},
+		{[]string{"作品.03.S01.mkv", "作品.05.S01.mkv"}, "作品", []int{3}},
+		{[]string{"𠮷祥.03.S01.mkv", "𠮷祥.05.S01.mkv"}, "𠮷祥", []int{3}},
 	} {
 		paths := make([]string, len(tc.names))
 		for i, n := range tc.names {
@@ -142,12 +144,19 @@ func TestDirectoryInferenceRejectsConflictsAndMultipleVaryingPositions(t *testin
 	}
 }
 
-func TestDirectoryInferenceIgnoresTechnicalChangesAndPreservesFixedNumbers(t *testing.T) {
+func TestDirectoryInferenceKeepsUnrecognizedTechnicalTextInStructure(t *testing.T) {
 	paths := []string{"/source/Show/[作品][第一季][202][01][1080p].mkv", "/source/Show/[作品][第一季][202][03][720p].mkv", "/source/Show/[作品][第一季][202][03][1080p].mkv"}
 	got := batch(t, r.DefaultPipeline(), paths, nil)
-	for i, ep := range []int{1, 3, 3} {
-		m := got.Files[i].Metadata
-		if !reflect.DeepEqual(m.Episodes, []int{ep}) || value(m.Title, "") != "作品" {
+	for _, file := range got.Files {
+		ep := []int{3}
+		if strings.Contains(file.Path, "[01]") {
+			ep = []int{1}
+		}
+		if strings.Contains(file.Path, "720p") {
+			ep = []int{}
+		}
+		m := file.Metadata
+		if !reflect.DeepEqual(m.Episodes, ep) || value(m.Title, "") != "作品" {
 			t.Fatal(got.Files)
 		}
 	}
@@ -171,14 +180,14 @@ func TestInvalidExplicitEpisodeDoesNotFallBackToDirectoryNumbers(t *testing.T) {
 }
 
 func TestNumericEvidenceAndDerivedTitleSurviveHistory(t *testing.T) {
-	paths := []string{"/source/作品03.S01.2024.H264.tmdb-7.mkv", "/source/作品04.S01.2024.H264.tmdb-7.mkv"}
+	paths := []string{"/source/作品.03.S01.2024.H264.tmdb-7.mkv", "/source/作品.04.S01.2024.H264.tmdb-7.mkv"}
 	got := batch(t, r.DefaultPipeline(), paths, paths[:1])
 	f := got.Files[0]
 	if value(f.Metadata.Title, "") != "作品" || value(f.Metadata.Year, 0) != 2024 || value(f.Metadata.TMDBID, 0) != 7 || !reflect.DeepEqual(f.Metadata.Episodes, []int{3}) {
 		t.Fatal(f)
 	}
 	for _, c := range got.Documents[0].Candidates {
-		if c.Role == r.Episodes && !reflect.DeepEqual(c.Value, []int{3}) {
+		if c.Role == r.Episodes && !reflect.DeepEqual(c.Value, []int{3}) && !reflect.DeepEqual(c.Value, []int{7}) {
 			t.Fatal(c)
 		}
 	}
@@ -203,7 +212,7 @@ func TestNumericEvidenceAndDerivedTitleSurviveHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := engine.ExtractBatch(context.Background(), r.BatchInput{SourceBoundary: "/source", Paths: paths, Targets: paths[:1]}, nil)
-	if err != nil || value(result.Files[0].Metadata.Title, "") != "作品03" {
+	if err != nil || value(result.Files[0].Metadata.Title, "") != "作品 03" {
 		t.Fatal(result.Files, err)
 	}
 }
@@ -211,7 +220,7 @@ func TestNumericEvidenceAndDerivedTitleSurviveHistory(t *testing.T) {
 func BenchmarkDirectoryDecisions2000(b *testing.B) {
 	paths := make([]string, 2000)
 	for i := range paths {
-		paths[i] = fmt.Sprintf("/source/第一季/作品%d.1080p.mp4", i+2100)
+		paths[i] = fmt.Sprintf("/source/第一季/作品.%d.1080p.mp4", i+2100)
 	}
 	input := r.BatchInput{ContextRoot: "/source/第一季", SourceBoundary: "/source", Paths: paths, Targets: paths}
 	b.ReportAllocs()

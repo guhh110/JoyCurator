@@ -201,7 +201,7 @@ func (a *Service) ReadBatch(id string) (Batch, error) {
 	if err != nil {
 		return b, err
 	}
-	if len(runs) == 0 {
+	if len(runs) == 0 || runs[0].Purpose != "organize" {
 		return b, errors.New("批次不存在")
 	}
 	b.State = "completed"

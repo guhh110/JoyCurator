@@ -51,7 +51,7 @@ func TestScrapePreviewUsesEpisodeMetadataAndSharedArtwork(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		mapping := model.MediaMapping{Path: path, Source: []string{f1.Path, f2.Path}[i], Type: "tv", TMDBID: 2, Season: 1, Episodes: []int{i + 1}, State: "pending", Identity: fsops.Identity(stat), Size: stat.Size(), MTime: stat.ModTime().UnixNano(), RunID: "fixture"}
+		mapping := model.MediaMapping{Layout: model.MediaLayout{WorkDir: filepath.Dir(filepath.Dir(path)), SeasonDir: filepath.Dir(path)}, Path: path, Source: []string{f1.Path, f2.Path}[i], Type: "tv", TMDBID: 2, Season: 1, Episodes: []int{i + 1}, State: "pending", Identity: fsops.Identity(stat), Size: stat.Size(), MTime: stat.ModTime().UnixNano(), RunID: "fixture"}
 		if err := a.store.SaveMapping(mapping); err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestScrapePreviewUsesEpisodeMetadataAndSharedArtwork(t *testing.T) {
 	if err != nil || len(plan.Issues) > 0 {
 		t.Fatalf("scrape preview: %+v %v", plan, err)
 	}
-	for _, name := range []string{"tvshow.nfo", "season.nfo", "season01-poster.jpg", "first.nfo", "second.nfo", "first.jpg", "second.jpg", "poster.jpg", "fanart.jpg", "clearlogo.png"} {
+	for _, name := range []string{"tvshow.nfo", "season.nfo", "first.nfo", "second.nfo", "first.jpg", "second.jpg", "poster.jpg", "fanart.jpg", "clearlogo.png"} {
 		found := false
 		for _, target := range plan.Artifacts {
 			if filepath.Base(target) == name {
@@ -108,7 +108,7 @@ func TestMovieScrapePreviewKeepsOnlyStandardArtwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.store.SaveMapping(model.MediaMapping{Path: path, Type: "movie", TMDBID: 1, Identity: fsops.Identity(stat), Size: stat.Size(), MTime: stat.ModTime().UnixNano(), RunID: "fixture"}); err != nil {
+	if err := a.store.SaveMapping(model.MediaMapping{Layout: model.MediaLayout{WorkDir: filepath.Dir(path)}, Path: path, Type: "movie", TMDBID: 1, Identity: fsops.Identity(stat), Size: stat.Size(), MTime: stat.ModTime().UnixNano(), RunID: "fixture"}); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := a.dependencies.Organizer.ScrapePreview(context.Background(), organizer.ScrapePreviewRequest{Paths: []string{path}, Content: "all"})
@@ -182,7 +182,7 @@ func TestScrapeWorkUnavailableAndSameEpisodeVersions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		mapping := model.MediaMapping{Path: path, Type: "tv", TMDBID: 2, Season: 1, Episodes: []int{1}, Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano(), RunID: "fixture", State: "pending"}
+		mapping := model.MediaMapping{Layout: model.MediaLayout{WorkDir: filepath.Dir(filepath.Dir(path)), SeasonDir: filepath.Dir(path)}, Path: path, Type: "tv", TMDBID: 2, Season: 1, Episodes: []int{1}, Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano(), RunID: "fixture", State: "pending"}
 		if err := a.store.SaveMapping(mapping); err != nil {
 			t.Fatal(err)
 		}

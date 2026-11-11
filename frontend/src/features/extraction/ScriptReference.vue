@@ -34,7 +34,7 @@ defineProps<{ label: string; editorId: string; stage: Stage }>()
         trace、print、reSearch、reFindAll、reSub；无文件与网络访问。
       </p>
       <p>
-        分词与标注 250 ms；裁决 5 s、输入 64 MiB、输出 16 MiB；目录最多 2000
+        分词与标注 250 ms；建议 5 s、输入 64 MiB、输出 16 MiB；目录最多 2000
         个视频。分词每文件最多 1024 片段、分组 16 层；每规则最多 512
         候选、每文件最多 1024 候选。
       </p>

@@ -82,7 +82,7 @@ func (emptySearch) Search(context.Context, string, string, int) ([]model.Entry, 
 func scanWorkspace(t *testing.T, a *App, paths []string) ([]matching.Item, error) {
 	t.Helper()
 	a.dependencies.Workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) { return emptySearch{}, nil }
-	task, err := a.dependencies.Workspace.Start(paths, "")
+	task, err := a.dependencies.Workspace.Start(paths, "", "organize")
 	if err != nil {
 		return nil, err
 	}
@@ -91,4 +91,23 @@ func scanWorkspace(t *testing.T, a *App, paths []string) ([]matching.Item, error
 		return nil, fmt.Errorf("workspace: %s", task.Error)
 	}
 	return task.Items, nil
+}
+
+// Synthetic organizer fixtures start after explicit user confirmation. Scan tests
+// use the real confirmation endpoint instead.
+func seedConfirmedFiles(t testing.TB, a *App, w *matching.Workspace) {
+	t.Helper()
+	for i := range w.Items {
+		it := &w.Items[i]
+		info, err := a.dependencies.Workspace.files.Access.Stat(it.Path)
+		if err != nil {
+			continue
+		}
+		if it.Identity == "" {
+			it.Identity = fsops.Identity(info)
+		}
+		if it.State == "ready" && it.Entry != nil && it.Confirmation == nil {
+			it.Confirm("user", matching.EpisodeBasis{Kind: "manual"})
+		}
+	}
 }

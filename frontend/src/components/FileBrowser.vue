@@ -2,17 +2,20 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   ArrowUp,
-  Check,
   ChevronRight,
   Folder,
   Film,
   HardDrive,
   LoaderCircle,
 } from '@lucide/vue'
+import Button from './ui/Button.vue'
+import Input from './ui/Input.vue'
+import Checkbox from './ui/Checkbox.vue'
+import EliText from './ui/EliText.vue'
 import { api, name } from '../api'
 import Modal from './Modal.vue'
 import { useToastFeedback } from '../app/toast'
-const props = defineProps<{ directory?: boolean; confirmLabel?: string }>()
+const props = defineProps<{ directory?: boolean; confirmLabel?: string; scope?: 'target' }>()
 const emit = defineEmits<{ close: []; select: [paths: string[]] }>()
 const path = ref(''),
   typed = ref(''),
@@ -28,7 +31,7 @@ async function open(next: string) {
   error.value = ''
   try {
     const result = await api<typeof items.value>(
-      `/browse?path=${encodeURIComponent(next)}${props.directory ? '&scope=roots' : ''}`,
+      `/browse?path=${encodeURIComponent(next)}${props.scope ? `&scope=${props.scope}` : props.directory ? '&scope=roots' : ''}`,
     )
     if (!next) roots.value = result.map((item) => item.path)
     items.value = result.filter((item) => !props.directory || item.dir)
@@ -68,9 +71,9 @@ onMounted(() => open(''))
       }}
     </p>
     <form class="path-bar" @submit.prevent="open(typed)">
-      <button
+      <Button
         type="button"
-        class="icon-button"
+        variant="ghost" icon
         aria-label="上一级目录"
         :disabled="!path || loading"
         @click="
@@ -79,12 +82,12 @@ onMounted(() => open(''))
           )
         "
       >
-        <ArrowUp :size="17" /></button
-      ><input
+        <ArrowUp :size="17" /></Button
+      ><Input
         v-model="typed"
         aria-label="目录路径"
-        placeholder="源目录路径"
-      /><button class="button small" :disabled="loading">前往</button>
+        :placeholder="scope === 'target' ? 'Target 目录路径' : '源目录路径'"
+      /><Button type="submit" :disabled="loading">前往</Button>
     </form>
     <div class="browser-list">
       <div v-if="loading" class="empty small-empty">
@@ -96,35 +99,27 @@ onMounted(() => open(''))
         class="browser-row"
         :class="{ picked: selected.has(item.path) }"
       >
-        <button
-          v-if="!directory && path"
-          class="select-box"
-          :aria-label="`选择 ${name(item.path)}`"
-          :aria-pressed="selected.has(item.path)"
-          @click="toggle(item.path)"
-        >
-          <Check v-if="selected.has(item.path)" :size="13" />
-        </button>
+        <Checkbox v-if="!directory && path" :label="`选择 ${name(item.path)}`" :model-value="selected.has(item.path)" @update:model-value="toggle(item.path)" />
         <component
           :is="!path ? HardDrive : item.dir ? Folder : Film"
           :size="19"
           :class="item.dir ? 'purple' : 'muted'"
         />
-        <button
-          class="browser-name"
+        <Button
+          variant="ghost" class="browser-name"
           :title="item.path"
           @click="item.dir ? open(item.path) : toggle(item.path)"
         >
-          {{ name(item.path) }}
-        </button>
-        <button
+          <EliText :text="name(item.path)" ellipsis="start" />
+        </Button>
+        <Button
           v-if="item.dir"
-          class="icon-button"
+          variant="ghost" icon
           :aria-label="`打开 ${name(item.path)}`"
           @click="open(item.path)"
         >
           <ChevronRight :size="17" />
-        </button>
+        </Button>
       </div>
       <p v-if="!loading && error && !items.length" class="empty small-empty">
         未能读取目录，请检查路径后重试。
@@ -137,13 +132,17 @@ onMounted(() => open(''))
       ><span class="muted">{{
         directory ? (path ? name(path) : '请进入一个目录') : `已选 ${count} 项`
       }}</span
-      ><button
-        class="button primary"
+      ><Button
+        variant="primary"
         :disabled="loading || (directory ? !path : !count)"
         @click="choose"
       >
-        {{ directory ? '使用此目录' : confirmLabel || '添加到工作台' }}
-      </button></template
+        {{ confirmLabel || (directory ? '使用此目录' : '添加到工作台') }}
+      </Button></template
     >
   </Modal>
 </template>
+
+<style scoped>
+.path-bar>.ui-input-wrap{flex:1}.browser-name.ui-button{justify-content:flex-start;min-width:0;flex:1;height:auto;padding:8px 0;color:inherit;white-space:normal}
+</style>

@@ -122,7 +122,7 @@ it('ignores an old preview response after scrape options change', async () => {
   state.openWork({ type: 'movie', tmdbId: 1 } as any)
   await settle(); state.selected.value = ['/target/one.mkv']
   const pending = state.prepare(); await settle()
-  state.onlyMissing.value = true
+  state.onlyMissing.value = false
   expect(signal.aborted).toBe(true)
   resolve(new Response(JSON.stringify({ id: 'old', artifacts: ['old.nfo'], skipped: [], issues: [] })))
   await pending

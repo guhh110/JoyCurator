@@ -9,18 +9,19 @@ import {
 
 const props = defineProps<{
   modelValue?: string
-  options: { value: string; label: string }[]
+  options: { value: string; label: string; disabled?: boolean }[]
   placeholder?: string
   disabled?: boolean
   label: string
   id?: string
   ellipsis?: 'start' | 'end'
+  size?: 'sm' | 'md'
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const anchor = ref<HTMLElement>()
 const selectedOption = computed(() => props.options.find(option => option.value === props.modelValue))
 const portalTarget = ref<HTMLElement | string>('body')
-onMounted(() => { portalTarget.value = anchor.value?.closest('dialog') || 'body' })
+onMounted(() => { portalTarget.value = anchor.value?.closest('dialog, [role="dialog"]') || 'body' })
 // Reka reserves the empty string for placeholders. Encode every option so an
 // empty application value (for example "all") remains an ordinary choice.
 const optionKey = (value: string) => `value:${value}`
@@ -31,7 +32,7 @@ function update(value: unknown) {
 </script>
 
 <template>
-  <span ref="anchor" class="ui-select-anchor">
+  <span ref="anchor" class="ui-select-anchor" :class="{ 'ui-select-sm': size === 'sm' }">
   <SelectRoot :model-value="modelValue === undefined ? undefined : optionKey(modelValue)" :disabled="disabled" @update:model-value="update">
     <SelectTrigger :id="id" class="ui-select-trigger" :aria-label="label">
       <SelectValue v-if="ellipsis" :placeholder="placeholder"><EliText v-if="selectedOption" :text="selectedOption.label" :ellipsis="ellipsis" :focusable="false" /><template v-else>{{ placeholder }}</template></SelectValue>
@@ -41,7 +42,7 @@ function update(value: unknown) {
     <SelectPortal :to="portalTarget">
       <SelectContent class="ui-select-content" position="popper" :side-offset="5" align="end">
         <SelectViewport class="ui-select-viewport">
-          <SelectItem v-for="option in options" :key="option.value" :value="optionKey(option.value)" :text-value="option.label" class="ui-select-item">
+          <SelectItem v-for="option in options" :key="option.value" :value="optionKey(option.value)" :text-value="option.label" :disabled="option.disabled" class="ui-select-item">
             <SelectItemText><EliText v-if="ellipsis" :text="option.label" :ellipsis="ellipsis" :focusable="false" /><template v-else>{{ option.label }}</template></SelectItemText>
             <SelectItemIndicator class="ui-select-check"><Check :size="14" /></SelectItemIndicator>
           </SelectItem>
@@ -53,8 +54,9 @@ function update(value: unknown) {
 </template>
 
 <style>
-.ui-select-anchor { display:inline-flex; max-width:100%; }
-.ui-select-trigger { display:inline-flex; align-items:center; justify-content:space-between; gap:12px; min-height:32px; padding:6px 10px; border:1px solid #e4e3ed; border-radius:8px; background:#fff; color:#333543; font-size:12px; white-space:nowrap; }
+.ui-select-anchor { display:inline-flex; min-width:0; max-width:100%; }
+.ui-select-trigger { display:inline-flex; align-items:center; justify-content:space-between; gap:12px; height:36px; min-height:36px; margin:0; padding:0 11px; border:1px solid #e3dfec; border-radius:8px; background:#fff; color:#393547; font-size:12px; line-height:1.2; white-space:nowrap; }
+.ui-select-sm .ui-select-trigger { height:32px; min-height:32px; padding:0 9px; }
 .ui-select-trigger { width:100%; min-width:0; }
 .ui-select-trigger > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .ui-select-trigger > svg { color:var(--muted); flex-shrink:0; }

@@ -47,7 +47,7 @@ func TestCandidatesRetainConflictsAndOrder(t *testing.T) {
 	if len(got.Documents[0].Candidates) != 2 || value(got.Files[0].Metadata.Season, -1) != 2 {
 		t.Fatal(got)
 	}
-	p.Resolver.Config.Code = `function extract(ctx){const f=ctx.files[0],c=f.candidates[1];return [{fileId:f.fileId,metadata:{tmdbId:null,title:null,mediaType:null,year:null,season:c.value,episodes:[],releaseTag:null},decisions:{season:{candidates:[{fileId:f.fileId,candidateId:c.id}],reason:"选择后者"}}}];}`
+	p.Resolver.Config.Code = `function extract(ctx){const f=ctx.files[0],c=f.candidates[1];return [{fileId:f.fileId,metadata:{tmdbId:null,title:null,mediaType:null,year:null,season:c.value,episodes:[]},decisions:{season:{candidates:[{fileId:f.fileId,candidateId:c.id}],reason:"选择后者"}}}];}`
 	got = batch(t, p, []string{"/source/Show.S02E03.mkv"}, nil)
 	if value(got.Files[0].Metadata.Season, -1) != 3 {
 		t.Fatal(got)
@@ -141,9 +141,18 @@ func TestEpisodeIDProtectionAndInvalidExplicitSyntax(t *testing.T) {
 	p := r.DefaultPipeline()
 	p.Annotators = append([]r.Rule{regexRule("bad-id", 0, r.Episodes, `^(?P<value>603)$`)}, p.Annotators...)
 	e, _ := r.Compile(p)
-	_, err := e.Extract(context.Background(), r.Input{Path: "/Film.tmdb-603.mkv"}, nil)
-	if err == nil || !strings.Contains(err.Error(), "TMDB") {
-		t.Fatal(err)
+	got, err := e.Extract(context.Background(), r.Input{Path: "/Film.tmdb-603.mkv"}, nil)
+	if err != nil || len(got.Metadata.Episodes) != 0 {
+		t.Fatal(got.Metadata, err)
+	}
+	found := false
+	for _, step := range got.Steps {
+		if step.RuleID == "bad-id" && step.Status == "matched" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("conflicting explanation was not retained")
 	}
 	for _, path := range []string{"/Show.S01E05-E03.mkv", "/Show.S01E01-E1001.mkv", "/Film.2024.1080p-Group_1.mkv"} {
 		got := extract(t, r.DefaultPipeline(), path, "/")
@@ -157,7 +166,7 @@ func TestJSONUnknownContract(t *testing.T) {
 	p.Annotators = []r.Rule{}
 	got := extract(t, p, "/Film.mkv", "/")
 	raw, _ := json.Marshal(got.Metadata)
-	if string(raw) != `{"tmdbId":null,"title":null,"mediaType":null,"year":null,"season":null,"episodes":[],"releaseTag":null}` {
+	if string(raw) != `{"tmdbId":null,"title":null,"mediaType":null,"year":null,"season":null,"episodes":[]}` {
 		t.Fatal(string(raw))
 	}
 }

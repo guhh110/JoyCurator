@@ -63,7 +63,7 @@ func BenchmarkWorkspace2000(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		task, err := a.dependencies.Workspace.Start([]string{filepath.Join(root, "source")}, "")
+		task, err := a.dependencies.Workspace.Start([]string{filepath.Join(root, "source")}, "", "organize")
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -72,7 +72,7 @@ func BenchmarkWorkspace2000(b *testing.B) {
 			b.Fatal(task.State, len(task.Items), task.Error)
 		}
 		for _, item := range task.Items {
-			if item.State != "ready" {
+			if item.State != "review" || item.Confirmed() || item.Selected {
 				b.Fatal(item.Path, item.State, item.Reason)
 			}
 		}

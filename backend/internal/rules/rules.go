@@ -16,7 +16,7 @@ var tokenRE = regexp.MustCompile(`\{([a-z_]+)(?::(02))?\}`)
 var illegalRE = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
 var qualityRE = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(2160p|1080p|720p|480p|4k|uhd|fhd)(?:[^a-z0-9]|$)`)
 var codecRE = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(x265|h265|hevc|x264|h264|avc|av1)(?:[^a-z0-9]|$)`)
-var allowed = map[string]bool{"category": true, "title": true, "original_title": true, "year": true, "tmdb_id": true, "season": true, "episode": true, "episode_range": true, "resolution": true, "codec": true, "release_tag": true, "original_stem": true, "ext": true}
+var allowed = map[string]bool{"category": true, "title": true, "original_title": true, "year": true, "tmdb_id": true, "season": true, "episode": true, "episode_range": true, "resolution": true, "codec": true, "original_stem": true, "ext": true}
 
 func Clean(value string) string {
 	value = illegalRE.ReplaceAllString(value, "_")
@@ -139,7 +139,6 @@ func values(file model.Source, rule model.Rules) map[string]string {
 		"episode_range":  EpisodeRange(file.Season, file.Episodes),
 		"resolution":     resolution,
 		"codec":          codec,
-		"release_tag":    releaseTag(file.Metadata.ReleaseTag),
 		"original_stem":  stem,
 		"ext":            strings.TrimPrefix(filepath.Ext(file.Path), "."),
 	}
@@ -153,7 +152,7 @@ func values(file model.Source, rule model.Rules) map[string]string {
 }
 func Render(template string, values map[string]string, optionalQuality bool) (string, error) {
 	var failure error
-	for _, field := range []string{"resolution", "codec", "release_tag"} {
+	for _, field := range []string{"resolution", "codec"} {
 		if optionalQuality && values[field] == "" {
 			template = strings.ReplaceAll(template, " - {"+field+"}", "")
 		}
@@ -259,11 +258,4 @@ func ShowRoot(file model.Source, settings model.Settings) (string, error) {
 		return "", err
 	}
 	return filepath.Join(settings.TargetRoot, path), nil
-}
-
-func releaseTag(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }

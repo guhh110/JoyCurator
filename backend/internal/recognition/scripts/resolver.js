@@ -1,9 +1,7 @@
 // 先确定季集，再从保留原文的片名候选中排除已确认的集数。
 function extract(ctx) {
   const rank = { explicit: 0, contextual: 1, heuristic: 2 },
-    states = new Map(),
-    technical = ['resolution', 'videoCodec', 'audioCodec', 'bitDepth',
-      'dynamicRange', 'language', 'subtitleLanguage', 'checksum', 'releaseTag']
+    states = new Map()
   const norm = (s) => (s || '').toLowerCase().replace(/[\s._-]/g, '')
   const ref = (f, c) => ({ fileId: f.fileId, candidateId: c.id })
   const unique = (refs) => [...new Map(refs.map((r) =>
@@ -11,8 +9,23 @@ function extract(ctx) {
   const depth = (f, c) => Math.min(...c.spans.map((p) =>
     f.sources.find((s) => s.id === p.sourceId).depth))
   const compare = (f, a, b) => rank[a.strength] - rank[b.strength] ||
-    depth(f, a) - depth(f, b) || a.spans[0].start - b.spans[0].start
-  const ordered = (f, role) => f.candidates.filter((c) => c.role === role)
+    depth(f, a) - depth(f, b) || a.spans[0].start - b.spans[0].start ||
+    a.ruleId.localeCompare(b.ruleId) || a.id.localeCompare(b.id)
+  const overlap = (a, b) => a.spans.some((x) => b.spans.some((y) =>
+    x.sourceId === y.sourceId && x.start < y.end && x.end > y.start))
+  function eligible(f, c) {
+    const ids = f.candidates.filter((x) => x.role === 'tmdbId')
+    if (['season', 'episodes', 'year'].includes(c.role) && ids.some((x) => overlap(c, x)))
+      return false
+    if (c.role === 'year' && f.candidates.some((x) =>
+      ['season', 'episodes'].includes(x.role) && x.strength !== 'heuristic' &&
+      !ids.some((id) => overlap(x, id)) && overlap(c, x))) return false
+    if (c.role === 'episodes' && c.strength === 'heuristic' &&
+        f.candidates.some((x) => ['season', 'year'].includes(x.role) &&
+          eligible(f, x) && overlap(c, x))) return false
+    return true
+  }
+  const ordered = (f, role) => f.candidates.filter((c) => c.role === role && eligible(f, c))
     .slice().sort((a, b) => compare(f, a, b))
   function first(f, role) {
     const c = ordered(f, role)[0]
@@ -24,10 +37,10 @@ function extract(ctx) {
   }
   for (const f of ctx.files) {
     const state = { metadata: { tmdbId: null, title: null, mediaType: null,
-      year: null, season: null, episodes: [], releaseTag: null }, decisions: {},
+      year: null, season: null, episodes: [] }, decisions: {},
       episode: null, blocked: f.candidates.some((c) => c.role === 'episodes' &&
-        c.strength !== 'heuristic' && c.status === 'invalid') }
-    for (const role of ['tmdbId', 'year', 'season', 'releaseTag', 'mediaType']) {
+        c.strength !== 'heuristic' && c.status === 'invalid' && eligible(f, c)) }
+    for (const role of ['tmdbId', 'year', 'season', 'mediaType']) {
       const c = first(f, role)
       if (c) set(state, role, c, f)
     }
@@ -43,12 +56,11 @@ function extract(ctx) {
     const source = f.sources.find((s) => s.id === 'name'),
       ranges = c.spans.map((p) => ({ ...p, label: '#episode', priority: 0 }))
     for (const other of f.candidates) {
-      if (other.status !== 'valid' ||
-          !(other.role === 'season' || technical.includes(other.role))) continue
+      if (other.status !== 'valid' || other.role !== 'season' || !eligible(f, other)) continue
       for (const p of other.spans)
         if (p.sourceId === 'name' && !c.spans.some((x) =>
           p.start < x.end && p.end > x.start))
-          ranges.push({ ...p, label: other.role === 'season' ? '' : '#' + other.role,
+          ranges.push({ ...p, label: '',
             priority: 1 })
     }
     ranges.sort((a, b) => a.start - b.start || a.priority - b.priority || b.end - a.end)
@@ -195,7 +207,7 @@ function extract(ctx) {
   for (const f of ctx.files) {
     const state = states.get(f.fileId), m = state.metadata
     if (m.season === null && m.title !== null &&
-        !f.candidates.some((c) => c.role === 'season' && c.status === 'invalid')) {
+        !f.candidates.some((c) => c.role === 'season' && c.status === 'invalid' && eligible(f, c))) {
       const peers = (local.get(JSON.stringify([f.directory, norm(m.title)])) || [])
         .filter((p) => m.tmdbId === null || states.get(p.fileId).metadata.tmdbId === null ||
           m.tmdbId === states.get(p.fileId).metadata.tmdbId),

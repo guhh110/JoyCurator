@@ -10,21 +10,18 @@ import (
 type Target string
 
 const (
-	TMDBID     Target = "tmdbId"
-	Title      Target = "title"
-	MediaType  Target = "mediaType"
-	Year       Target = "year"
-	Season     Target = "season"
-	Episodes   Target = "episodes"
-	ReleaseTag Target = "releaseTag"
+	TMDBID    Target = "tmdbId"
+	Title     Target = "title"
+	MediaType Target = "mediaType"
+	Year      Target = "year"
+	Season    Target = "season"
+	Episodes  Target = "episodes"
 )
 
 func Targets() []Target {
-	return []Target{TMDBID, Title, MediaType, Year, Season, Episodes, ReleaseTag}
+	return []Target{TMDBID, Title, MediaType, Year, Season, Episodes}
 }
-func Roles() []Target {
-	return append(Targets(), "resolution", "videoCodec", "audioCodec", "bitDepth", "dynamicRange", "language", "subtitleLanguage", "checksum")
-}
+func Roles() []Target { return Targets() }
 
 type Source string
 
@@ -75,13 +72,12 @@ func (p Pipeline) Rules() []Rule {
 }
 
 type Metadata struct {
-	TMDBID     *int    `json:"tmdbId"`
-	Title      *string `json:"title"`
-	MediaType  *string `json:"mediaType"`
-	Year       *int    `json:"year"`
-	Season     *int    `json:"season"`
-	Episodes   []int   `json:"episodes"`
-	ReleaseTag *string `json:"releaseTag"`
+	TMDBID    *int    `json:"tmdbId"`
+	Title     *string `json:"title"`
+	MediaType *string `json:"mediaType"`
+	Year      *int    `json:"year"`
+	Season    *int    `json:"season"`
+	Episodes  []int   `json:"episodes"`
 }
 type Input struct{ Path, Root string }
 type BatchInput struct {

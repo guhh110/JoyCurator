@@ -2,7 +2,7 @@ package sqlite
 
 import "joycurator/internal/model"
 
-const expiredTraces = " FROM extraction_traces WHERE f_status IN ('completed','failed','cancelled','interrupted') AND julianday(f_finished_at)<julianday(?)"
+const expiredTraces = " FROM extraction_traces WHERE f_status IN ('completed','failed','cancelled','interrupted') AND julianday(f_finished_at)<julianday(?) AND NOT EXISTS(SELECT 1 FROM workspace_items WHERE f_trace_id=extraction_traces.id) AND NOT EXISTS(SELECT 1 FROM workspace_confirmations WHERE f_trace_id=extraction_traces.id)"
 const expiredCache = " FROM tmdb_cache WHERE expires_at<=?"
 
 func (a *Store) PreviewCleanup(r model.CleanupRequest) (model.CleanupPreview, error) {

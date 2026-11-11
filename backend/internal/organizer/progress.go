@@ -3,6 +3,7 @@ package organizer
 import (
 	"errors"
 	"joycurator/internal/infra/fsops"
+	"joycurator/internal/matching"
 	"joycurator/internal/model"
 )
 
@@ -43,6 +44,26 @@ func (a *Service) persistProgress(r *Run, positions ...int) error {
 			}
 			m.Size, m.MTime, m.RunID = info.Size(), info.ModTime().UnixNano(), r.ID
 			previous[i] = r.Mappings[i]
+			r.Mappings[i] = m
+			registered = append(registered, m)
+			changedMappings = append(changedMappings, i)
+		}
+	}
+	if r.Purpose == "scrape" && !r.Undo {
+		for i, m := range r.Mappings {
+			if m.RunID == r.ID || matching.SameMapping(&m, m.Original) {
+				continue
+			}
+			if err := a.validateScrapeMapping(m, r.ID); err != nil {
+				return err
+			}
+			info, err := a.access.Stat(m.Path)
+			if err != nil || !info.Mode().IsRegular() || fsops.Identity(info) != m.Identity || info.Size() != m.Size || info.ModTime().UnixNano() != m.MTime {
+				return errors.New("视频已变化，无法登记：" + m.Path)
+			}
+			previous[i] = m
+			m.RunID = r.ID
+			m.State = "pending"
 			r.Mappings[i] = m
 			registered = append(registered, m)
 			changedMappings = append(changedMappings, i)

@@ -35,10 +35,6 @@ func (m Metadata) value(target Target) any {
 		if len(m.Episodes) > 0 {
 			return append([]int(nil), m.Episodes...)
 		}
-	case ReleaseTag:
-		if m.ReleaseTag != nil {
-			return *m.ReleaseTag
-		}
 	}
 	return nil
 }
@@ -61,9 +57,6 @@ func (m *Metadata) set(target Target, value any) {
 		m.Season = &v
 	case Episodes:
 		m.Episodes = append([]int(nil), value.([]int)...)
-	case ReleaseTag:
-		v := value.(string)
-		m.ReleaseTag = &v
 	}
 }
 func convert(target Target, value any) (any, error) {
@@ -78,7 +71,7 @@ func convert(target Target, value any) (any, error) {
 	}
 	text := fmt.Sprint(value)
 	switch target {
-	case Title, ReleaseTag:
+	case Title:
 		if s, ok := value.(string); ok && strings.TrimSpace(s) != "" {
 			return strings.TrimSpace(s), nil
 		}

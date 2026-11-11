@@ -300,22 +300,11 @@ func candidates(d Document, r Rule, value any) ([]Candidate, error) {
 			if !ok || err != nil {
 				return nil, errors.New("候选范围越界")
 			}
-			if p.Status == "valid" && (r.Target == Season || r.Target == Episodes) {
-				for _, index := range idRE.FindAllStringIndex(s.Text, -1) {
-					if span.Start < utf16len(s.Text[:index[1]]) && span.End > utf16len(s.Text[:index[0]]) {
-						return nil, errors.New("TMDB ID 不能作为季集候选")
-					}
-				}
-			}
 		}
 		v := p.Value
 		if p.Status == "valid" {
 			var err error
-			if contains(Targets(), r.Target) {
-				v, err = convert(r.Target, v)
-			} else if text, ok := v.(string); !ok || strings.TrimSpace(text) == "" {
-				err = errors.New("辅助身份值必须为非空文本")
-			}
+			v, err = convert(r.Target, v)
 			if err != nil {
 				return nil, err
 			}
@@ -606,7 +595,7 @@ func (e *Engine) ExtractBatch(ctx context.Context, in BatchInput, observer Obser
 				return nil, err
 			}
 			if len(fields) != len(Targets()) {
-				return nil, errors.New("裁决元数据必须提供完整七个字段")
+				return nil, errors.New("裁决元数据必须提供完整六个字段")
 			}
 		}
 		if err := strict(v, &files); err != nil {

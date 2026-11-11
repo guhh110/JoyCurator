@@ -47,49 +47,14 @@ function runs(ctx, source) {
   }
   return result.sort((a, b) => a.start - b.start)
 }
-function overlaps(ctx, source, start, end, roles) {
-  return ctx.candidates.some(
-    (c) =>
-      roles.includes(c.role) &&
-      c.spans.some(
-        (s) => s.sourceId === source.id && start < s.end && end > s.start,
-      ),
-  )
-}
-function scan(ctx, source, pattern, roles = []) {
+function scan(ctx, source, pattern) {
   const result = []
-  for (const run of runs(ctx, source)) {
-    const chars = source.text.slice(run.start, run.end).split('')
-    for (const c of ctx.candidates)
-      if (roles.includes(c.role))
-        for (const s of c.spans)
-          if (s.sourceId === source.id)
-            for (
-              let i = Math.max(s.start, run.start);
-              i < Math.min(s.end, run.end);
-              i++
-            )
-              chars[i - run.start] = ' '
-    for (const m of chars.join('').matchAll(pattern)) {
+  for (const run of runs(ctx, source))
+    for (const m of source.text.slice(run.start, run.end).matchAll(pattern)) {
       m.index += run.start
       result.push(m)
     }
-  }
   return result.sort((a, b) => a.index - b.index)
-}
-const technical = [
-  'resolution',
-  'videoCodec',
-  'audioCodec',
-  'bitDepth',
-  'dynamicRange',
-  'language',
-  'subtitleLanguage',
-  'checksum',
-  'releaseTag',
-]
-function isYear(n) {
-  return n >= 1900 && n <= 2099
 }
 
 function extract(ctx) {
@@ -98,13 +63,12 @@ function extract(ctx) {
     out = []
   if (min < 1 || max > 9999 || min > max) throw Error('年份参数 min/max 无效')
   for (const s of ctx.sources)
-    for (const m of scan(ctx, s, /\b\d{4}\b/g, ['tmdbId', ...technical])) {
+    for (const m of scan(ctx, s, /\b\d{4}\b/g)) {
       const n = Number(m[0]),
         before = words(ctx, s).some(
           (t) =>
             t.parentId === null &&
-            t.start < m.index &&
-            !overlaps(ctx, s, t.start, t.end, ['tmdbId', ...technical]),
+            t.start < m.index,
         )
       if (n >= min && n <= max && before)
         out.push(item(s, m.index, m.index + 4, n, 'explicit', '片名后年份'))

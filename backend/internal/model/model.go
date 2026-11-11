@@ -35,8 +35,8 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{Version: 1, Language: "zh-CN", Rules: Rules{
-		MovieFolder: "{category}/{title} ({year}) [tmdb-{tmdb_id}]", MovieFile: "{title} ({year}) - {resolution}.{ext}",
-		TVFolder: "{category}/{title} ({year}) [tmdb-{tmdb_id}]/Season {season:02}", TVFile: "{title} - {episode_range} - {resolution}.{ext}", Categories: DefaultCategories(),
+		MovieFolder: "{category}/{title} ({year})", MovieFile: "{title} ({year}) - {resolution}.{ext}",
+		TVFolder: "{category}/{title} ({year})/Season {season:02}", TVFile: "{title} - {episode_range} - {resolution}.{ext}", Categories: DefaultCategories(),
 	}}
 }
 
@@ -131,19 +131,29 @@ type Episode struct {
 	TMDBID   int    `json:"tmdbId"`
 }
 
+// MediaLayout records confirmed output directories. An empty WorkDir needs confirmation.
+type MediaLayout struct {
+	WorkDir     string `json:"workDir"`
+	SeasonDir   string `json:"seasonDir"`
+	MoviePrefix bool   `json:"moviePrefix"`
+	Manual      bool   `json:"manual"`
+}
+
 // MediaMapping is the durable bridge between organization and scraping.
 type MediaMapping struct {
-	Path     string `json:"path"`
-	RunID    string `json:"runId"`
-	Source   string `json:"source"`
-	Type     string `json:"type"`
-	TMDBID   int    `json:"tmdbId"`
-	Season   int    `json:"season"`
-	Episodes []int  `json:"episodes"`
-	State    string `json:"state"`
-	Identity string `json:"identity"`
-	Size     int64  `json:"size"`
-	MTime    int64  `json:"mtime"`
+	Layout   MediaLayout   `json:"layout"`
+	Original *MediaMapping `json:"original,omitempty"`
+	Path     string        `json:"path"`
+	RunID    string        `json:"runId"`
+	Source   string        `json:"source"`
+	Type     string        `json:"type"`
+	TMDBID   int           `json:"tmdbId"`
+	Season   int           `json:"season"`
+	Episodes []int         `json:"episodes"`
+	State    string        `json:"state"`
+	Identity string        `json:"identity"`
+	Size     int64         `json:"size"`
+	MTime    int64         `json:"mtime"`
 }
 
 type Artwork struct {

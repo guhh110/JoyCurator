@@ -131,3 +131,27 @@ func (m *Resolver) Match(ctx context.Context, item *Item) {
 	}
 	item.Entry, item.Candidates, item.State, item.Reason = decision.Entry, decision.Candidates, decision.State, decision.Reason
 }
+
+// Suggest ranks catalog results without assigning a final work.
+func (m *Resolver) Suggest(ctx context.Context, item *Item) {
+	m.Match(ctx, item)
+	if item.Entry != nil {
+		entry := *item.Entry
+		candidates := []model.Entry{entry}
+		for _, c := range item.Candidates {
+			if c.Type != entry.Type || c.TMDBID != entry.TMDBID {
+				candidates = append(candidates, c)
+			}
+		}
+		item.Candidates = candidates
+		item.Entry = nil
+	}
+	if item.State != "failed" {
+		if len(item.Candidates) > 0 {
+			item.State, item.Reason = "review", "请选择并确认作品与季集"
+		} else {
+			item.State, item.Reason = "unmatched", "未找到作品，请手动搜索"
+		}
+	}
+	item.Selected = false
+}

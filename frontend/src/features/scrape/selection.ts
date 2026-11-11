@@ -41,7 +41,7 @@ export function artifactSummary(preview: ScrapePreview) {
   for (const path of preview.artifacts) {
     const name = path.split(/[\\/]/).pop()?.toLowerCase() ?? ''
     const shared = ['tvshow.nfo', 'season.nfo', 'poster.jpg', 'fanart.jpg', 'clearlogo.jpg', 'clearlogo.png'].includes(name) ||
-      /^season\d+-poster\.(jpg|jpeg|png)$/.test(name)
+      /^season\d+-poster\.jpg$/.test(name)
     if (name.endsWith('.nfo')) summary[shared ? 'sharedNfo' : 'videoNfo']++
     else summary[shared ? 'sharedImages' : 'videoImages']++
   }

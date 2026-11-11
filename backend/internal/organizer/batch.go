@@ -58,6 +58,9 @@ func (a *Service) ExecuteBatch(id string) (Batch, error) {
 	if current.Version != p.Version || revision != p.Revision {
 		return Batch{}, errors.New("设置或工作区已变化，请重新预览")
 	}
+	if err = a.checkConfirmations(p); err != nil {
+		return Batch{}, err
+	}
 	batch := Batch{ID: model.Key(), Runs: []Run{}, Active: true, State: "queued"}
 	for _, group := range p.Groups {
 		if len(group.Mappings) == 0 {

@@ -86,9 +86,9 @@ func readWorkspace(q queryer, id string) (matching.Workspace, error) {
 	}
 	return v, nil
 }
-func (a *Store) LatestWorkspace() (*matching.Workspace, error) {
+func (a *Store) LatestWorkspace(purpose string) (*matching.Workspace, error) {
 	var id string
-	err := a.db.QueryRow("SELECT id FROM recognitions ORDER BY sequence DESC LIMIT 1").Scan(&id)
+	err := a.db.QueryRow("SELECT id FROM recognitions WHERE f_purpose=? ORDER BY sequence DESC LIMIT 1", purpose).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

@@ -34,7 +34,7 @@ func TestCleanupPreviewAndAtomicDeletion(t *testing.T) {
 	}
 	cleanupTrace(t, s, "recent", "completed", now.Add(-time.Hour))
 	cleanupTrace(t, s, "boundary", "completed", before)
-	w := matching.Workspace{ID: "workspace", Items: []matching.Item{{TraceID: "completed"}}}
+	w := matching.Workspace{Purpose: "organize", ID: "workspace", Items: []matching.Item{{TraceID: "completed"}}}
 	if err := s.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestCleanupPreviewAndAtomicDeletion(t *testing.T) {
 	}
 	r := model.CleanupRequest{Before: before.Format(time.RFC3339Nano), Traces: true, Cache: true, CacheBefore: cutoff}
 	p, err := s.PreviewCleanup(r)
-	if err != nil || p.Traces != 4 || p.Cache != 2 {
+	if err != nil || p.Traces != 3 || p.Cache != 2 {
 		t.Fatal(p, err)
 	}
 	if _, _, err := s.TraceDetail("completed"); err != nil {
@@ -68,7 +68,7 @@ func TestCleanupPreviewAndAtomicDeletion(t *testing.T) {
 	if err != nil || counts != p.CleanupCounts {
 		t.Fatal(counts, p, err)
 	}
-	for _, id := range []string{"completed", "failed", "cancelled", "interrupted"} {
+	for _, id := range []string{"failed", "cancelled", "interrupted"} {
 		if _, _, err := s.TraceDetail(id); err == nil {
 			t.Fatal("expired trace survived", id)
 		}
@@ -79,7 +79,7 @@ func TestCleanupPreviewAndAtomicDeletion(t *testing.T) {
 			}
 		}
 	}
-	for _, id := range []string{"running", "recent", "boundary"} {
+	for _, id := range []string{"completed", "running", "recent", "boundary"} {
 		if _, _, err := s.TraceDetail(id); err != nil {
 			t.Fatal("unselected trace removed", id, err)
 		}

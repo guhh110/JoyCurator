@@ -16,6 +16,9 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 	if err != nil {
 		return nil, err
 	}
+	if task.Purpose != "organize" {
+		return nil, errors.New("刮削工作区不能提交整理")
+	}
 	if task.State == "running" || task.Revision != in.Revision {
 		return nil, errors.New("识别结果已变化，请保存并重新预览")
 	}
@@ -30,7 +33,7 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 		if !item.Selected || item.Removed || item.Execution != nil && (item.Execution.Locked || item.Execution.Completed) {
 			continue
 		}
-		if item.State != "ready" || item.Entry == nil {
+		if !item.Confirmed() || item.State != "ready" || item.Entry == nil {
 			return nil, errors.New("选择中包含待确认文件")
 		}
 		count++
@@ -76,6 +79,16 @@ func (a *Service) BatchPreview(ctx context.Context, in BatchPreviewRequest) (*Pl
 		plan.Mappings = append(plan.Mappings, group.Mappings...)
 		plan.Required += group.Required
 		plan.Issues = append(plan.Issues, group.Issues...)
+	}
+	inferMappingLayouts(plan.Mappings, settings.TargetRoot)
+	layouts := map[string]model.MediaLayout{}
+	for _, m := range plan.Mappings {
+		layouts[m.Path] = m.Layout
+	}
+	for _, group := range plan.Groups {
+		for i := range group.Mappings {
+			group.Mappings[i].Layout = layouts[group.Mappings[i].Path]
+		}
 	}
 	if len(plan.Issues) == 0 {
 		if err := a.validateOps(plan.Ops); err != nil {

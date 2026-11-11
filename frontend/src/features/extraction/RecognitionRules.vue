@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { ChevronDown, Plus, Save } from '@lucide/vue'
-import { DropdownMenuItem } from 'reka-ui'
 import ActionMenu from '../../components/ui/ActionMenu.vue'
+import ActionMenuItem from '../../components/ui/ActionMenuItem.vue'
 import { confirmAction } from '../../app/confirm'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import QueryState from '../../components/ui/QueryState.vue'
@@ -188,15 +188,14 @@ async function examples() {
             ><button class="button" type="button">
               <Plus :size="14" />新增规则<ChevronDown :size="13" /></button
           ></template>
-          <DropdownMenuItem
+          <ActionMenuItem
             v-for="(_, target) in roles"
             :key="target"
-            class="ui-action-menu-item"
             :disabled="!library || busy"
             @select="add(target, 'script')"
           >
             {{ roles[target] }}
-          </DropdownMenuItem>
+          </ActionMenuItem>
         </ActionMenu>
         <button class="button" :disabled="!canSubmit" @click="examples">
           {{ checking ? '样例运行中…' : '运行全部样例' }}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import Button from './Button.vue'
 const props = withDefaults(
   defineProps<{
     page: number
@@ -16,20 +17,20 @@ const pages = computed(() =>
 </script>
 <template>
   <nav class="shared-pagination" aria-label="分页">
-    <button
-      class="button small"
+    <Button
+      size="sm"
       :disabled="disabled || page <= 1"
       @click="$emit('change', page - 1)"
     >
-      上一页</button
+      上一页</Button
     ><span class="tiny muted">{{ page }} / {{ pages }} · 共 {{ total }} 条</span
-    ><button
-      class="button small"
+    ><Button
+      size="sm"
       :disabled="disabled || page >= pages"
       @click="$emit('change', page + 1)"
     >
       下一页
-    </button>
+    </Button>
   </nav>
 </template>
 <style scoped>

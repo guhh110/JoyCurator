@@ -28,18 +28,26 @@ type ScrapePreviewRequest struct {
 	OnlyMissing bool     `json:"onlyMissing"`
 }
 
+type ScrapeBatchPreviewRequest struct {
+	RecognitionID string `json:"recognitionId"`
+	Revision      int    `json:"revision"`
+	Content       string `json:"content"`
+	OnlyMissing   bool   `json:"onlyMissing"`
+}
+
 type ScrapePlan struct {
-	Content     string   `json:"content"`
-	OnlyMissing bool     `json:"onlyMissing"`
-	Skipped     []string `json:"skipped"`
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Type        string   `json:"type"`
-	TMDBID      int      `json:"tmdbId"`
-	Targets     []string `json:"targets"`
-	Artifacts   []string `json:"artifacts"`
-	Issues      []string `json:"issues"`
-	Required    int64    `json:"required"`
+	Groups      []ScrapePlan `json:"groups,omitempty"`
+	Content     string       `json:"content"`
+	OnlyMissing bool         `json:"onlyMissing"`
+	Skipped     []string     `json:"skipped"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Type        string       `json:"type"`
+	TMDBID      int          `json:"tmdbId"`
+	Targets     []string     `json:"targets"`
+	Artifacts   []string     `json:"artifacts"`
+	Issues      []string     `json:"issues"`
+	Required    int64        `json:"required"`
 }
 
 type Batch struct {

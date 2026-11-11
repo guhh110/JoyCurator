@@ -15,7 +15,6 @@ function file(
     season: -1,
     episodes: [],
     metadata: {
-      releaseTag: null,
       title: '片名',
       year: 2024,
       mediaType: null,

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"joycurator/internal/infra/fsops"
+	"joycurator/internal/matching"
 	"joycurator/internal/metadata"
 	"joycurator/internal/model"
 )
@@ -65,10 +66,6 @@ func (a *Service) ScrapePreview(ctx context.Context, input ScrapePreviewRequest)
 	if len(selected) == 0 || len(selected) > 1000 {
 		return ScrapePlan{}, errors.New("请选择 1–1000 个目标视频")
 	}
-	s, err := a.settings.Load()
-	if err != nil {
-		return ScrapePlan{}, err
-	}
 	items := make([]model.MediaMapping, 0, len(selected))
 	seenPaths := map[string]bool{}
 	for _, path := range selected {
@@ -85,15 +82,31 @@ func (a *Service) ScrapePreview(ctx context.Context, input ScrapePreviewRequest)
 		seenPaths[path] = true
 		items = append(items, *item)
 	}
+	for i := range items {
+		original := items[i]
+		items[i].Original = &original
+	}
+	return a.scrapePreviewItems(ctx, input, items)
+}
+
+func (a *Service) scrapePreviewItems(ctx context.Context, input ScrapePreviewRequest, items []model.MediaMapping) (ScrapePlan, error) {
+	s, err := a.settings.Load()
+	if err != nil {
+		return ScrapePlan{}, err
+	}
 	items, err = a.checkScrapeAvailability(items)
 	if err != nil {
 		return ScrapePlan{}, err
 	}
 	for _, item := range items {
 		if item.State == "unavailable" {
-			return ScrapePlan{}, errors.New("目标视频不可用或未登记：" + item.Path)
+			return ScrapePlan{}, errors.New("目标视频已变化：" + item.Path)
+		}
+		if err = matching.ValidateLayout(item.Layout, item.Path, item.Type, s.TargetRoot); err != nil {
+			return ScrapePlan{}, err
 		}
 	}
+	selected := input.Paths
 	kind, id := items[0].Type, items[0].TMDBID
 	for _, item := range items {
 		if item.Type != kind || item.TMDBID != id {
@@ -169,10 +182,7 @@ func (a *Service) ScrapePreview(ctx context.Context, input ScrapePreviewRequest)
 	}
 	showDirs := map[string]string{}
 	for _, item := range items {
-		dir := filepath.Dir(item.Path)
-		if kind == "tv" {
-			dir = filepath.Dir(dir)
-		}
+		dir := item.Layout.WorkDir
 		if _, exists := showDirs[dir]; !exists {
 			showDirs[dir] = item.Path
 		}
@@ -250,7 +260,10 @@ func (a *Service) ScrapePreview(ctx context.Context, input ScrapePreviewRequest)
 			seasonDirs := map[string]string{}
 			for _, item := range items {
 				if item.Season == season {
-					dir := filepath.Dir(item.Path)
+					dir := item.Layout.SeasonDir
+					if dir == "" {
+						dir = item.Layout.WorkDir
+					}
 					if _, ok := seasonDirs[dir]; !ok {
 						seasonDirs[dir] = item.Path
 					}
@@ -262,7 +275,13 @@ func (a *Service) ScrapePreview(ctx context.Context, input ScrapePreviewRequest)
 			}
 			sort.Strings(ordered)
 			for _, dir := range ordered {
-				if input.Content != "images" {
+				flat := true
+				for _, item := range items {
+					if item.Season == season && item.Layout.SeasonDir == dir {
+						flat = false
+					}
+				}
+				if input.Content != "images" && !flat {
 					body, e := metadata.SeasonNFO(entry, seasonInfo)
 					if e != nil {
 						return plan, e
@@ -272,7 +291,11 @@ func (a *Service) ScrapePreview(ctx context.Context, input ScrapePreviewRequest)
 				if seasonInfo.PosterPath != "" {
 					ext := strings.ToLower(filepath.Ext(seasonInfo.PosterPath))
 					if ext == ".jpg" || ext == ".jpeg" || ext == ".png" {
-						add(filepath.Join(dir, fmt.Sprintf("season%02d-poster%s", season, ext)), "image", seasonInfo.PosterPath, nil, seasonDirs[dir])
+						name := "poster.jpg"
+						if flat {
+							name = fmt.Sprintf("season%02d-poster.jpg", season)
+						}
+						add(filepath.Join(dir, name), "image", seasonInfo.PosterPath, nil, seasonDirs[dir])
 					}
 				}
 			}
@@ -295,22 +318,27 @@ func (a *Service) ScrapePreview(ctx context.Context, input ScrapePreviewRequest)
 				name = "clearlogo.png"
 			}
 			for _, dir := range dirs {
-				add(filepath.Join(dir, name), "image", image.Path, nil, showDirs[dir])
+				if entry.Type == "movie" {
+					for _, item := range items {
+						if item.Layout.WorkDir == dir {
+							add(matching.MovieArtworkPath(item, name), "image", image.Path, nil, item.Path)
+						}
+					}
+				} else {
+					add(filepath.Join(dir, name), "image", image.Path, nil, showDirs[dir])
+				}
 			}
 		}
 	}
 	for i := range ops {
 		op := &ops[i]
 		for _, item := range items {
-			sharedDir := filepath.Dir(item.Path)
-			if kind == "tv" {
-				sharedDir = filepath.Dir(sharedDir)
+			shared := !item.Layout.MoviePrefix && filepath.Dir(op.Target) == item.Layout.WorkDir && (baseSharedArtifact(op.Target))
+			base := filepath.Base(op.Target)
+			if kind == "tv" && (strings.HasPrefix(base, "season") || base == "tvshow.nfo" || base == "poster.jpg" || base == "fanart.jpg" || base == "clearlogo.png" || base == "clearlogo.jpg") {
+				shared = filepath.Dir(op.Target) == item.Layout.WorkDir && (base == "tvshow.nfo" || base == "poster.jpg" || base == "fanart.jpg" || strings.HasPrefix(base, "clearlogo.") || base == fmt.Sprintf("season%02d-poster.jpg", item.Season)) || item.Layout.SeasonDir != "" && filepath.Dir(op.Target) == item.Layout.SeasonDir && (base == "season.nfo" || base == "poster.jpg")
 			}
-			shared := filepath.Dir(op.Target) == sharedDir
-			if kind == "tv" && filepath.Dir(op.Target) == filepath.Dir(item.Path) {
-				base := filepath.Base(op.Target)
-				shared = base == "season.nfo" || strings.HasPrefix(base, fmt.Sprintf("season%02d-poster.", item.Season))
-			}
+
 			if op.Owner == item.Path || shared {
 				op.Owners = append(op.Owners, item.Path)
 			}
@@ -328,7 +356,7 @@ func (a *Service) ScrapePreview(ctx context.Context, input ScrapePreviewRequest)
 	}
 	sort.Strings(plan.Skipped)
 	sort.Strings(plan.Artifacts)
-	a.previews.put(&Plan{ID: plan.ID, Purpose: "scrape", Ops: ops, Mappings: affected, Version: s.Version,
+	a.previews.put(&Plan{ID: plan.ID, Purpose: "scrape", Ops: ops, Inputs: items, Mappings: affected, Version: s.Version,
 		Expires: time.Now().Add(previewTTL), Issues: plan.Issues, Title: plan.Title})
 	return plan, nil
 }
@@ -392,13 +420,9 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 			return Run{}, errors.New("目标视频已变化，请重新预览")
 		}
 	}
-	for _, mapping := range p.Mappings {
-		current, lookupErr := a.mappings.Mapping(mapping.Path)
-		if lookupErr != nil {
-			return Run{}, lookupErr
-		}
-		if current == nil || current.RunID != mapping.RunID || current.Identity != mapping.Identity || current.TMDBID != mapping.TMDBID || current.Type != mapping.Type || current.Season != mapping.Season || !slices.Equal(current.Episodes, mapping.Episodes) {
-			return Run{}, errors.New("刮削映射已变化，请重新预览")
+	for _, m := range p.Mappings {
+		if err := a.validateScrapeMapping(m, ""); err != nil {
+			return Run{}, err
 		}
 	}
 	r := Run{ID: model.Key(), Title: p.Title, Mode: "scrape", State: "queued", Created: time.Now().Format(time.RFC3339), Ops: append([]Work(nil), p.Ops...), Total: len(p.Ops), Purpose: "scrape", Mappings: append([]model.MediaMapping(nil), p.Mappings...), Version: p.Version}
@@ -417,6 +441,12 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 	if current.Version != p.Version {
 		return Run{}, errors.New("设置已变化，请重新预览")
 	}
+	if e = a.validateScrapeRun(Run{Mappings: p.Inputs}, current); e != nil {
+		return Run{}, e
+	}
+	if e = a.validateScrapeRun(r, current); e != nil {
+		return Run{}, e
+	}
 	err := a.enqueueLocked([]Run{r})
 	if err == nil {
 		a.previews.remove(id)
@@ -426,6 +456,9 @@ func (a *Service) ScrapeExecute(id string) (Run, error) {
 
 func (a *Service) validateScrapeRun(r Run, s model.Settings) error {
 	for _, op := range r.Ops {
+		if err := a.access.NoSymlinks(filepath.Dir(op.Target)); err != nil {
+			return err
+		}
 		if !withinMedia(s.TargetRoot, op.Target) {
 			return errors.New("刮削目标超出当前媒体目录")
 		}
@@ -434,12 +467,11 @@ func (a *Service) validateScrapeRun(r Run, s model.Settings) error {
 		return nil
 	}
 	for _, m := range r.Mappings {
-		current, err := a.mappings.Mapping(m.Path)
-		if err != nil {
+		if err := a.access.NoSymlinks(m.Path); err != nil {
 			return err
 		}
-		if current == nil || current.RunID != m.RunID || current.Identity != m.Identity || current.Type != m.Type || current.TMDBID != m.TMDBID || current.Season != m.Season || !slices.Equal(current.Episodes, m.Episodes) {
-			return errors.New("刮削映射已变化，请重新预览")
+		if err := a.validateScrapeMapping(m, r.ID); err != nil {
+			return err
 		}
 		info, err := a.access.Stat(m.Path)
 		if !withinMedia(s.TargetRoot, m.Path) || err != nil || !info.Mode().IsRegular() || fsops.Identity(info) != m.Identity || info.Size() != m.Size || info.ModTime().UnixNano() != m.MTime {
@@ -496,4 +528,25 @@ func (a *Service) reuseScrapeArtifact(op *Work) (bool, error) {
 	op.Operation = Operation{Kind: op.Kind, Mode: op.Mode, Target: op.Target, URL: op.URL, Content: op.Content, ConvertJPEG: op.ConvertJPEG, Status: "completed", Identity: previous.Identity, Hash: previous.Hash}
 	op.Reused = true
 	return true, nil
+}
+
+func baseSharedArtifact(path string) bool {
+	base := filepath.Base(path)
+	return base == "poster.jpg" || base == "fanart.jpg" || strings.HasPrefix(base, "clearlogo.")
+}
+func (a *Service) validateScrapeMapping(m model.MediaMapping, run string) error {
+	current, err := a.mappings.Mapping(m.Path)
+	if err != nil {
+		return err
+	}
+	expected := m.Original
+	if run != "" && m.RunID == run {
+		copy := m
+		copy.Original = nil
+		expected = &copy
+	}
+	if !matching.SameMapping(current, expected) {
+		return errors.New("刮削登记已变化，请重新预览：" + m.Path)
+	}
+	return nil
 }

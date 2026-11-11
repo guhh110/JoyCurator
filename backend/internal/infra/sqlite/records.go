@@ -445,12 +445,12 @@ func readRuleExamples(q queryer, root string) ([]rowRuleExamples, error) {
 	return out, nil
 }
 
-const columnsRecognitions = "f_revision,f_state,f_completed,f_total,f_error,f_created"
+const columnsRecognitions = "f_purpose,f_revision,f_state,f_completed,f_total,f_error,f_created"
 
 func scanRecognitions(s scanner) (matching.Workspace, error) {
 	var v matching.Workspace
 	var err error
-	err = s.Scan(&v.Revision, &v.State, &v.Completed, &v.Total, &v.Error, &v.Created)
+	err = s.Scan(&v.Purpose, &v.Revision, &v.State, &v.Completed, &v.Total, &v.Error, &v.Created)
 	if err != nil {
 		return v, err
 	}
@@ -458,7 +458,7 @@ func scanRecognitions(s scanner) (matching.Workspace, error) {
 }
 
 func putRecognitions(q queryer, key, root, owner string, position int, v matching.Workspace) error {
-	_, err := q.Exec("INSERT INTO recognitions(id,f_revision,f_state,f_completed,f_total,f_error,f_created) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET f_revision=excluded.f_revision,f_state=excluded.f_state,f_completed=excluded.f_completed,f_total=excluded.f_total,f_error=excluded.f_error,f_created=excluded.f_created", key, v.Revision, v.State, v.Completed, v.Total, v.Error, v.Created)
+	_, err := q.Exec("INSERT INTO recognitions(id,f_revision,f_state,f_completed,f_total,f_error,f_created,f_purpose) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET f_revision=excluded.f_revision,f_state=excluded.f_state,f_completed=excluded.f_completed,f_total=excluded.f_total,f_error=excluded.f_error,f_created=excluded.f_created,f_purpose=excluded.f_purpose", key, v.Revision, v.State, v.Completed, v.Total, v.Error, v.Created, v.Purpose)
 	return err
 }
 
@@ -532,7 +532,7 @@ func readWorkspacePaths(q queryer, root string) ([]rowWorkspacePaths, error) {
 func scanWorkspaceItems(s scanner) (matching.Item, error) {
 	var v matching.Item
 	var err error
-	err = s.Scan(&v.Path, &v.Size, &v.MTime, &v.Season, &v.Group, &v.State, &v.Reason, &v.Selected, &v.Removed, &v.Edited, &v.TraceID)
+	err = s.Scan(&v.Identity, &v.Layout.WorkDir, &v.Layout.SeasonDir, &v.Layout.MoviePrefix, &v.Layout.Manual, &v.Path, &v.Size, &v.MTime, &v.Season, &v.Group, &v.State, &v.Reason, &v.Selected, &v.Removed, &v.Edited, &v.TraceID)
 	if err != nil {
 		return v, err
 	}
@@ -540,12 +540,18 @@ func scanWorkspaceItems(s scanner) (matching.Item, error) {
 }
 
 func putWorkspaceItems(q queryer, key, root, owner string, position int, v matching.Item) error {
-	_, err := q.Exec("INSERT INTO workspace_items(k,root,owner,position,f_path,f_size,f_m_time,f_season,f_group,f_state,f_reason,f_selected,f_removed,f_edited,f_trace_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_path=excluded.f_path,f_size=excluded.f_size,f_m_time=excluded.f_m_time,f_season=excluded.f_season,f_group=excluded.f_group,f_state=excluded.f_state,f_reason=excluded.f_reason,f_selected=excluded.f_selected,f_removed=excluded.f_removed,f_edited=excluded.f_edited,f_trace_id=excluded.f_trace_id", key, root, owner, position, v.Path, v.Size, v.MTime, v.Season, v.Group, v.State, v.Reason, v.Selected, v.Removed, v.Edited, v.TraceID)
+	_, err := q.Exec("INSERT INTO workspace_items(k,root,owner,position,f_path,f_size,f_m_time,f_season,f_group,f_state,f_reason,f_selected,f_removed,f_edited,f_trace_id,f_identity,f_work_dir,f_season_dir,f_movie_prefix,f_layout_manual) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_path=excluded.f_path,f_size=excluded.f_size,f_m_time=excluded.f_m_time,f_season=excluded.f_season,f_group=excluded.f_group,f_state=excluded.f_state,f_reason=excluded.f_reason,f_selected=excluded.f_selected,f_removed=excluded.f_removed,f_edited=excluded.f_edited,f_trace_id=excluded.f_trace_id,f_identity=excluded.f_identity,f_work_dir=excluded.f_work_dir,f_season_dir=excluded.f_season_dir,f_movie_prefix=excluded.f_movie_prefix,f_layout_manual=excluded.f_layout_manual", key, root, owner, position, v.Path, v.Size, v.MTime, v.Season, v.Group, v.State, v.Reason, v.Selected, v.Removed, v.Edited, v.TraceID, v.Identity, v.Layout.WorkDir, v.Layout.SeasonDir, v.Layout.MoviePrefix, v.Layout.Manual)
 	return err
 }
 
 func writeWorkspaceItems(q queryer, key, root, owner string, position int, v matching.Item) error {
 	if err := putWorkspaceItems(q, key, root, owner, position, v); err != nil {
+		return err
+	}
+	if err := writeConfirmation(q, key, root, v.Confirmation); err != nil {
+		return err
+	}
+	if err := writeMappingSnapshot(q, "workspace", key, root, v.Original); err != nil {
 		return err
 	}
 	if _, err := q.Exec("DELETE FROM item_episodes WHERE owner=?", key); err != nil {
@@ -604,7 +610,15 @@ func readWorkspaceItems(q queryer, root string) ([]rowWorkspaceItems, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.Query("SELECT k,owner,position,f_path,f_size,f_m_time,f_season,f_group,f_state,f_reason,f_selected,f_removed,f_edited,f_trace_id FROM workspace_items WHERE root=? ORDER BY owner,position", root)
+	confirmations, err := readConfirmations(q, root)
+	if err != nil {
+		return nil, err
+	}
+	originals, err := readMappingSnapshots(q, "workspace", root)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.Query("SELECT k,owner,position,f_identity,f_work_dir,f_season_dir,f_movie_prefix,f_layout_manual,f_path,f_size,f_m_time,f_season,f_group,f_state,f_reason,f_selected,f_removed,f_edited,f_trace_id FROM workspace_items WHERE root=? ORDER BY owner,position", root)
 	if err != nil {
 		return nil, err
 	}
@@ -617,6 +631,8 @@ func readWorkspaceItems(q queryer, root string) ([]rowWorkspaceItems, error) {
 		if err != nil {
 			return nil, err
 		}
+		v.Original = originals[r.Key]
+		v.Confirmation = confirmations[r.Key]
 		r.Value = v
 		out = append(out, r)
 	}
@@ -872,7 +888,7 @@ func readRunMappingEpisodes(q queryer, root string) ([]rowRunMappingEpisodes, er
 func scanItemMetadata(s scanner) (recognition.Metadata, error) {
 	var v recognition.Metadata
 	var err error
-	err = s.Scan(&v.TMDBID, &v.Title, &v.MediaType, &v.Year, &v.Season, &v.ReleaseTag)
+	err = s.Scan(&v.TMDBID, &v.Title, &v.MediaType, &v.Year, &v.Season)
 	if err != nil {
 		return v, err
 	}
@@ -880,7 +896,7 @@ func scanItemMetadata(s scanner) (recognition.Metadata, error) {
 }
 
 func putItemMetadata(q queryer, key, root, owner string, position int, v recognition.Metadata) error {
-	_, err := q.Exec("INSERT INTO item_metadata(k,root,owner,position,f_tmdbid,f_title,f_media_type,f_year,f_season,f_release_tag) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_tmdbid=excluded.f_tmdbid,f_title=excluded.f_title,f_media_type=excluded.f_media_type,f_year=excluded.f_year,f_season=excluded.f_season,f_release_tag=excluded.f_release_tag", key, root, owner, position, v.TMDBID, v.Title, v.MediaType, v.Year, v.Season, v.ReleaseTag)
+	_, err := q.Exec("INSERT INTO item_metadata(k,root,owner,position,f_tmdbid,f_title,f_media_type,f_year,f_season) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_tmdbid=excluded.f_tmdbid,f_title=excluded.f_title,f_media_type=excluded.f_media_type,f_year=excluded.f_year,f_season=excluded.f_season", key, root, owner, position, v.TMDBID, v.Title, v.MediaType, v.Year, v.Season)
 	return err
 }
 
@@ -910,7 +926,7 @@ func readItemMetadata(q queryer, root string) ([]rowItemMetadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.Query("SELECT k,owner,position,f_tmdbid,f_title,f_media_type,f_year,f_season,f_release_tag FROM item_metadata WHERE root=? ORDER BY owner,position", root)
+	rows, err := q.Query("SELECT k,owner,position,f_tmdbid,f_title,f_media_type,f_year,f_season FROM item_metadata WHERE root=? ORDER BY owner,position", root)
 	if err != nil {
 		return nil, err
 	}
@@ -948,12 +964,12 @@ func readItemMetadata(q queryer, root string) ([]rowItemMetadata, error) {
 	return out, nil
 }
 
-const columnsTraceMetadata = "f_tmdbid,f_title,f_media_type,f_year,f_season,f_release_tag"
+const columnsTraceMetadata = "f_tmdbid,f_title,f_media_type,f_year,f_season"
 
 func scanTraceMetadata(s scanner) (recognition.Metadata, error) {
 	var v recognition.Metadata
 	var err error
-	err = s.Scan(&v.TMDBID, &v.Title, &v.MediaType, &v.Year, &v.Season, &v.ReleaseTag)
+	err = s.Scan(&v.TMDBID, &v.Title, &v.MediaType, &v.Year, &v.Season)
 	if err != nil {
 		return v, err
 	}
@@ -961,7 +977,7 @@ func scanTraceMetadata(s scanner) (recognition.Metadata, error) {
 }
 
 func putTraceMetadata(q queryer, key, root, owner string, position int, v recognition.Metadata) error {
-	_, err := q.Exec("INSERT INTO trace_metadata(k,root,owner,position,f_tmdbid,f_title,f_media_type,f_year,f_season,f_release_tag) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_tmdbid=excluded.f_tmdbid,f_title=excluded.f_title,f_media_type=excluded.f_media_type,f_year=excluded.f_year,f_season=excluded.f_season,f_release_tag=excluded.f_release_tag", key, root, owner, position, v.TMDBID, v.Title, v.MediaType, v.Year, v.Season, v.ReleaseTag)
+	_, err := q.Exec("INSERT INTO trace_metadata(k,root,owner,position,f_tmdbid,f_title,f_media_type,f_year,f_season) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_tmdbid=excluded.f_tmdbid,f_title=excluded.f_title,f_media_type=excluded.f_media_type,f_year=excluded.f_year,f_season=excluded.f_season", key, root, owner, position, v.TMDBID, v.Title, v.MediaType, v.Year, v.Season)
 	return err
 }
 
@@ -991,7 +1007,7 @@ func readTraceMetadata(q queryer, root string) ([]rowTraceMetadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.Query("SELECT k,owner,position,f_tmdbid,f_title,f_media_type,f_year,f_season,f_release_tag FROM trace_metadata WHERE root=? ORDER BY owner,position", root)
+	rows, err := q.Query("SELECT k,owner,position,f_tmdbid,f_title,f_media_type,f_year,f_season FROM trace_metadata WHERE root=? ORDER BY owner,position", root)
 	if err != nil {
 		return nil, err
 	}
@@ -1583,7 +1599,7 @@ func putRuns(q queryer, key, root, owner string, position int, v organizer.Run) 
 func scanRunMappings(s scanner) (model.MediaMapping, error) {
 	var v model.MediaMapping
 	var err error
-	err = s.Scan(&v.Path, &v.RunID, &v.Source, &v.Type, &v.TMDBID, &v.Season, &v.State, &v.Identity, &v.Size, &v.MTime)
+	err = s.Scan(&v.Layout.WorkDir, &v.Layout.SeasonDir, &v.Layout.MoviePrefix, &v.Layout.Manual, &v.Path, &v.RunID, &v.Source, &v.Type, &v.TMDBID, &v.Season, &v.State, &v.Identity, &v.Size, &v.MTime)
 	if err != nil {
 		return v, err
 	}
@@ -1591,12 +1607,15 @@ func scanRunMappings(s scanner) (model.MediaMapping, error) {
 }
 
 func putRunMappings(q queryer, key, root, owner string, position int, v model.MediaMapping) error {
-	_, err := q.Exec("INSERT INTO run_mappings(k,root,owner,position,f_path,f_run_id,f_source,f_type,f_tmdbid,f_season,f_state,f_identity,f_size,f_m_time) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_path=excluded.f_path,f_run_id=excluded.f_run_id,f_source=excluded.f_source,f_type=excluded.f_type,f_tmdbid=excluded.f_tmdbid,f_season=excluded.f_season,f_state=excluded.f_state,f_identity=excluded.f_identity,f_size=excluded.f_size,f_m_time=excluded.f_m_time", key, root, owner, position, v.Path, v.RunID, v.Source, v.Type, v.TMDBID, v.Season, v.State, v.Identity, v.Size, v.MTime)
+	_, err := q.Exec("INSERT INTO run_mappings(k,root,owner,position,f_path,f_run_id,f_source,f_type,f_tmdbid,f_season,f_state,f_identity,f_size,f_m_time,f_work_dir,f_season_dir,f_movie_prefix,f_layout_manual) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_path=excluded.f_path,f_run_id=excluded.f_run_id,f_source=excluded.f_source,f_type=excluded.f_type,f_tmdbid=excluded.f_tmdbid,f_season=excluded.f_season,f_state=excluded.f_state,f_identity=excluded.f_identity,f_size=excluded.f_size,f_m_time=excluded.f_m_time,f_work_dir=excluded.f_work_dir,f_season_dir=excluded.f_season_dir,f_movie_prefix=excluded.f_movie_prefix,f_layout_manual=excluded.f_layout_manual", key, root, owner, position, v.Path, v.RunID, v.Source, v.Type, v.TMDBID, v.Season, v.State, v.Identity, v.Size, v.MTime, v.Layout.WorkDir, v.Layout.SeasonDir, v.Layout.MoviePrefix, v.Layout.Manual)
 	return err
 }
 
 func writeRunMappings(q queryer, key, root, owner string, position int, v model.MediaMapping) error {
 	if err := putRunMappings(q, key, root, owner, position, v); err != nil {
+		return err
+	}
+	if err := writeMappingSnapshot(q, "run", key, root, v.Original); err != nil {
 		return err
 	}
 	if _, err := q.Exec("DELETE FROM run_mapping_episodes WHERE owner=?", key); err != nil {
@@ -1621,7 +1640,11 @@ func readRunMappings(q queryer, root string) ([]rowRunMappings, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.Query("SELECT k,owner,position,f_path,f_run_id,f_source,f_type,f_tmdbid,f_season,f_state,f_identity,f_size,f_m_time FROM run_mappings WHERE root=? ORDER BY owner,position", root)
+	originals, err := readMappingSnapshots(q, "run", root)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.Query("SELECT k,owner,position,f_work_dir,f_season_dir,f_movie_prefix,f_layout_manual,f_path,f_run_id,f_source,f_type,f_tmdbid,f_season,f_state,f_identity,f_size,f_m_time FROM run_mappings WHERE root=? ORDER BY owner,position", root)
 	if err != nil {
 		return nil, err
 	}
@@ -1634,6 +1657,7 @@ func readRunMappings(q queryer, root string) ([]rowRunMappings, error) {
 		if err != nil {
 			return nil, err
 		}
+		v.Original = originals[r.Key]
 		r.Value = v
 		out = append(out, r)
 	}
@@ -1659,12 +1683,12 @@ func readRunMappings(q queryer, root string) ([]rowRunMappings, error) {
 	return out, nil
 }
 
-const columnsMediaMappings = "f_path,f_run_id,f_source,f_type,f_tmdbid,f_season,f_state,f_identity,f_size,f_m_time"
+const columnsMediaMappings = "f_work_dir,f_season_dir,f_movie_prefix,f_layout_manual,f_path,f_run_id,f_source,f_type,f_tmdbid,f_season,f_state,f_identity,f_size,f_m_time"
 
 func scanMediaMappings(s scanner) (model.MediaMapping, error) {
 	var v model.MediaMapping
 	var err error
-	err = s.Scan(&v.Path, &v.RunID, &v.Source, &v.Type, &v.TMDBID, &v.Season, &v.State, &v.Identity, &v.Size, &v.MTime)
+	err = s.Scan(&v.Layout.WorkDir, &v.Layout.SeasonDir, &v.Layout.MoviePrefix, &v.Layout.Manual, &v.Path, &v.RunID, &v.Source, &v.Type, &v.TMDBID, &v.Season, &v.State, &v.Identity, &v.Size, &v.MTime)
 	if err != nil {
 		return v, err
 	}
@@ -1672,7 +1696,7 @@ func scanMediaMappings(s scanner) (model.MediaMapping, error) {
 }
 
 func putMediaMappings(q queryer, key, root, owner string, position int, v model.MediaMapping) error {
-	_, err := q.Exec("INSERT INTO media_mappings(id,f_path,f_run_id,f_source,f_type,f_tmdbid,f_season,f_state,f_identity,f_size,f_m_time) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET f_path=excluded.f_path,f_run_id=excluded.f_run_id,f_source=excluded.f_source,f_type=excluded.f_type,f_tmdbid=excluded.f_tmdbid,f_season=excluded.f_season,f_state=excluded.f_state,f_identity=excluded.f_identity,f_size=excluded.f_size,f_m_time=excluded.f_m_time", key, v.Path, v.RunID, v.Source, v.Type, v.TMDBID, v.Season, v.State, v.Identity, v.Size, v.MTime)
+	_, err := q.Exec("INSERT INTO media_mappings(id,f_path,f_run_id,f_source,f_type,f_tmdbid,f_season,f_state,f_identity,f_size,f_m_time,f_work_dir,f_season_dir,f_movie_prefix,f_layout_manual) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET f_path=excluded.f_path,f_run_id=excluded.f_run_id,f_source=excluded.f_source,f_type=excluded.f_type,f_tmdbid=excluded.f_tmdbid,f_season=excluded.f_season,f_state=excluded.f_state,f_identity=excluded.f_identity,f_size=excluded.f_size,f_m_time=excluded.f_m_time,f_work_dir=excluded.f_work_dir,f_season_dir=excluded.f_season_dir,f_movie_prefix=excluded.f_movie_prefix,f_layout_manual=excluded.f_layout_manual", key, v.Path, v.RunID, v.Source, v.Type, v.TMDBID, v.Season, v.State, v.Identity, v.Size, v.MTime, v.Layout.WorkDir, v.Layout.SeasonDir, v.Layout.MoviePrefix, v.Layout.Manual)
 	return err
 }
 

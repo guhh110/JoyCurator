@@ -13,7 +13,7 @@ import (
 
 func TestWorkspaceRejectsUnknownColumnsWithoutRewritingData(t *testing.T) {
 	store := openStore(t)
-	w := matching.Workspace{ID: "strict", State: "completed"}
+	w := matching.Workspace{Purpose: "organize", ID: "strict", State: "completed"}
 	if err := store.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
 	}
@@ -83,11 +83,11 @@ func TestTraceSnapshotsPaginationAndCascade(t *testing.T) {
 
 func TestWorkspaceRevisionAndCachePort(t *testing.T) {
 	store := openStore(t)
-	w := matching.Workspace{ID: "one", Revision: 3, Items: []matching.Item{}}
+	w := matching.Workspace{Purpose: "organize", ID: "one", Revision: 3, Items: []matching.Item{}}
 	if err := store.SaveWorkspace(&w); err != nil || w.Revision != 4 {
 		t.Fatal(w, err)
 	}
-	latest, err := store.LatestWorkspace()
+	latest, err := store.LatestWorkspace("organize")
 	if err != nil || latest.Revision != 4 {
 		t.Fatal(latest, err)
 	}

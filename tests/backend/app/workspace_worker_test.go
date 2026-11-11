@@ -24,7 +24,7 @@ func (s *workspaceStore) SaveWorkspace(w *matching.Workspace) error {
 	s.value = *w
 	return nil
 }
-func (s *workspaceStore) LatestWorkspace() (*matching.Workspace, error) { return &s.value, nil }
+func (s *workspaceStore) LatestWorkspace(string) (*matching.Workspace, error) { return &s.value, nil }
 
 func TestCancelledWorkerPersistsTaskAndReleasesRegistration(t *testing.T) {
 	for _, shutdown := range []bool{false, true} {
@@ -60,7 +60,7 @@ func TestCancelledWorkerPersistsTaskAndReleasesRegistration(t *testing.T) {
 			} else {
 				cancel()
 			}
-			service.recognize(ctx, cancel, matching.Workspace{ID: "workspace", State: "running", Paths: []string{filepath.Join(source, "cancel.mkv")}}, model.Settings{}, nil)
+			service.recognize(ctx, cancel, matching.Workspace{Purpose: "organize", ID: "workspace", State: "running", Paths: []string{filepath.Join(source, "cancel.mkv")}}, model.Settings{}, nil)
 			want := "cancelled"
 			if shutdown {
 				want = "interrupted"
@@ -82,3 +82,5 @@ func TestCancelledWorkerPersistsTaskAndReleasesRegistration(t *testing.T) {
 func (s *workspaceStore) CheckpointWorkspace(w *matching.Workspace, positions []int) error {
 	return s.SaveWorkspace(w)
 }
+
+func (s *workspaceStore) Mapping(string) (*model.MediaMapping, error) { return nil, nil }

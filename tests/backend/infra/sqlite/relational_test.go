@@ -23,7 +23,7 @@ func TestRelationalWorkspaceSnapshotsAndCheckpoint(t *testing.T) {
 	zero := 0
 	empty := ""
 	entry := model.Entry{TMDBID: 1, Type: "tv", Title: "original", Genres: []string{"g2", "g1"}, Countries: []string{"CN"}, Cast: []model.Actor{{Name: "actor", Role: "role"}}}
-	w := matching.Workspace{ID: "workspace", State: "completed", Paths: []string{"/b", "/a"}, Items: []matching.Item{
+	w := matching.Workspace{Purpose: "organize", ID: "workspace", State: "completed", Paths: []string{"/b", "/a"}, Items: []matching.Item{
 		{File: model.File{Path: "/b", MTime: 123456789012345678, Season: 0, Episodes: []int{0, 2}}, Metadata: recognition.Metadata{TMDBID: &zero, Title: &empty, Season: &zero, Episodes: []int{0, 1}}, Entry: &entry, Candidates: []model.Entry{entry}, Execution: &matching.FileExecution{Locked: true}},
 		{File: model.File{Path: "/a"}, Metadata: recognition.Metadata{Episodes: []int{}}, Candidates: []model.Entry{}},
 	}}
@@ -203,7 +203,7 @@ func TestStorageFormatRejectionDoesNotRewriteDatabase(t *testing.T) {
 				}
 				statement := "DROP INDEX runs_state"
 				if kind == "previous-version" {
-					statement = "PRAGMA user_version=1"
+					statement = "PRAGMA user_version=4"
 				}
 				if _, err = s.db.Exec(statement); err != nil {
 					t.Fatal(err)
@@ -264,7 +264,7 @@ func TestRecoveryIsAtomicAcrossAllBusinessRecords(t *testing.T) {
 	if err := s.SaveRun(r); err != nil {
 		t.Fatal(err)
 	}
-	w := matching.Workspace{ID: "w", State: "running"}
+	w := matching.Workspace{Purpose: "organize", ID: "w", State: "running"}
 	if err := s.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
 	}

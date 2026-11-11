@@ -19,10 +19,11 @@ func batchFixture(t *testing.T) (*App, string, matching.Workspace, *organizer.Pl
 	a, root := fixture(t)
 	movie := mediaFile(t, a, root, "film.mkv")
 	tv := mediaFile(t, a, root, "Show.S01E01.mkv")
-	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{filepath.Join(root, "source")}, Items: []matching.Item{
+	task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "completed", Paths: []string{filepath.Join(root, "source")}, Items: []matching.Item{
 		{File: movie, Group: "movie", Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "长夜旅途", Year: 2024}, State: "ready", Selected: true},
 		{File: tv, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2, Title: "山海旅人", Year: 2023}, State: "ready", Selected: true},
 	}}
+	seedConfirmedFiles(t, a, &task)
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +98,31 @@ func TestBatchExecuteSeparateRecordsAndUndo(t *testing.T) {
 	}
 }
 func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
+	t.Run("same name and year under default templates", func(t *testing.T) {
+		a, root := fixture(t)
+		first := mediaFile(t, a, root, "first.mkv")
+		second := mediaFile(t, a, root, "second.mkv")
+		task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "completed", Paths: []string{filepath.Join(root, "source")}, Items: []matching.Item{
+			{File: first, Group: "movie:1", Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "Same", Year: 2024}, State: "ready", Selected: true},
+			{File: second, Group: "movie:2", Entry: &model.Entry{Type: "movie", TMDBID: 2, Title: "Same", Year: 2024}, State: "ready", Selected: true},
+		}}
+		seedConfirmedFiles(t, a, &task)
+		if err := a.store.SaveWorkspace(&task); err != nil {
+			t.Fatal(err)
+		}
+		plan, err := a.dependencies.Organizer.BatchPreview(context.Background(), organizer.BatchPreviewRequest{DuplicatePolicy: "error", RecognitionID: task.ID, Revision: task.Revision, Mode: "copy"})
+		if err != nil || len(plan.Issues) == 0 {
+			t.Fatal(plan, err)
+		}
+		for _, row := range plan.Rows {
+			if strings.Contains(row.Target, "tmdb-") {
+				t.Fatal(row.Target)
+			}
+		}
+		if _, err = a.dependencies.Organizer.ExecuteBatch(plan.ID); err == nil {
+			t.Fatal("same-name works silently overwritten")
+		}
+	})
 	t.Run("revision", func(t *testing.T) {
 		a, _, task, plan := batchFixture(t)
 		_ = a.store.SaveWorkspace(&task)
@@ -157,7 +183,9 @@ func TestBatchRejectsStaleEditsAndGlobalConflicts(t *testing.T) {
 				t.Fatal(err)
 			}
 			task.Items[i].Size, task.Items[i].MTime = info.Size(), info.ModTime().UnixNano()
+			task.Items[i].Confirmation = nil
 		}
+		seedConfirmedFiles(t, a, &task)
 		if err := a.store.SaveWorkspace(&task); err != nil {
 			t.Fatal(err)
 		}
@@ -190,7 +218,7 @@ func prepareQueuedBatch(t *testing.T, a *App, plan *organizer.Plan) organizer.Ba
 func TestRestartResumesQueuedRunsAndInterruptsRecognition(t *testing.T) {
 	a, root, _, plan := batchFixture(t)
 	batch := prepareQueuedBatch(t, a, plan)
-	task := matching.Workspace{ID: model.Key(), State: "running", Items: []matching.Item{}}
+	task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "running", Items: []matching.Item{}}
 	_ = a.store.SaveWorkspace(&task)
 	if err := a.Close(); err != nil {
 		t.Fatal(err)

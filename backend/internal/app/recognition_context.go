@@ -14,7 +14,7 @@ import (
 )
 
 // Context includes every descendant video. Targets alone are replaced in the workspace.
-func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets []string, s model.Settings, workspace string) (map[string]matching.Item, error) {
+func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets []string, s model.Settings, workspace, purpose string) (map[string]matching.Item, error) {
 	roots := []string{}
 	for _, path := range imports {
 		relevant := false
@@ -36,7 +36,7 @@ func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets
 			root = filepath.Dir(path)
 		}
 		root = a.files.Access.Canonical(root)
-		if !a.files.SourceAllowed(root, s) {
+		if !a.allowed(purpose, root, s) {
 			return nil, errors.New("上下文目录超出源目录范围")
 		}
 		roots = append(roots, root)
@@ -71,11 +71,17 @@ func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets
 		}
 		paths := []string{}
 		infos := map[string]fs.FileInfo{}
-		err := scanner.Walk(ctx, a.files.Access, []string{root}, []string{s.TargetRoot}, func(path string, info fs.FileInfo) error {
+		excluded := []string{}
+		boundary := s.TargetRoot
+		if purpose == "organize" {
+			excluded = []string{s.TargetRoot}
+			boundary = s.SourceRoot
+		}
+		err := scanner.Walk(ctx, a.files.Access, []string{root}, excluded, func(path string, info fs.FileInfo) error {
 			if len(paths) >= 2000 {
 				return errors.New("目录上下文最多包含 2000 个视频，请缩小导入目录")
 			}
-			if !a.files.SourceAllowed(path, s) {
+			if !a.allowed(purpose, path, s) {
 				return errors.New("上下文文件超出源目录范围")
 			}
 			paths = append(paths, path)
@@ -85,7 +91,7 @@ func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets
 		if err != nil {
 			return nil, err
 		}
-		batch, trace, err := a.extract.ExtractTree(ctx, recognition.BatchInput{ContextRoot: root, SourceBoundary: s.SourceRoot, Paths: paths, Targets: wanted}, workspace)
+		batch, trace, err := a.extract.ExtractTree(ctx, recognition.BatchInput{ContextRoot: root, SourceBoundary: boundary, Paths: paths, Targets: wanted}, workspace)
 		if err != nil {
 			return nil, err
 		}

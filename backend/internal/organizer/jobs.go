@@ -53,12 +53,8 @@ func (a *Service) Resume(id string, undo bool) (Run, error) {
 			return r, errors.New("设置已变化，请重新预览")
 		}
 		for _, item := range r.Mappings {
-			current, lookupErr := a.mappings.Mapping(item.Path)
-			if lookupErr != nil {
-				return r, lookupErr
-			}
-			if current == nil || current.RunID != item.RunID || current.Identity != item.Identity || current.TMDBID != item.TMDBID {
-				return r, errors.New("刮削映射已变化，不能重试")
+			if err := a.validateScrapeMapping(item, r.ID); err != nil {
+				return r, err
 			}
 			info, statErr := a.access.Stat(item.Path)
 			if !withinMedia(settings.TargetRoot, item.Path) || statErr != nil || !info.Mode().IsRegular() || fsops.Identity(info) != item.Identity || info.Size() != item.Size || info.ModTime().UnixNano() != item.MTime {

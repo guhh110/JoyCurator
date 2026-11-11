@@ -124,10 +124,10 @@ func (a *Store) BatchPosition(id string) (int, error) {
 func (a *Store) Batches(page int) (organizer.BatchPage, error) {
 	return snapshotRead(a.db, func(q queryer) (organizer.BatchPage, error) {
 		result := organizer.BatchPage{Items: []organizer.Batch{}, Page: page}
-		if err := q.QueryRow("SELECT COUNT(DISTINCT f_batch_id) FROM runs WHERE f_batch_id<>''").Scan(&result.Total); err != nil {
+		if err := q.QueryRow("SELECT COUNT(DISTINCT f_batch_id) FROM runs WHERE f_purpose='organize' AND f_batch_id<>''").Scan(&result.Total); err != nil {
 			return result, err
 		}
-		selected := "SELECT f_batch_id FROM runs WHERE f_batch_id<>'' GROUP BY f_batch_id ORDER BY MIN(sequence) DESC LIMIT 20 OFFSET ?"
+		selected := "SELECT f_batch_id FROM runs WHERE f_purpose='organize' AND f_batch_id<>'' GROUP BY f_batch_id ORDER BY MIN(sequence) DESC LIMIT 20 OFFSET ?"
 		rows, err := q.Query(selected, (page-1)*20)
 		if err != nil {
 			return result, err
@@ -147,7 +147,7 @@ func (a *Store) Batches(page int) (organizer.BatchPage, error) {
 		if err != nil {
 			return result, err
 		}
-		summaries, err := queryRuns(q, "SELECT id,"+columnsRuns+" FROM runs WHERE f_batch_id IN ("+selected+") ORDER BY sequence", (page-1)*20)
+		summaries, err := queryRuns(q, "SELECT id,"+columnsRuns+" FROM runs WHERE f_purpose='organize' AND f_batch_id IN ("+selected+") ORDER BY sequence", (page-1)*20)
 		if err != nil {
 			return result, err
 		}
@@ -227,6 +227,26 @@ func (a *Store) FileExecutions(workspace string) (map[string]matching.FileExecut
 	}
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("读取文件执行状态失败：%w", err)
+	}
+	rows.Close()
+	scrape, err := a.db.Query(`SELECT r.id,r.f_state,r.f_recognition_id,m.f_path FROM runs r JOIN run_mappings m ON m.root=r.id WHERE r.f_purpose='scrape' AND (r.f_state IN ('queued','running') OR (r.f_recognition_id=? AND r.f_state='completed' AND r.f_undo=0)) ORDER BY r.sequence`, workspace)
+	if err != nil {
+		return nil, err
+	}
+	defer scrape.Close()
+	for scrape.Next() {
+		var id, state, owner, path string
+		if err = scrape.Scan(&id, &state, &owner, &path); err != nil {
+			return nil, err
+		}
+		locked := state == "queued" || state == "running"
+		if old, ok := result[path]; ok && old.Locked && !locked {
+			continue
+		}
+		result[path] = matching.FileExecution{RunID: id, State: state, Locked: locked, Completed: !locked && owner == workspace}
+	}
+	if err = scrape.Err(); err != nil {
+		return nil, err
 	}
 	return result, nil
 }

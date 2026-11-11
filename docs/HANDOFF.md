@@ -93,13 +93,13 @@ main.main
 
 ## 4. 当前数据模型
 
-`Pipeline` 包含唯一分词脚本、有序标注列表和唯一裁决脚本。`Token` 保留结构及 UTF-16 原文范围；`Candidate` 保留语义身份、强度、有效性和依据；`FileResult` 保存七字段 Metadata 和可跨文件的候选引用。`Step` 记录阶段、文件、输出、诊断和时间，同一规则仅首次步骤携带源码快照。详见下节。
+`Pipeline` 包含唯一分词脚本、有序标注列表和唯一裁决脚本。`Token` 保留结构及 UTF-16 原文范围；`Candidate` 保留语义身份、强度、有效性和依据；`FileResult` 保存六字段 Metadata 和可跨文件的候选引用。`Step` 记录阶段、文件、输出、诊断和时间，同一规则仅首次步骤携带源码快照。详见下节。
 
 ## 5. 三阶段识别
 
 当前识别架构、脚本契约、边界与存储规范统一见 [RECOGNITION.md](RECOGNITION.md)。核心入口为 `Compile(Pipeline)`、`ExtractBatch(BatchInput)`；应用通过 `extractContexts` 收集完整目录树，再调用 `Service.ExtractTree`，每树固定配置快照和共享历史。默认分词按非中英文数字字符分隔，保留完整词及括号结构；标注消费词和相邻词，正则逐词匹配。片名标注最后从排除元信息后的连续区段生成候选，保留推测集数文字，词间统一空格；裁决脚本按同目录命名结构、明确季集依据和不同数字值佐证唯一集数位置，再裁剪片名并逐目标输出 Metadata。单文件裸数字及无剧集依据的数字变化保留歧义，派生片名引用原片名与集数依据。下游匹配和整理接口继续消费 Metadata。
 
-规则 API 仅接受 `{pipeline:{tokenizer,annotators,resolver}}`。调试输入多路径文本快照及 targets；样例使用 paths/root/targets/expected。旧数组、覆盖与来源清理格式均拒绝。存储格式为 2，不迁移或重建旧库；全部验证使用临时空目录。
+规则 API 仅接受 `{pipeline:{tokenizer,annotators,resolver}}`。调试输入多路径文本快照及 targets；样例使用 paths/root/targets/expected。旧数组、覆盖与来源清理格式均拒绝。存储格式为 5，不迁移或重建旧库；全部验证使用临时空目录。
 
 ## 6. 编辑与历史
 
@@ -112,24 +112,24 @@ main.main
 ## 8. 自动识别、匹配与人工修正
 
 ```text
-AutomaticRecognitionPage → useWorkspace.start
+AutomaticRecognitionPage → useWorkspace.scanSources
   → POST /api/recognitions {paths,id?}
   → WorkspaceService.Start：校验目录／数量、初始化或补充工作区
   → 保存 Recognition，建立后台 context
   → recognize
     → scanner.Walk（不 Probe）
     → 收集完整目录快照 → ExtractTree → 每目标 Metadata → 初始 query 分组
-    → Resolver.Match → DecideMatch：作品候选匹配与同批查询去重
-    → Resolver.Validate → 季集纯策略：季集有效性
+    → Resolver.Suggest → DecideMatch：作品候选排序与同批查询去重
+    → 用户确认 → Resolver.Validate：季集有效性，不补季号
     → 按 type + TMDB ID 合并作品，同剧多季同组
-    → 自动选择 ready 且未移出的文件
+    → 仅确认成功后默认勾选，既有登记可复用确认
     → 分批保存工作区进度
   → 前端 TanStack Query 轮询
 ```
 
 关键入口：`app/workspace.go` 管任务准入，`app/recognition_job.go` 管异步流程，`app/workspace_edits.go` 管修正；`matching/match.go`、`validate.go` 管查询协调，`policy.go` 管不依赖网络的判断。TMDB 客户端负责请求、响应缓存与重试，规则引擎不参与网络。
 
-匹配策略：明确 ID 优先；类型不明时查电影和剧集，ID 在两类中都存在也需消歧。标题／原名标准化精确匹配、已知年份一致、无同等候选才自动采用；模糊、同名、年份冲突与去年份回退进入 review。没有搜索结果与网络／凭据错误分开处理。缺季号只在唯一常规季且集数有效时补全；不自动换算跨季连续集号。
+匹配策略：明确 ID 优先；类型不明时查电影和剧集，ID 在两类中都存在也需消歧。标题／原名标准化精确匹配、已知年份一致、无同等候选也仅作为建议，所有新文件均待确认；模糊、同名、年份冲突与去年份回退进入 review。没有搜索结果与网络／凭据错误分开处理。缺季号时唯一常规季也只作为建议；不自动换算跨季连续集号。
 
 状态分两层：
 
@@ -145,14 +145,14 @@ AutomaticRecognitionPage → useWorkspace.start
 ## 9. 整理工作区与预览调用链
 
 ```text
-AutomaticRecognitionPage → useWorkspace.start → POST /recognitions
-  → 自动识别并分组 → 服务端保存工作区
-组内搜索作品 → GET /search → 选择 Entry → PUT /recognitions/{id}
-  → 剧集 GET /seasons、GET /episodes → 单集对照、关联文件、修正季集
-  → 单集对照内“查看季度”只切换视图，不修改工作区
-  → 批量修正：目标季度与集数偏移输入框（原始识别基准，不累加）；当前映射与修正后编号旁显示相对原始识别的偏移量徽章
-  → 独立勾选、预览并确认后保存，由服务端校验；不自动执行整理
-预览 → POST /batches/preview → buildPreview（按作品）
+AutomaticRecognitionPage → useWorkspace.scanSources → POST /recognitions
+  → 添加来源并开始识别 → 服务端保存工作区
+  → 目录导航默认选择直接包含的待确认文件，跨目录保留本批编辑
+  → 明确选择 TMDB 作品 → 同一文件表内核对季度与集数
+  → 建议／候选／原文数字与偏移按需展开，TMDB 集目辅助逐行填写
+  → POST /recognitions/{id}/confirm 原子确认；成功后默认纳入执行选择
+  → 预览步骤单独选择已确认文件，刮削布局就地修正
+  → 生成页面内预览，任何相关编辑使旧预览失效
   → 校验源路径和工作区版本、读取已确认的作品详情与季集快照（不请求 TMDB）
   → rules.Target / ShowRoot 渲染分类与命名
   → 整理仅生成视频／字幕操作并登记目标视频映射；独立刮削预览生成 NFO／图片操作
@@ -333,3 +333,5 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 后续新增选择性重跑入口见 `app/reidentify.go` 与 `features/workspace/useReidentification.ts`。不同于普通导入对未变化文件的复用，该入口持久化 reidentifying 标记，强制按当前规则重提取选中文件；任务 HTTP 回执与 worker 使用独立副本。人工修正字段不被新自动匹配覆盖，未指定条目不写入；取消、匹配失败与中断恢复后普通 retry 只继续未完成标记。存在标记时新增来源会明确拒绝，避免扩大重跑范围。
 
 刮削预览新增必填 content（all/nfo/images）及 onlyMissing（布尔）；前端调用和测试均使用当前请求。跳过已有产物不会登记归属，只有实际计划生成项才参加撤销；全跳过不会创建任务或改写映射状态。部分内容刮削已完成不代表全部 NFO／图片齐全，完整行为见 API 文档。
+
+整理与目录刮削共用添加文件／确认／预览三步页，编辑选择和执行选择分别出现在对应步骤。useConfirmation／ConfirmationForm 支持批量选作品、季度及原文数字位置取集号；按各文件快照生成行，不依赖排序补号。确认记录独立于 Edited，普通 Update 不授予确认。存储格式 5，验证用独立临时目录。

@@ -75,7 +75,7 @@ func TestRunSummariesSkipOperationDecodingButDetailsRemainStrict(t *testing.T) {
 }
 func TestWorkspaceSaveFailureDoesNotAdvanceRevision(t *testing.T) {
 	store := openStore(t)
-	w := matching.Workspace{ID: "workspace", Revision: 2}
+	w := matching.Workspace{Purpose: "organize", ID: "workspace", Revision: 2}
 	if _, err := store.db.Exec(`CREATE TRIGGER reject_workspace BEFORE INSERT ON recognitions BEGIN SELECT RAISE(ABORT,'full'); END`); err != nil {
 		t.Fatal(err)
 	}

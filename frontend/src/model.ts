@@ -93,7 +93,9 @@ export interface Run {
   batchId?: string
   purpose: 'organize' | 'scrape'
 }
+export interface MediaLayout { workDir: string; seasonDir: string; moviePrefix: boolean; manual: boolean }
 export interface MediaMapping {
+  layout: MediaLayout
   path: string
   source: string
   type: 'movie' | 'tv'
@@ -117,6 +119,7 @@ export interface ScrapeWorkPage {
 }
 export type ScrapeContent = 'all' | 'nfo' | 'images'
 export interface ScrapePreview {
+  groups?: ScrapePreview[]
   content: ScrapeContent
   onlyMissing: boolean
   skipped: string[]
@@ -129,7 +132,38 @@ export interface ScrapePreview {
   issues: string[]
   required: number
 }
+export interface EpisodeBasis {
+ kind: 'manual' | 'suggestion' | 'candidate' | 'digits'
+ traceId?: string
+ candidateId?: string
+ sourceId?: string
+ index: number
+ pattern?: string
+ offset: number
+}
+export interface Confirmation {
+ source: 'user' | 'registration'
+ at: string
+ identity: string
+ size: number
+ mTime: number
+ type: 'movie' | 'tv'
+ tmdbId: number
+ season: number
+ episodes: number[]
+ basis: EpisodeBasis
+}
+export interface ConfirmItem {
+ path: string
+ type: 'movie' | 'tv'
+ tmdbId: number
+ season: number
+ episodes: number[]
+ basis: EpisodeBasis
+}
 export interface RecognitionItem extends MediaFile {
+ confirmation?: Confirmation | null
+  layout?: MediaLayout
   execution?: FileExecution
   traceId?: string
   group: string
@@ -141,6 +175,7 @@ export interface RecognitionItem extends MediaFile {
   removed: boolean
 }
 export interface Recognition {
+  purpose: 'organize' | 'scrape'
   id: string
   revision: number
   state: string

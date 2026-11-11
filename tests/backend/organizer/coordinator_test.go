@@ -275,6 +275,7 @@ func executionFixture(t *testing.T, run func(context.Context, *Operation, func()
 		t.Fatal(err)
 	}
 	cache := NewPreviewCache()
+	workspace := matching.Workspace{Purpose: "organize", ID: "workspace", Revision: 1, State: "completed"}
 	plans := &fakePlans{cache: cache}
 	store := &memoryRuns{items: map[string]Run{}, mappings: map[string]model.MediaMapping{}}
 	for _, id := range []string{"manual", "batch"} {
@@ -292,6 +293,9 @@ func executionFixture(t *testing.T, run func(context.Context, *Operation, func()
 			info, _ := os.Stat(src)
 			op := Work{Operation: Operation{Kind: "video", Source: src, Target: dst, Mode: "copy", Status: "pending", Size: info.Size(), MTime: info.ModTime().UnixNano()}, Owner: src}
 			mapping := model.MediaMapping{Path: dst, Source: src, Type: "movie", TMDBID: 1, State: "pending"}
+			item := matching.Item{Identity: fsops.Identity(info), File: model.File{Path: src, Size: info.Size(), MTime: info.ModTime().UnixNano()}, Entry: &model.Entry{Type: "movie", TMDBID: 1}, State: "ready", Selected: true}
+			item.Confirm("user", matching.EpisodeBasis{Kind: "manual"})
+			workspace.Items = append(workspace.Items, item)
 			group := &Plan{Title: fmt.Sprintf("%s-%d", id, i), Ops: []Work{op}, Mappings: []model.MediaMapping{mapping}}
 			p.Groups = append(p.Groups, group)
 			p.Ops = append(p.Ops, op)
@@ -299,7 +303,7 @@ func executionFixture(t *testing.T, run func(context.Context, *Operation, func()
 		}
 		cache.put(p)
 	}
-	service := New(Dependencies{Coordinator: NewCoordinator(), Store: store, Settings: fixedSettings{model.Settings{Version: 1, SourceRoot: source, TargetRoot: target}}, Previews: cache, Access: access, Mappings: store, Sources: allowedSources{}, Factory: func(model.Settings, *trace.Recorder) (matching.Provider, error) { return noCatalog{}, nil }, Runner: func(func(context.Context, string) ([]byte, error)) Runner { return operationRunner{run} }, Revision: func(string) (int, error) { return 1, nil }})
+	service := New(Dependencies{Coordinator: NewCoordinator(), Store: store, Settings: fixedSettings{model.Settings{Version: 1, SourceRoot: source, TargetRoot: target}}, Previews: cache, Access: access, Workspaces: confirmedWorkspaces{workspace}, Mappings: store, Sources: allowedSources{}, Factory: func(model.Settings, *trace.Recorder) (matching.Provider, error) { return noCatalog{}, nil }, Runner: func(func(context.Context, string) ([]byte, error)) Runner { return operationRunner{run} }, Revision: func(string) (int, error) { return 1, nil }})
 	if err := service.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -484,3 +488,7 @@ func (m *memoryRuns) ScrapeWorks(string, string) (ScrapeWorkPage, error) {
 func (m *memoryRuns) ScrapeWorkMappings(string, int) ([]model.MediaMapping, error) { return nil, nil }
 
 func (m *memoryRuns) ScrapeArtifact(string) (*Work, error) { return nil, nil }
+
+type confirmedWorkspaces struct{ value matching.Workspace }
+
+func (w confirmedWorkspaces) Read(string) (matching.Workspace, error) { return w.value, nil }

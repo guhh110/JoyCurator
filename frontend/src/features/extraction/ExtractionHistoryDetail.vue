@@ -15,7 +15,7 @@ const detail = detailQuery.data
 const back = computed(() => ({ name: 'extraction-history', query: historyContext(route.query) }))
 const { remove, pendingId } = useTraceRemoval(() => router.replace(back.value))
 const view = ref<'steps' | 'metadata' | 'json'>('steps')
-const tabs = [{ value: 'steps', label: '执行过程' }, { value: 'metadata', label: '提取结果' }, { value: 'json', label: '原始 JSON' }] as const
+const tabs = [{ value: 'steps', label: '执行过程' }, { value: 'metadata', label: '识别建议' }, { value: 'json', label: '原始 JSON' }] as const
 </script>
 
 <template>

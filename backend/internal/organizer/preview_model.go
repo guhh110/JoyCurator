@@ -27,6 +27,7 @@ type Plan struct {
 	Version         int                  `json:"-"`
 	Expires         time.Time            `json:"-"`
 	Ops             []Work               `json:"-"`
+	Inputs          []model.MediaMapping `json:"-"`
 	Mappings        []model.MediaMapping `json:"-"`
 	Purpose         string               `json:"-"`
 	Groups          []*Plan              `json:"groups,omitempty"`

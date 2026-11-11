@@ -36,7 +36,7 @@ func (a *FileService) Browse(inputPath, scopeInput string) (any, error) {
 	items := []item{}
 	path := inputPath
 	scope := scopeInput
-	if scope != "" && scope != "roots" {
+	if scope != "" && scope != "roots" && scope != "target" {
 		return nil, errors.New("目录浏览范围无效")
 	}
 	settings, err := a.settings.Load()
@@ -44,11 +44,23 @@ func (a *FileService) Browse(inputPath, scopeInput string) (any, error) {
 		return nil, err
 	}
 	roots := []string{settings.SourceRoot}
+	if scope == "target" {
+		roots = []string{settings.TargetRoot}
+	}
 	if scope == "roots" {
 		roots = a.access.Roots
 	}
-	if path != "" && scope != "roots" && !a.SourceAllowed(path, settings) {
-		return nil, errors.New("只能浏览源目录")
+	allowed := func(p string) bool {
+		if scope == "roots" {
+			return true
+		}
+		if scope == "target" {
+			return targetAllowed(a.access.Canonical(p), settings)
+		}
+		return a.SourceAllowed(p, settings)
+	}
+	if path != "" && !allowed(path) {
+		return nil, errors.New("目录不在允许的浏览范围内")
 	}
 	if path == "" {
 		for _, p := range roots {
@@ -74,7 +86,7 @@ func (a *FileService) Browse(inputPath, scopeInput string) (any, error) {
 			return nil, err
 		}
 		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), ".") || e.Type()&os.ModeSymlink != 0 || scope != "roots" && !a.SourceAllowed(filepath.Join(path, e.Name()), settings) {
+			if strings.HasPrefix(e.Name(), ".") || e.Type()&os.ModeSymlink != 0 || !allowed(filepath.Join(path, e.Name())) {
 				continue
 			}
 			if e.IsDir() || scanner.IsVideo(e.Name()) {

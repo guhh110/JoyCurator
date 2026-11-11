@@ -8,6 +8,24 @@ import (
 )
 
 func scrapeRoutes(a Dependencies, add func(string, endpoint)) {
+	add("POST /api/scrape/batches/preview", func(w http.ResponseWriter, r *http.Request) error {
+		var in organizer.ScrapeBatchPreviewRequest
+		if e := read(r, &in); e != nil {
+			return e
+		}
+		v, e := a.Organizer.ScrapeBatchPreview(r.Context(), in)
+		return respond(w, v, e)
+	})
+	add("POST /api/scrape/batches/execute", func(w http.ResponseWriter, r *http.Request) error {
+		var in struct {
+			ID string `json:"id"`
+		}
+		if e := read(r, &in); e != nil {
+			return e
+		}
+		v, e := a.Organizer.ScrapeExecuteBatch(in.ID)
+		return respond(w, v, e)
+	})
 	add("GET /api/scrape/works", func(w http.ResponseWriter, r *http.Request) error {
 		v, e := a.Organizer.ScrapeWorks(r.URL.Query().Get("q"), r.URL.Query().Get("cursor"))
 		return respond(w, v, e)

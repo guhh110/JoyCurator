@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"joycurator/internal/matching"
+	"joycurator/internal/model"
 )
 
 func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Update) (matching.Workspace, error) {
@@ -60,24 +61,31 @@ func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Up
 		if state := states[item.Path]; state.Locked || state.Completed {
 			return task, errors.New("文件已由任务 " + state.RunID + " 占用或整理完成：" + item.Path)
 		}
-		if !edit.Removed && edit.Selected && !a.files.SourceAllowed(item.Path, s) {
+		if !edit.Removed && edit.Selected && !a.allowed(task.Purpose, item.Path, s) {
 			return task, errors.New("文件已不在当前源目录内，请重新导入")
 		}
 		if edit.TMDBID < 0 || (edit.TMDBID > 0 && edit.Type != "movie" && edit.Type != "tv") {
 			return task, errors.New("作品类型或 ID 无效")
 		}
+		if item.Entry == nil && edit.TMDBID > 0 || item.Entry != nil && (edit.TMDBID != item.Entry.TMDBID || edit.Type != item.Entry.Type) || edit.Season != item.Season || !slices.Equal(edit.Episodes, item.Episodes) {
+			item.Confirmation = nil
+		}
+		layoutChanged := edit.Layout != item.Layout
 		oldID := 0
 		oldType := ""
 		if item.Entry != nil {
 			oldID, oldType = item.Entry.TMDBID, item.Entry.Type
 		}
-		if edit.TMDBID != oldID || edit.Type != oldType || edit.Group != item.Group || edit.Season != item.Season || !slices.Equal(edit.Episodes, item.Episodes) || edit.Selected != item.Selected || edit.Removed != item.Removed {
+		if edit.Layout != item.Layout || edit.TMDBID != oldID || edit.Type != oldType || edit.Group != item.Group || edit.Season != item.Season || !slices.Equal(edit.Episodes, item.Episodes) || edit.Selected != item.Selected || edit.Removed != item.Removed {
 			item.Edited = true
 		}
 		if edit.TMDBID > 0 {
 			changed := item.Entry == nil || item.Entry.TMDBID != edit.TMDBID || item.Entry.Type != edit.Type
 			validate := changed || edit.Season != item.Season || !slices.Equal(edit.Episodes, item.Episodes)
 			if changed {
+				if task.Purpose == "scrape" {
+					item.Layout = model.MediaLayout{}
+				}
 				entry, e := memo.Detail(ctx, edit.Type, edit.TMDBID)
 				if e != nil {
 					return task, e
@@ -97,6 +105,22 @@ func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Up
 			item.Group = edit.Group
 		} else if item.Entry != nil {
 			item.Group = matching.EntryGroup(*item.Entry)
+		}
+		if task.Purpose == "scrape" && layoutChanged && edit.Layout.WorkDir != "" {
+			if e := matching.ValidateLayout(edit.Layout, item.Path, edit.Type, s.TargetRoot); e != nil {
+				return task, e
+			}
+			if !a.allowed("scrape", edit.Layout.WorkDir, s) || edit.Layout.SeasonDir != "" && !a.allowed("scrape", edit.Layout.SeasonDir, s) {
+				return task, errors.New("输出目录不可访问")
+			}
+			item.Layout = edit.Layout
+			item.Layout.Manual = true
+		}
+		if !item.Confirmed() {
+			item.Confirmation = nil
+			if item.State != "failed" && (item.Entry != nil || item.State == "ready") {
+				item.State, item.Reason = "review", "请确认作品与季集"
+			}
 		}
 		item.Removed, item.Selected = edit.Removed, edit.Selected && item.State == "ready" && !edit.Removed
 		changes[item.Path] = *item
@@ -126,6 +150,9 @@ func (a *WorkspaceService) Update(ctx context.Context, id string, in matching.Up
 		if value, ok := changes[current.Items[i].Path]; ok {
 			current.Items[i] = value
 		}
+	}
+	if current.Purpose == "scrape" {
+		matching.InferLayouts(current.Items, s.TargetRoot)
 	}
 	if err = a.store.SaveWorkspace(&current); err != nil {
 		return current, err

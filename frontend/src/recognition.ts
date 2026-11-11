@@ -30,16 +30,18 @@ export const recognitionStates: Record<string, string> = {
   pending: '等待识别',
   reidentifying: '等待重新识别',
 }
-export function recognitionGroups(items: RecognitionItem[]) {
+export function recognitionGroups(items: RecognitionItem[], view: 'directories' | 'works' = 'works') {
   const groups = new Map<string, RecognitionItem[]>()
   for (const item of items) {
     if (item.removed) continue
-    const list = groups.get(item.group) || []
+    const key = view === 'directories' ? item.path.slice(0, item.path.lastIndexOf('/')) || '/' : item.group
+    const list = groups.get(key) || []
     list.push(item)
-    groups.set(item.group, list)
+    groups.set(key, list)
   }
   return [...groups].map(([id, files]) => {
-    const entry = files.find((file) => file.entry)?.entry || null
+    const identities = new Set(files.map(f=>f.entry ? `${f.entry.type}:${f.entry.tmdbId}` : ''))
+    const entry = identities.size === 1 ? files.find((file) => file.entry)?.entry || null : null
     const state =
       ['failed', 'reidentifying', 'pending', 'review', 'unmatched', 'ready'].find((value) =>
         files.some((file) => file.state === value),
@@ -48,7 +50,7 @@ export function recognitionGroups(items: RecognitionItem[]) {
       id,
       files: sortByEpisode(files, file => file),
       entry,
-      title: entry?.title || files[0]!.metadata.title || '未识别作品',
+      title: view === 'directories' ? id : entry?.title || files[0]!.metadata.title || '未识别作品',
       state,
     }
   })
@@ -107,6 +109,7 @@ export function sourceSummaries(
 export function recognitionEdits(items: RecognitionItem[]) {
   return items.map((item) => ({
     path: item.path,
+    layout: item.layout,
     group: item.group,
     type: item.entry?.type || '',
     tmdbId: item.entry?.tmdbId || 0,

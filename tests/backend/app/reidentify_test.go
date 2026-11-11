@@ -41,7 +41,7 @@ func (reidentifyProvider) SeasonEpisodes(context.Context, int, int) ([]model.Epi
 func reidentifyFixture(t *testing.T) (*App, matching.Workspace) {
 	t.Helper()
 	a, root := fixture(t)
-	w := matching.Workspace{ID: "rerun", State: "completed", Paths: []string{root + "/source"}, Completed: 3, Total: 3}
+	w := matching.Workspace{Purpose: "organize", ID: "rerun", State: "completed", Paths: []string{root + "/source"}, Completed: 3, Total: 3}
 	for i := 0; i < 3; i++ {
 		file := mediaFile(t, a, root, fmt.Sprintf("Old%d.mkv", i))
 		result, id, err := a.dependencies.Recognition.ExtractFile(context.Background(), file.Path, root+"/source", w.ID)
@@ -50,6 +50,7 @@ func reidentifyFixture(t *testing.T) (*App, matching.Workspace) {
 		}
 		w.Items = append(w.Items, matching.Item{File: file, Metadata: result.Metadata, TraceID: id, Group: "old", State: "unmatched", Candidates: []model.Entry{}})
 	}
+	seedConfirmedFiles(t, a, &w)
 	if err := a.store.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +76,7 @@ func TestReidentifyOnlySelectedRowsAndPreserveManualSnapshots(t *testing.T) {
 	w.Items[1].Season = 0
 	w.Items[1].Episodes = []int{0, 1}
 	w.Items[1].Selected = false
+	seedConfirmedFiles(t, a, &w)
 	if err := a.store.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +93,7 @@ func TestReidentifyOnlySelectedRowsAndPreserveManualSnapshots(t *testing.T) {
 	if final.State != "completed" || final.Completed != 3 {
 		t.Fatal(final)
 	}
-	if final.Items[0].Entry == nil || final.Items[0].Entry.TMDBID != 99 || !final.Items[0].Selected || *final.Items[0].Metadata.Title != "Fresh" {
+	if final.Items[0].Entry != nil || len(final.Items[0].Candidates) != 1 || final.Items[0].Candidates[0].TMDBID != 99 || final.Items[0].Selected || *final.Items[0].Metadata.Title != "Fresh" {
 		t.Fatal(final.Items[0])
 	}
 	manual := final.Items[1]
@@ -179,11 +181,11 @@ func TestReidentifyCancellationAndFailureRetainRetryScope(t *testing.T) {
 				t.Fatal(stopped)
 			}
 			a.dependencies.Workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) { return reidentifyProvider{}, nil }
-			if _, err := a.dependencies.Workspace.Start(nil, w.ID); err != nil {
+			if _, err := a.dependencies.Workspace.Start(nil, w.ID, "organize"); err != nil {
 				t.Fatal(err)
 			}
 			final := waitRecognition(t, a, w.ID)
-			if final.State != "completed" || final.Items[0].State != "ready" || final.Items[1].TraceID != w.Items[1].TraceID || final.Items[2].TraceID != w.Items[2].TraceID {
+			if final.State != "completed" || final.Items[0].State != "review" || final.Items[1].TraceID != w.Items[1].TraceID || final.Items[2].TraceID != w.Items[2].TraceID {
 				t.Fatal(final)
 			}
 		})
@@ -194,6 +196,7 @@ func TestReidentifyRestartRetriesMarkedRowsWithoutRescanningOtherSources(t *test
 	a, w := reidentifyFixture(t)
 	s, _ := a.dependencies.Config.Load()
 	w.Paths = []string{w.Items[0].Path, w.Items[1].Path, w.Items[2].Path}
+	seedConfirmedFiles(t, a, &w)
 	if err := a.store.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
 	}
@@ -233,11 +236,11 @@ func TestReidentifyRestartRetriesMarkedRowsWithoutRescanningOtherSources(t *test
 	if err != nil || current.State != "interrupted" || current.Items[0].State != "reidentifying" {
 		t.Fatal(current, err)
 	}
-	if _, err := restarted.dependencies.Workspace.Start(nil, w.ID); err != nil {
+	if _, err := restarted.dependencies.Workspace.Start(nil, w.ID, "organize"); err != nil {
 		t.Fatal(err)
 	}
 	final := waitRecognition(t, restarted, w.ID)
-	if final.State != "completed" || final.Items[0].State != "ready" || final.Items[1].TraceID != w.Items[1].TraceID {
+	if final.State != "completed" || final.Items[0].State != "review" || final.Items[1].TraceID != w.Items[1].TraceID {
 		t.Fatal(final)
 	}
 }

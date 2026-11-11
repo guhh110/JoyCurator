@@ -5,17 +5,7 @@ export type Target =
   | 'year'
   | 'season'
   | 'episodes'
-  | 'releaseTag'
-export type Role =
-  | Target
-  | 'resolution'
-  | 'videoCodec'
-  | 'audioCodec'
-  | 'bitDepth'
-  | 'dynamicRange'
-  | 'language'
-  | 'subtitleLanguage'
-  | 'checksum'
+export type Role = Target
 export type Source = 'filename' | 'directories' | 'all'
 export type Stage = 'tokenize' | 'annotate' | 'resolve'
 export interface Rule {
@@ -54,7 +44,6 @@ export interface Metadata {
   year: number | null
   season: number | null
   episodes: number[]
-  releaseTag: string | null
 }
 export interface Span {
   sourceId: string
@@ -168,23 +157,12 @@ export const targets: Record<Target, string> = {
   year: '年份',
   season: '季号',
   episodes: '集数',
-  releaseTag: '发布组',
 }
-export const roles: Record<Role, string> = {
-  ...targets,
-  resolution: '分辨率',
-  videoCodec: '视频编码与来源',
-  audioCodec: '音频编码',
-  bitDepth: '位深',
-  dynamicRange: '动态范围',
-  language: '语言',
-  subtitleLanguage: '字幕语言',
-  checksum: '校验码',
-}
+export const roles: Record<Role, string> = { ...targets }
 export const stages: Record<Stage, string> = {
   tokenize: '分词',
   annotate: '候选标注',
-  resolve: '元数据裁决',
+  resolve: '建议脚本',
 }
 export const sources: Record<Source, string> = {
   filename: '文件名',

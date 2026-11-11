@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"joycurator/internal/infra/fsops"
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
 	"strings"
@@ -60,7 +61,7 @@ func (a *WorkspaceService) Reidentify(id string, revision int, paths []string) (
 		if item.Removed || item.Execution != nil && (item.Execution.Locked || item.Execution.Completed) {
 			return task, errors.New("已移出、已提交或整理完成的文件不能重新识别：" + item.Path)
 		}
-		if !a.files.SourceAllowed(item.Path, s) {
+		if !a.allowed(task.Purpose, item.Path, s) {
 			return task, errors.New("文件已不在当前源目录内：" + item.Path)
 		}
 		info, err := a.files.Access.Stat(item.Path)
@@ -124,7 +125,7 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 			wanted = append(wanted, item.Path)
 		}
 	}
-	freshItems, extractErr := a.extractContexts(ctx, task.Paths, wanted, s, task.ID)
+	freshItems, extractErr := a.extractContexts(ctx, task.Paths, wanted, s, task.ID, task.Purpose)
 	if extractErr != nil {
 		failure(extractErr)
 		return
@@ -141,7 +142,7 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 			failure(err)
 			return
 		}
-		if !a.files.SourceAllowed(old.Path, s) {
+		if !a.allowed(task.Purpose, old.Path, s) {
 			failure(errors.New("文件已不在当前源目录内：" + old.Path))
 			return
 		}
@@ -151,11 +152,21 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 			return
 		}
 		fresh := freshItems[old.Path]
-		if old.Edited {
+		fresh.Original = old.Original
+		if task.Purpose == "scrape" {
+			fresh.Identity = fsops.Identity(info)
+			if old.Layout.Manual {
+				fresh.Layout = old.Layout
+			}
+		}
+		if old.Edited || old.Confirmed() {
 			// Refresh raw metadata/trace while keeping every manual decision and snapshot.
 			fresh.Entry, fresh.Candidates, fresh.Group = old.Entry, old.Candidates, old.Group
 			fresh.Season, fresh.Episodes = old.Season, old.Episodes
 			fresh.Edited, fresh.Selected, fresh.Removed = true, old.Selected, old.Removed
+			if fresh.Identity == old.Identity && fresh.Size == old.Size && fresh.MTime == old.MTime {
+				fresh.Confirmation = old.Confirmation
+			}
 			fresh.State, fresh.Reason = "review", "已保留人工修正，请确认作品"
 			if fresh.Entry != nil {
 				if fresh.Entry.Type == "tv" && (old.Season < 0 || len(old.Episodes) == 0) {
@@ -164,6 +175,9 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 					memo.Validate(ctx, &fresh)
 				}
 			}
+			if !fresh.Confirmed() && fresh.State != "failed" {
+				fresh.State, fresh.Reason = "review", "请确认作品与季集"
+			}
 			if fresh.State != "ready" {
 				fresh.Selected = false
 			}
@@ -171,7 +185,7 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 			match, ok := resolved[fresh.Group]
 			if !ok {
 				match = fresh
-				memo.Match(ctx, &match)
+				memo.Suggest(ctx, &match)
 				resolved[fresh.Group] = match
 			}
 			fresh.Entry, fresh.Candidates, fresh.State, fresh.Reason = match.Entry, match.Candidates, match.State, match.Reason
@@ -200,6 +214,12 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 				failure(err)
 				return
 			}
+		}
+	}
+	if task.Purpose == "scrape" {
+		matching.InferLayouts(task.Items, s.TargetRoot)
+		for i := range task.Items {
+			dirty = append(dirty, i)
 		}
 	}
 	task.State, task.Error = "completed", ""

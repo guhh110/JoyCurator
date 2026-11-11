@@ -4,13 +4,10 @@ import (
 	"errors"
 	"path"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"unicode"
 )
-
-var idRE = regexp.MustCompile(`(?i)tmdb[-= ]?(\d+)`)
 
 type pathInput struct {
 	path, root, relative, filename string

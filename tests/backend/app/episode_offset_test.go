@@ -31,11 +31,12 @@ func TestWorkspaceEpisodeZeroValidationAndPreview(t *testing.T) {
 			a, root := fixture(t)
 			file := mediaFile(t, a, root, "Show.S01E01.mkv")
 			file.Season, file.Episodes = 1, []int{1}
-			task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{file.Path}, Total: 1, Items: []matching.Item{
+			task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "completed", Paths: []string{file.Path}, Total: 1, Items: []matching.Item{
 				{File: file, Metadata: recognition.Metadata{Episodes: []int{1}}, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2, Title: "山海旅人", Year: 2023}, State: "ready", Selected: true},
 			}}
 			seedRecognitionCache(t, a, "/tv/2?language=zh-CN", `{"seasons":[{"season_number":1}]}`)
 			seedRecognitionCache(t, a, "/tv/2/season/1?language=zh-CN", tc.catalog)
+			seedConfirmedFiles(t, a, &task)
 			if err := a.store.SaveWorkspace(&task); err != nil {
 				t.Fatal(err)
 			}
@@ -45,6 +46,12 @@ func TestWorkspaceEpisodeZeroValidationAndPreview(t *testing.T) {
 			updated, err := a.dependencies.Workspace.Update(context.Background(), task.ID, in)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tc.ready {
+				updated, err = a.dependencies.Workspace.Confirm(context.Background(), task.ID, matching.ConfirmRequest{Revision: updated.Revision, Items: []matching.ConfirmItem{{Path: file.Path, Type: "tv", TMDBID: 2, Season: 1, Episodes: tc.numbers, Basis: matching.EpisodeBasis{Kind: "manual"}}}})
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			if (updated.Items[0].State == "ready") != tc.ready || updated.Items[0].Selected != tc.ready {
 				t.Fatal(updated.Items[0])
@@ -91,13 +98,14 @@ func TestWorkspaceEpisodeOffsetPreservesOriginalAndRetry(t *testing.T) {
 	merged := mediaFile(t, a, root, "Show.S01E02-E03.mkv")
 	first.Season, first.Episodes = 1, []int{1}
 	merged.Season, merged.Episodes = 1, []int{2, 3}
-	task := matching.Workspace{ID: model.Key(), State: "completed", Paths: []string{first.Path, merged.Path}, Total: 2,
+	task := matching.Workspace{Purpose: "organize", ID: model.Key(), State: "completed", Paths: []string{first.Path, merged.Path}, Total: 2,
 		Items: []matching.Item{
 			{File: first, Metadata: recognition.Metadata{Episodes: []int{1}}, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2}, State: "review"},
 			{File: merged, Metadata: recognition.Metadata{Episodes: []int{2, 3}}, Group: "tv", Entry: &model.Entry{Type: "tv", TMDBID: 2}, State: "ready", Selected: true},
 		}}
 	seedRecognitionCache(t, a, "/tv/2?language=zh-CN", `{"seasons":[{"season_number":1}]}`)
 	seedRecognitionCache(t, a, "/tv/2/season/1?language=zh-CN", `{"episodes":[{"episode_number":10},{"episode_number":11},{"episode_number":12}]}`)
+	seedConfirmedFiles(t, a, &task)
 	if err := a.store.SaveWorkspace(&task); err != nil {
 		t.Fatal(err)
 	}
@@ -109,13 +117,21 @@ func TestWorkspaceEpisodeOffsetPreservesOriginalAndRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	confirm := matching.ConfirmRequest{Revision: updated.Revision}
+	for _, edit := range in.Items {
+		confirm.Items = append(confirm.Items, matching.ConfirmItem{Path: edit.Path, Type: edit.Type, TMDBID: edit.TMDBID, Season: edit.Season, Episodes: edit.Episodes, Basis: matching.EpisodeBasis{Kind: "manual"}})
+	}
+	updated, err = a.dependencies.Workspace.Confirm(context.Background(), task.ID, confirm)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i, original := range [][]int{{1}, {2, 3}} {
 		if !slices.Equal(updated.Items[i].Metadata.Episodes, original) || !updated.Items[i].Edited || updated.Items[i].State != "ready" {
 			t.Fatalf("lost original metadata or validation: %+v", updated.Items[i])
 		}
 	}
-	if updated.Items[0].Selected || !updated.Items[1].Selected {
-		t.Fatal("mapping correction changed organizer selection")
+	if !updated.Items[0].Selected || !updated.Items[1].Selected {
+		t.Fatal("confirmed mapping not selected")
 	}
 	if _, err = a.dependencies.Workspace.Update(context.Background(), task.ID, in); err == nil {
 		t.Fatal("stale offset update accepted")
@@ -136,7 +152,7 @@ func TestWorkspaceEpisodeOffsetPreservesOriginalAndRetry(t *testing.T) {
 		}
 	}
 	// Retrying recognition must not re-apply the offset or discard the mapping.
-	if _, err = a.dependencies.Workspace.Start(nil, task.ID); err != nil {
+	if _, err = a.dependencies.Workspace.Start(nil, task.ID, "organize"); err != nil {
 		t.Fatal(err)
 	}
 	retried := waitRecognition(t, a, task.ID)

@@ -39,6 +39,9 @@ func (a *WorkspaceService) project(task matching.Workspace) (matching.Workspace,
 	}
 	for i := range task.Items {
 		item := &task.Items[i]
+		if item.State == "ready" && !item.Confirmed() {
+			item.State, item.Reason, item.Selected = "review", "请确认作品与季集", false
+		}
 		if state, ok := states[item.Path]; ok {
 			copy := state
 			item.Execution = &copy
@@ -52,8 +55,11 @@ func (a *WorkspaceService) project(task matching.Workspace) (matching.Workspace,
 	}
 	return task, nil
 }
-func (a *WorkspaceService) Latest() (*matching.Workspace, error) {
-	task, err := a.store.LatestWorkspace()
+func (a *WorkspaceService) Latest(purpose string) (*matching.Workspace, error) {
+	if purpose != "organize" && purpose != "scrape" {
+		return nil, errors.New("工作区用途无效")
+	}
+	task, err := a.store.LatestWorkspace(purpose)
 	if err != nil || task == nil {
 		return task, err
 	}
@@ -61,11 +67,11 @@ func (a *WorkspaceService) Latest() (*matching.Workspace, error) {
 	return &value, err
 }
 func (a *WorkspaceService) Revision(id string) (int, error) {
-	w, err := a.Read(id)
+	w, err := a.store.Workspace(id)
 	return w.Revision, err
 }
 func jsonText(v any) string { b, _ := json.Marshal(v); return string(b) }
-func (a *WorkspaceService) Start(paths []string, retryID string) (matching.Workspace, error) {
+func (a *WorkspaceService) Start(paths []string, retryID, purpose string) (matching.Workspace, error) {
 	a.coordinator.Lock()
 	defer a.coordinator.Unlock()
 	if a.coordinator.ClosingLocked() {
@@ -85,11 +91,17 @@ func (a *WorkspaceService) Start(paths []string, retryID string) (matching.Works
 	if s.Token == "" {
 		return matching.Workspace{}, errors.New("请先配置 TMDB API Read Access Token")
 	}
-	task := matching.Workspace{ID: model.Key(), State: "running", Paths: paths, Items: []matching.Item{}, Created: time.Now().Format(time.RFC3339)}
+	if purpose != "organize" && purpose != "scrape" {
+		return matching.Workspace{}, errors.New("工作区用途无效")
+	}
+	task := matching.Workspace{Purpose: purpose, ID: model.Key(), State: "running", Paths: paths, Items: []matching.Item{}, Created: time.Now().Format(time.RFC3339)}
 	if retryID != "" {
 		task, err = a.Read(retryID)
 		if err != nil {
 			return task, err
+		}
+		if task.Purpose != purpose {
+			return task, errors.New("工作区用途不符")
 		}
 		if task.State == "running" {
 			return task, errors.New("识别任务仍在运行")
@@ -143,9 +155,18 @@ func (a *WorkspaceService) Start(paths []string, retryID string) (matching.Works
 			return task, errors.New("请选择 1–200 个文件或目录")
 		}
 		for _, path := range task.Paths {
-			if !a.files.SourceAllowed(path, s) {
-				return task, errors.New("只能添加源目录内的文件或文件夹，目标目录不能作为来源")
+			if !a.allowed(task.Purpose, path, s) {
+				return task, errors.New("路径不在当前工作区允许的目录内")
 			}
+		}
+	}
+	if task.Purpose == "scrape" {
+		if len(task.Paths) != 1 {
+			return task, errors.New("请选择一个目标目录")
+		}
+		info, e := a.files.Access.Stat(task.Paths[0])
+		if e != nil || !info.IsDir() {
+			return task, errors.New("请选择可访问的目标目录")
 		}
 	}
 	if err = a.store.SaveWorkspace(&task); err != nil {

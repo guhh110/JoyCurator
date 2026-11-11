@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import Button from '../../components/ui/Button.vue'
 import Modal from '../../components/Modal.vue'
+import Checkbox from '../../components/ui/Checkbox.vue'
 import EliText from '../../components/ui/EliText.vue'
 import { canReidentify, type useReidentification } from './useReidentification'
 defineProps<{ state: ReturnType<typeof useReidentification>; busy: boolean }>()
@@ -7,15 +9,15 @@ defineProps<{ state: ReturnType<typeof useReidentification>; busy: boolean }>()
 <template>
   <Modal v-if="state.context.value" title="重新识别文件" :locked="busy" @close="state.close">
     <p>使用当前保存的识别规则重新提取并匹配。人工指定的作品、分组和季集映射会保留；已提交或整理完成的文件不能重跑。</p>
-    <div class="rerun-toolbar"><span>已选 {{ state.selected.value.length }}/{{ state.eligible.value.length }} 个文件</span><button class="text-button" :disabled="busy" @click="state.selectAll(true)">全选可用</button><button class="text-button" :disabled="busy" @click="state.selectAll(false)">清空</button></div>
+    <div class="rerun-toolbar"><span>已选 {{ state.selected.value.length }}/{{ state.eligible.value.length }} 个文件</span><Button variant="ghost" size="sm" :disabled="busy" @click="state.selectAll(true)">全选可用</Button><Button variant="ghost" size="sm" :disabled="busy" @click="state.selectAll(false)">清空</Button></div>
     <div class="rerun-files">
       <label v-for="file in state.files.value" :key="file.path" class="rerun-file">
-        <input v-model="state.selected.value" type="checkbox" :value="file.path" :disabled="busy || !canReidentify(file)" />
+        <Checkbox :label="file.path" :model-value="state.selected.value.includes(file.path)" :disabled="busy || !canReidentify(file)" @update:model-value="value => { state.selected.value = value === true ? [...new Set([...state.selected.value, file.path])] : state.selected.value.filter(path => path !== file.path) }" />
         <EliText :text="file.path" ellipsis="start" />
         <span v-if="!canReidentify(file)" class="muted tiny">不可重跑</span>
       </label>
     </div>
-    <template #footer><button class="button" :disabled="busy" @click="state.close">取消</button><button class="button primary" :disabled="busy || !state.selected.value.length" @click="state.submit">重新识别 {{ state.selected.value.length }} 个文件</button></template>
+    <template #footer><Button  :disabled="busy" @click="state.close">取消</Button><Button variant="primary" :disabled="busy || !state.selected.value.length" @click="state.submit">重新识别 {{ state.selected.value.length }} 个文件</Button></template>
   </Modal>
 </template>
 <style scoped>

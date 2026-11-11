@@ -49,7 +49,7 @@ export function draftRule(d: RuleDraft): Rule {
 export function asPipeline(rules: Rule[]): Pipeline {
   const tokenizer = rules.find((r) => r.stage === 'tokenize'),
     resolver = rules.find((r) => r.stage === 'resolve')
-  if (!tokenizer || !resolver) throw Error('分词和裁决规则不可缺少')
+  if (!tokenizer || !resolver) throw Error('分词和建议规则不可缺少')
   return {
     tokenizer,
     annotators: rules.filter((r) => r.stage === 'annotate'),

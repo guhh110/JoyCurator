@@ -70,6 +70,32 @@ func TestFilenameQualityLabels(t *testing.T) {
 	}
 }
 
+func TestDefaultFoldersOmitIDAndCustomIDRemainsAvailable(t *testing.T) {
+	s := model.DefaultSettings()
+	s.TargetRoot = "/target"
+	s.Rules.Categories = []model.Category{{Name: "作品"}}
+	f := model.Source{Path: "/source/video.mkv", Entry: &model.Entry{Type: "movie", TMDBID: 7, Title: "Film", Year: 2024}}
+	path, err := Target(f, s)
+	if err != nil || path != filepath.Join(s.TargetRoot, "作品", "Film (2024)", "Film (2024).mkv") {
+		t.Fatal(path, err)
+	}
+	f.Entry = &model.Entry{Type: "tv", TMDBID: 8, Title: "Show", Year: 2024}
+	f.Season, f.Episodes = 1, []int{2}
+	path, err = Target(f, s)
+	if err != nil || path != filepath.Join(s.TargetRoot, "作品", "Show (2024)", "Season 01", "Show - S01E02.mkv") {
+		t.Fatal(path, err)
+	}
+	s.Rules.TVFolder = "{category}/{title} [tmdb-{tmdb_id}]/Season {season:02}"
+	path, err = Target(f, s)
+	if err != nil || !strings.Contains(path, "[tmdb-8]") {
+		t.Fatal(path, err)
+	}
+	s.Rules.MovieFile = "{title}-{release_tag}.{ext}"
+	if err = Validate(s.Rules); err == nil || !strings.Contains(err.Error(), "未知模板字段") {
+		t.Fatal(err)
+	}
+}
+
 func TestNestedCategoryPaths(t *testing.T) {
 	settings := model.DefaultSettings()
 	settings.TargetRoot = "/target"

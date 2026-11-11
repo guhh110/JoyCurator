@@ -30,8 +30,8 @@ describe('scrape selection', () => {
   })
 
   it('counts shared artwork once and per-version products separately', () => {
-    const preview = { artifacts: ['/show/tvshow.nfo', '/show/poster.jpg', '/show/Season 01/season.nfo',
+    const preview = { artifacts: ['/show/tvshow.nfo', '/show/poster.jpg', '/show/Season 01/poster.jpg', '/flat/season02-poster.jpg', '/show/Season 01/season.nfo',
       '/show/Season 01/a.nfo', '/show/Season 01/a.jpg', '/show/Season 01/b.nfo'] } as ScrapePreview
-    expect(artifactSummary(preview)).toEqual({ videoNfo: 2, sharedNfo: 2, videoImages: 1, sharedImages: 1 })
+    expect(artifactSummary(preview)).toEqual({ videoNfo: 2, sharedNfo: 2, videoImages: 1, sharedImages: 3 })
   })
 })

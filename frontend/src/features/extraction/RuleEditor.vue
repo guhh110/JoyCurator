@@ -99,7 +99,7 @@ function kindChanged() {
     <details>
       <summary>样例</summary>
       <p class="tiny muted">
-        paths 为完整目录快照，targets 为待裁决文件。expected
+        paths 为完整目录快照，targets 为待建议文件。expected
         比较本规则所有文件的输出数组。
       </p>
       <textarea

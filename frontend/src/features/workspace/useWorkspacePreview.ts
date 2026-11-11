@@ -1,4 +1,4 @@
-import { computed, ref, onDeactivated, onScopeDispose, type Ref } from 'vue'
+import { computed, ref, onDeactivated, onScopeDispose, watch, type Ref } from 'vue'
 import { api } from '../../api'
 import type { Batch, BatchPreview, DuplicatePolicy, Recognition } from '../../model'
 import { sortByEpisode } from '../../recognition'
@@ -31,10 +31,11 @@ export function useWorkspacePreview(options: {
       .slice((previewPage.value - 1) * 30, previewPage.value * 30)
   })
 
+  watch([mode, duplicatePolicy, () => task.value?.id, () => task.value?.revision], abandon, { flush: 'sync' })
+
   async function prepare() {
     await act(async () => {
       if (!task.value) return
-      if (!preview.value) duplicatePolicy.value = 'skip'
       const revision = task.value.revision
       const id = task.value.id
       const current = ++generation
@@ -52,11 +53,6 @@ export function useWorkspacePreview(options: {
       previewPage.value = 1
     })
   }
-  async function changeDuplicatePolicy(value: string) {
-    if (busy.value || !preview.value || !['skip', 'overwrite'].includes(value)) return
-    duplicatePolicy.value = value as DuplicatePolicy
-    await prepare()
-  }
   async function execute() {
     if (!previewReady.value) return
     await act(async () => {
@@ -66,8 +62,8 @@ export function useWorkspacePreview(options: {
       })
       await runtime.refreshRecords()
       preview.value = null
-      notice.value = '已加入整理队列，每部作品分别记录，可独立重试或撤销。'
+      notice.value = '已加入整理队列'
     })
   }
-  return { pending: busy, preview, mode, previewPage, previewRows, duplicatePolicy, previewReady, prepare, changeDuplicatePolicy, execute }
+  return { pending: busy, preview, mode, previewPage, previewRows, duplicatePolicy, previewReady, prepare, execute, invalidate: abandon }
 }

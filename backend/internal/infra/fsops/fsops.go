@@ -190,3 +190,24 @@ func (f *FS) Device(info os.FileInfo) uint64 {
 	}
 	return Device(info)
 }
+
+// NoSymlinks validates every component beneath the canonical authorized root.
+func (f *FS) NoSymlinks(name string) error {
+	root, rel, err := f.Root(name)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	current := ""
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, err := root.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("路径包含符号链接：" + name)
+		}
+	}
+	return nil
+}
