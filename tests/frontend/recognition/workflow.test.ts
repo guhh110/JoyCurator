@@ -82,6 +82,7 @@ async function fixture(items = [file('/source/a/1.mp4'), file('/source/a/3.mp4')
 describe('three-step workspace', () => {
   it('shows a single empty state for initial, empty-scan and pending sources', async () => {
     const { w } = await fixture([])
+    expect(w.confirmationComplete.value).toBe(false)
     w.task.value!.paths = []
     let html = await renderToString(h(SourceStep, { workspace: w }))
     expect(html).toContain('选择需要整理的视频或目录')
@@ -131,6 +132,31 @@ describe('three-step workspace', () => {
     expect(w.pendingCount.value).toBe(2)
     expect(w.confirmation.group('unassigned').entry.value).toBeNull()
     expect(w.confirmation.groups.value.map(group => group.key)).toEqual(['unassigned'])
+  })
+  it.each(['organize', 'scrape'] as const)('marks confirmation complete across the whole %s workspace, including hidden drafts', async purpose => {
+    const { w } = await fixture([confirmed(file('/source/a/done.mp4')), file('/source/b/1.mp4', [1])], purpose)
+    await w.chooseDirectory('/source/a')
+    expect(w.currentFiles.value).toEqual([])
+    expect(w.confirmationComplete.value).toBe(false)
+    w.query.value = 'no-match'
+    expect(w.confirmationComplete.value).toBe(false)
+    w.query.value = ''
+    await w.chooseDirectory('/source/b')
+    await w.confirmation.group('unassigned').pick(work); await settle()
+    await w.confirmGroup('tv:1')
+    expect(w.currentFiles.value).toEqual([])
+    expect(w.step.value).toBe(2)
+    expect(w.confirmationComplete.value).toBe(true)
+    w.status.value = 'confirmed'
+    const row = w.confirmation.group('tv:1').rows.value[0]!, original = row.text
+    row.included = true; row.text = '2'
+    expect(w.confirmationComplete.value).toBe(false)
+    await w.chooseDirectory('/source/a')
+    expect(w.confirmationComplete.value).toBe(false)
+    row.text = original
+    expect(w.confirmationComplete.value).toBe(true)
+    w.task.value!.state = 'running'
+    expect(w.confirmationComplete.value).toBe(false)
   })
   it('scopes batch actions to the directory and preserves drafts and deselections when returning', async () => {
     const { w } = await fixture()

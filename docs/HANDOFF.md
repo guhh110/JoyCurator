@@ -149,7 +149,7 @@ AutomaticRecognitionPage → useWorkspace.scanSources → POST /recognitions
   → 添加来源并开始识别 → 服务端保存工作区
   → 目录导航默认选择直接包含的待确认文件，跨目录保留本批编辑
   → 明确选择 TMDB 作品 → 同一文件表内核对季度与集数
-  → 建议／候选／原文数字与偏移按需展开，TMDB 集目辅助逐行填写
+  → 建议／候选／原文数字与偏移在调整集数抽屉内预览并应用，TMDB 季集用于校验
   → POST /recognitions/{id}/confirm 原子确认；成功后默认纳入执行选择
   → 预览步骤单独选择已确认文件，刮削布局就地修正
   → 生成页面内预览，任何相关编辑使旧预览失效

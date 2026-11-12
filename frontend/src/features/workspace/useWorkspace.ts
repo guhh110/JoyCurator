@@ -63,6 +63,7 @@ export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
   watch(() => files.value.map(file => `${file.path}:${!!file.execution?.locked}:${!!file.execution?.completed}`).join('|'), invalidatePreviews)
   watch(() => runtime.settingsQuery?.data.value?.version, invalidatePreviews)
   const confirmation = useConfirmation({ task, busy, scope: currentFiles, act, accept: acceptTask, invalidate: invalidatePreviews })
+  const confirmationComplete = computed(() => files.value.length > 0 && !recognizing.value && pendingCount.value === 0 && !confirmation.dirty.value)
   async function discardDraft() {
     if (busy.value || confirmation.saving.value) return false
     if (confirmation.dirty.value && !await confirmAction({ title: '放弃未确认修改？', description: '已确认的文件会保留。', confirmLabel: '放弃并继续', cancelLabel: '继续编辑' })) return false
@@ -196,7 +197,7 @@ export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
   onDeactivated(() => { active.value = false; browser.value = false; confirmation.close(); reidentification.close(); invalidatePreviews(); if (step.value === 3) step.value = 2 })
   onUnmounted(() => { alive = false })
   return { purpose, runtime, task, taskQuery, loading: taskQuery.isPending, busy, locked, recognizing, error, notice,
-    step, browser, pendingPaths, files, editable, pendingCount, ready, selected, sources, directories, directory, current, scopeFiles, currentFiles, query, status, workGroups, modes,
+    step, browser, pendingPaths, files, editable, pendingCount, confirmationComplete, ready, selected, sources, directories, directory, current, scopeFiles, currentFiles, query, status, workGroups, modes,
     confirmation, previewState, scrapePreviewState, reidentification, act, save, fileLocked, isConfirmed,
     openBrowser, addPaths, scanSources, removeSource, goStep, chooseDirectory, reloadDraft, loadDirectory, discardDraft, confirmGroup, poll, retry, cancelRecognition, selectFile, selectReady, saveLayouts, execute, invalidatePreviews }
 }

@@ -4,6 +4,8 @@ import { ref, watch, nextTick } from 'vue'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleAlert, Film, FolderOpen, Image as ImageIcon, Layers3, FileText, RefreshCw, Search } from '@lucide/vue'
 import { bytes } from '../api'
 import Select from '../components/ui/Select.vue'
+import Button from '../components/ui/Button.vue'
+import SegmentedControl from '../components/ui/SegmentedControl.vue'
 import EliText from '../components/ui/EliText.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import QueryState from '../components/ui/QueryState.vue'
@@ -22,9 +24,15 @@ watch(preview, async value => {
 </script>
 <template>
   <section class="scrape-page" aria-label="媒体刮削">
-    <PageHeader v-if="!directory" title="媒体刮削" />
-    <div class="scrape-navigation"><button class="button small" :aria-pressed="!directory" @click="showRegistered">已登记作品</button><button class="button small" :aria-pressed="directory" @click="directory = true">目录刮削</button><button v-if="!directory" class="button primary" @click="chooseDirectory"><FolderOpen :size="16" />选择目录</button></div>
-    <AutomaticRecognitionPage v-if="directory" ref="directoryWorkspace" purpose="scrape" />
+    <div class="scrape-heading">
+      <PageHeader title="媒体刮削" />
+      <SegmentedControl :model-value="directory ? 'directory' : 'registered'" label="刮削方式" :options="[{value:'registered',label:'已登记作品'},{value:'directory',label:'目录刮削'}]" @update:model-value="$event === 'directory' ? directory = true : showRegistered()" />
+      <div class="scrape-heading-actions">
+        <RouterLink v-if="directory" class="scrape-queue" to="/scrape/records">查看队列</RouterLink>
+        <Button v-else variant="primary" @click="chooseDirectory"><FolderOpen :size="14" />选择目录</Button>
+      </div>
+    </div>
+    <AutomaticRecognitionPage v-if="directory" ref="directoryWorkspace" purpose="scrape" embedded />
     <div v-else class="scrape-shell" :class="{ 'has-detail': active }">
       <aside class="catalog pane" aria-label="作品列表">
         <div class="catalog-heading"><div><span class="eyebrow">01 / LIBRARY</span><h2>片库</h2></div><span class="catalog-total">{{ works.length }} 部已加载</span></div>
@@ -126,7 +134,11 @@ watch(preview, async value => {
   </section>
 </template>
 <style scoped>
-.scrape-navigation{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.scrape-navigation .primary{margin-left:auto}.scrape-navigation [aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.scrape-heading { display:flex;align-items:center;gap:28px;min-width:0; }
+.scrape-heading>.shared-page-heading { margin:0;flex:none; }
+.scrape-heading>.ui-segmented { flex:none; }
+.scrape-heading-actions { display:flex;align-items:center;gap:12px;margin-left:auto; }
+.scrape-queue { display:inline-flex;align-items:center;min-height:36px;color:var(--purple-dark);font-size:12px;white-space:nowrap; }
 .scrape-page { --accent:#247b72; --accent-soft:#e9f5f1; --ink:#1d3035; --hairline:#dce9e5; display:grid;gap:16px;min-width:0 }
 .eyebrow { color:var(--accent);font-size:10px;font-weight:750;letter-spacing:.15em }
 .scrape-shell { display:grid;grid-template-columns:minmax(250px,320px) minmax(0,1fr);gap:16px;align-items:start;min-width:0;min-height:500px }
@@ -226,6 +238,10 @@ watch(preview, async value => {
 .preview-footer { display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 18px;border-top:1px solid var(--hairline);background:#fff }
 .overwrite-note { display:flex;gap:8px;max-width:430px;color:#947553;font-size:10px }.overwrite-note svg { flex:none }.overwrite-note strong { color:#78542e }
 @media(max-width:900px) { .scrape-shell { grid-template-columns:minmax(210px,260px) minmax(0,1fr) } .season-head { flex-wrap:wrap } .season-actions { padding-left:54px } }
+@media(max-width:760px) {
+  .scrape-heading { flex-wrap:wrap;gap:12px 14px; }
+  .scrape-heading>.ui-segmented { order:3;flex-basis:100%; }
+}
 @media(max-width:700px) {
   .scrape-shell,.scrape-shell.has-detail { display:block }
   .scrape-shell.has-detail .catalog { display:none }

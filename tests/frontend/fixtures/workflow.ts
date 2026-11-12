@@ -2,6 +2,7 @@ import { createApp, h } from 'vue'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
 import AutomaticRecognitionPage from '../../../frontend/src/pages/AutomaticRecognitionPage.vue'
+import ScrapePage from '../../../frontend/src/pages/ScrapePage.vue'
 import ToastHost from '../../../frontend/src/components/ui/ToastHost.vue'
 import ConfirmDialog from '../../../frontend/src/components/ui/ConfirmDialog.vue'
 import { provideRuntime } from '../../../frontend/src/app/runtime'
@@ -54,6 +55,7 @@ window.fetch = async (input, options) => {
     else value = task
   }
   if (url.startsWith('/api/search')) value = works.filter(item=>item.title.includes(new URL(url,location.origin).searchParams.get('q') || ''))
+  if (url.startsWith('/api/scrape/works')) value = {items:[],nextCursor:''}
   if (url.startsWith('/api/seasons')) value = [{number:1,name:'第一季',count:20},{number:2,name:'第二季',count:20}]
   if (url.startsWith('/api/episodes')) {
     if (params.has('slow-validation')) await new Promise(resolve=>setTimeout(resolve,5000))
@@ -80,7 +82,7 @@ window.fetch = async (input, options) => {
 }
 const app = createApp({setup(){provideRuntime();return()=>h('main',{style:`padding:${narrow ? '14px' : '32px'};max-width:${narrow ? '390px' : '1380px'};margin:auto`},[h(RouterView),h(ToastHost),h(ConfirmDialog)])}})
 app.use(VueQueryPlugin,{queryClient:createQueryClient()})
-const router = createRouter({history:createMemoryHistory(),routes:[{path:'/',component:AutomaticRecognitionPage,props:{purpose}},{path:'/history/:traceId',name:'extraction-history-detail',component:{render:()=>null}},{path:'/:any(.*)*',component:{render:()=>null}}]})
+const router = createRouter({history:createMemoryHistory(),routes:[{path:'/',component:params.has('scrape-page') ? ScrapePage : AutomaticRecognitionPage,props:{purpose}},{path:'/history/:traceId',name:'extraction-history-detail',component:{render:()=>null}},{path:'/:any(.*)*',component:{render:()=>null}}]})
 app.use(router)
 await router.isReady()
 app.mount('#app')

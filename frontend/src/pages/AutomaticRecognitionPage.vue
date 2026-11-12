@@ -12,7 +12,7 @@ import PreviewStep from '../features/workspace/PreviewStep.vue'
 import ReidentifyDialog from '../features/workspace/ReidentifyDialog.vue'
 import { useWorkspace } from '../features/workspace/useWorkspace'
 import '../features/workspace/workflow.css'
-const props = withDefaults(defineProps<{ purpose?: 'organize' | 'scrape' }>(), { purpose: 'organize' })
+const props = withDefaults(defineProps<{ purpose?: 'organize' | 'scrape'; embedded?: boolean }>(), { purpose: 'organize', embedded: false })
 const w = useWorkspace(props.purpose)
 const { step, busy, locked, recognizing, browser, task, taskQuery, loading, directories, directory } = w
 const directoriesOpen = ref(false)
@@ -26,8 +26,8 @@ async function chooseDirectory(path: string) { await w.chooseDirectory(path); di
 </script>
 <template>
   <section class="recognition-flow" :aria-label="purpose === 'scrape' ? '目录刮削' : '整理工作区'">
-    <header class="flow-heading"><h1>{{ purpose === 'scrape' ? '目录刮削' : '整理' }}</h1><RouterLink :to="purpose === 'scrape' ? '/scrape/records' : '/records'">查看队列</RouterLink></header>
-    <nav class="flow-steps" aria-label="操作步骤"><template v-for="(label,index) in steps" :key="label"><ChevronRight v-if="index" :size="16" aria-hidden="true" /><Button variant="ghost" class="flow-step" :aria-current="step === index + 1 ? 'step' : undefined" :disabled="locked || (index === 1 && !w.files.value.length) || (index === 2 && !w.workGroups.value.length)" @click="w.goStep((index + 1) as 1 | 2 | 3)"><span><Check v-if="index === 0 && task?.state === 'completed'" :size="14" /><template v-else>{{ index + 1 }}</template></span>{{ label }}</Button></template></nav>
+    <header v-if="!embedded" class="flow-heading"><h1>{{ purpose === 'scrape' ? '目录刮削' : '整理' }}</h1><RouterLink :to="purpose === 'scrape' ? '/scrape/records' : '/records'">查看队列</RouterLink></header>
+    <nav class="flow-steps" aria-label="操作步骤"><template v-for="(label,index) in steps" :key="label"><ChevronRight v-if="index" :size="16" aria-hidden="true" /><Button variant="ghost" class="flow-step" :aria-current="step === index + 1 ? 'step' : undefined" :disabled="locked || (index === 1 && !w.files.value.length) || (index === 2 && !w.workGroups.value.length)" @click="w.goStep((index + 1) as 1 | 2 | 3)"><span><Check v-if="(index === 0 && task?.state === 'completed') || (index === 1 && w.confirmationComplete.value)" :size="14" /><template v-else>{{ index + 1 }}</template></span>{{ label }}</Button></template></nav>
     <QueryState v-if="taskQuery.error.value" :error="taskQuery.error.value" @retry="w.poll" />
     <div v-if="loading && !task" class="flow-card flow-empty">读取工作区…</div>
     <SourceStep v-else-if="step === 1 || recognizing" :workspace="w" />
