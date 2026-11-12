@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRoute, RouterLink } from 'vue-router'
-import { Layers3 } from '@lucide/vue'
 import { navigation, menuRoute } from '../../app/navigation'
+import brandLogo from '../../assets/brand/joycurator-horizontal.svg'
 defineEmits<{ navigate: [] }>()
 const route = useRoute()
 </script>
@@ -11,8 +11,7 @@ const route = useRoute()
       class="brand sidebar-brand"
       :to="{ name: 'automatic-recognition' }"
       @click="$emit('navigate')"
-      ><div class="brand-symbol"><Layers3 :size="23" /></div>
-      <span>JoyCurator<small>你的媒体整理空间</small></span></RouterLink
+      ><img :src="brandLogo" alt="JoyCurator" width="1147" height="256" /></RouterLink
     >
     <nav aria-label="分组导航">
       <section
@@ -51,20 +50,10 @@ const route = useRoute()
 }
 .sidebar-brand {
   flex-shrink: 0;
-  font-size: 19px;
-  gap: 10px;
   padding: 0 8px 27px;
 }
-.sidebar-brand span {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.sidebar-brand small {
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  color: var(--muted);
-  font-weight: 400;
+.sidebar-brand img {
+  width: 180px;
 }
 .navigation-group {
   margin-bottom: 10px;

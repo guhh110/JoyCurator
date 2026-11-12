@@ -14,6 +14,7 @@ import { api } from '../api'
 import { session, acceptSession, safeRedirect } from '../app/session'
 import { queryClient } from '../app/query'
 import { useToastFeedback } from '../app/toast'
+import brandLogo from '../assets/brand/joycurator-horizontal.svg'
 const route = useRoute(),
   router = useRouter()
 const initialized = computed(() => session.initialized)
@@ -46,9 +47,8 @@ async function login() {
 <template>
   <div class="login-screen">
     <div class="login-art">
-      <div class="brand light">
-        <div class="brand-symbol"><Layers3 :size="25" /></div>
-        JoyCurator<span class="edition">轻量版</span>
+      <div class="brand">
+        <img :src="brandLogo" alt="JoyCurator" width="1147" height="256" />
       </div>
       <div class="login-copy">
         <span class="eyebrow">A PLACE FOR EVERY STORY</span>
@@ -63,7 +63,9 @@ async function login() {
       <span class="art-caption">本地文件 · 手动配对 · 先预览再整理</span>
     </div>
     <main class="login-form">
-      <div class="mobile-brand brand"><Layers3 />JoyCurator</div>
+      <div class="mobile-brand brand">
+        <img :src="brandLogo" alt="JoyCurator" width="1147" height="256" />
+      </div>
       <h2>{{ initialized ? '欢迎回来' : '创建你的工作台' }}</h2>
       <p class="muted">
         {{

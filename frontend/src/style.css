@@ -326,32 +326,12 @@ small {
 .brand {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-size: 19px;
-  font-weight: 650;
-  letter-spacing: -0.7px;
-  white-space: nowrap;
 }
-.brand-symbol {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 35px;
-  height: 35px;
-  background: #eeeaf9;
-  color: var(--purple);
-  border-radius: 11px;
-}
-.edition {
-  margin: 3px 0 0 2px;
-  letter-spacing: 0.4px;
-  background: #f0edf8;
-  color: #9c8bbf;
-  border: 1px solid #e6e0f2;
-  padding: 2px 5px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 450;
+.brand img {
+  display: block;
+  width: 196px;
+  max-width: 100%;
+  height: auto;
 }
 .boot {
   display: flex;
@@ -1862,12 +1842,7 @@ small {
   bottom: -170px;
 }
 .login-art .brand {
-  color: #65517e;
   position: relative;
-}
-.login-art .brand-symbol {
-  background: #e4dbee;
-  color: #957aad;
 }
 .login-copy {
   margin: auto 0;
@@ -2066,18 +2041,6 @@ small {
   .topbar {
     height: 59px;
     padding: 0 17px;
-  }
-  .brand {
-    font-size: 18px;
-    gap: 8px;
-  }
-  .brand-symbol {
-    width: 31px;
-    height: 31px;
-    border-radius: 9px;
-  }
-  .edition {
-    font-size: 9px;
   }
   .topbar nav {
     display: none;
@@ -2575,7 +2538,6 @@ small {
   .mobile-brand {
     display: flex;
     margin-bottom: 65px;
-    color: var(--purple);
   }
   .login-form {
     max-width: 390px;
