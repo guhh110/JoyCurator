@@ -2,7 +2,7 @@
 import Button from '../components/ui/Button.vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { Check, ChevronRight, FolderOpen } from '@lucide/vue'
+import { Check, ChevronRight, FolderOpen, Folders } from '@lucide/vue'
 import FileBrowser from '../components/FileBrowser.vue'
 import QueryState from '../components/ui/QueryState.vue'
 import EliText from '../components/ui/EliText.vue'
@@ -32,8 +32,14 @@ async function chooseDirectory(path: string) { await w.chooseDirectory(path); di
     <div v-if="loading && !task" class="flow-card flow-empty">读取工作区…</div>
     <SourceStep v-else-if="step === 1 || recognizing" :workspace="w" />
     <div v-else-if="step === 2" class="flow-confirm-shell">
-      <Button class="flow-mobile-directory" :aria-expanded="directoriesOpen" @click="directoriesOpen = !directoriesOpen"><FolderOpen :size="16" /><EliText :text="directory || '选择目录'" ellipsis="start" /><ChevronRight :size="15" /></Button>
-      <aside class="flow-card flow-directories" :class="{open:directoriesOpen}" aria-label="目录导航"><header class="flow-section-head"><h2>目录</h2><span class="muted">{{ directories.length }}</span></header><div><Button variant="ghost" v-for="group in directories" :key="group.id" :aria-current="directory === group.id ? 'true' : undefined" :disabled="locked || w.confirmation.loading.value" @click="chooseDirectory(group.id)"><FolderOpen :size="16" /><EliText :text="group.id" ellipsis="start" /><span :class="{'flow-confirmed':!group.pending}">{{ group.pending || '✓' }}</span></Button></div></aside>
+      <Button class="flow-mobile-directory" :aria-expanded="directoriesOpen" @click="directoriesOpen = !directoriesOpen"><FolderOpen :size="16" /><EliText :text="directory || '全部目录'" ellipsis="start" /><ChevronRight :size="15" /></Button>
+      <aside class="flow-card flow-directories" :class="{open:directoriesOpen}" aria-label="目录导航">
+        <header class="flow-section-head"><h2>目录</h2><span class="muted">{{ directories.length }}</span></header>
+        <div>
+          <Button variant="ghost" :aria-current="!directory ? 'true' : undefined" :disabled="locked || w.confirmation.loading.value" @click="chooseDirectory('')"><Folders :size="16" /><EliText text="全部" ellipsis="start" /><span>{{ w.files.value.length }}</span></Button>
+          <Button variant="ghost" v-for="group in directories" :key="group.id" :aria-current="directory === group.id ? 'true' : undefined" :disabled="locked || w.confirmation.loading.value" @click="chooseDirectory(group.id)"><FolderOpen :size="16" /><EliText :text="group.id" ellipsis="start" /><span>{{ group.files.length }}</span></Button>
+        </div>
+      </aside>
       <ConfirmationForm :workspace="w" />
     </div>
     <PreviewStep v-else :workspace="w" />

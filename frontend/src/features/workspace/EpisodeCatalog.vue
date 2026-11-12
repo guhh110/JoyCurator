@@ -9,8 +9,8 @@ import Pagination from '../../components/ui/Pagination.vue'
 import SidePanel from '../../components/ui/SidePanel.vue'
 import { notify } from '../../app/toast'
 import { parseEpisodes } from '../../api'
-import type { useConfirmation } from './useConfirmation'
-const props = defineProps<{ state: ReturnType<typeof useConfirmation>; disabled: boolean; path?: string }>()
+import type { ConfirmationGroup } from './useConfirmationGroup'
+const props = defineProps<{ state: ConfirmationGroup; disabled: boolean; path?: string }>()
 const emit = defineEmits<{ close: [] }>()
 const s = props.state
 const target = ref(props.path || s.chosen.value[0]?.file.path || '')

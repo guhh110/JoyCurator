@@ -11,8 +11,8 @@ import Pagination from '../../components/ui/Pagination.vue'
 import SidePanel from '../../components/ui/SidePanel.vue'
 import { digitParts } from './confirmation'
 import { notify } from '../../app/toast'
-import type { useConfirmation } from './useConfirmation'
-const props = defineProps<{ state: ReturnType<typeof useConfirmation>; disabled: boolean }>()
+import type { ConfirmationGroup } from './useConfirmationGroup'
+const props = defineProps<{ state: ConfirmationGroup; disabled: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const s = props.state
 const { mode, samplePath, chosen, sourceId, source, sample, mappingKey, candidates, offset, mappingPreview } = s
@@ -32,7 +32,7 @@ function apply() {
     <section class="confirm-tool-panel" aria-label="批量调整集数">
     <SegmentedControl v-model="mode" label="集数来源" :disabled="disabled" :options="[{value:'suggestion',label:'识别建议'},{value:'digits',label:'原文取数'},{value:'candidate',label:'标注候选'}]" />
     <div v-if="mode !== 'suggestion'" class="confirm-mapping-fields">
-      <Field label="样本文件"><Select v-model="samplePath" label="取数样本" ellipsis="start" :disabled="disabled" :placeholder="sample?.file.path" :options="chosen.map(row => ({value:row.file.path,label:row.file.path}))" /></Field>
+      <Field label="样本文件"><Select :model-value="sample?.file.path || ''" @update:model-value="samplePath = $event" label="取数样本" ellipsis="start" :disabled="disabled" :options="chosen.map(row => ({value:row.file.path,label:row.file.path}))" /></Field>
       <Field v-if="mode === 'digits'" label="原文来源"><Select v-model="sourceId" label="原文来源" :disabled="disabled" :options="(sample?.view.document.sources || []).map(value => ({value:value.id,label:value.depth === 0 ? '文件名' : `上 ${value.depth} 层目录`}))" /></Field>
       <Field v-else label="集数候选"><Select v-model="mappingKey" label="集数候选" placeholder="选择候选" :disabled="disabled" :options="candidates.map(value => ({value:value.id,label:`${JSON.stringify(value.value)} · ${value.reason || value.ruleId}`,disabled:value.status !== 'valid'}))" /></Field>
     </div>

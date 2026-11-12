@@ -14,9 +14,14 @@ const params = new URLSearchParams(location.search)
 const purpose = params.get('purpose') === 'scrape' ? 'scrape' : 'organize'
 const movie = params.has('movie')
 const narrow = params.has('narrow')
+const paged = params.has('pages')
 const work: Entry = { type: movie ? 'movie' : 'tv', tmdbId: 223911, title: movie ? '示例电影' : '仙逆', originalTitle: '', year: 2023, overview: '', posterPath: '' }
-const paths = ['/隔离测试/来自：分享/【X】《亻山》NI（4K）/1-159/1.mp4','/隔离测试/来自：分享/【X】《亻山》NI（4K）/1-159/2.mp4','/隔离测试/其他作品/Season 02/第03集.mp4']
-let task: Recognition | null = params.has('empty') ? null : { id: 'fixture', purpose, revision: 1, state: 'completed', paths: ['/隔离测试'], items: paths.map(path => ({ path, size: 1024, mtime: '1', group: path, season: -1, episodes: [], metadata: {title:'仙逆',season:1,episodes:[],mediaType:'tv',tmdbId:null,year:2023},entry:null,candidates:[work],state:'review',reason:'待确认',selected:false,removed:false,traceId:'fixture-trace'})), completed:3,total:3,created:'',error:'' }
+const works: Entry[] = paged ? [work,{...work,type:'movie',title:'示例电影'}] : params.has('works') ? [work, ...Array.from({length:5},(_,index)=>({...work,tmdbId:223912+index,title:`示例作品 ${index+2}`,year:2018+index}))] : [work]
+const paths = paged ? Array.from({length:84},(_,index)=>`/隔离测试/分页/${index < 42 ? '剧集' : '电影'}${index%42+1}.mp4`) : ['/隔离测试/来自：分享/【X】《亻山》NI（4K）/1-159/1.mp4','/隔离测试/来自：分享/【X】《亻山》NI（4K）/1-159/2.mp4','/隔离测试/其他作品/Season 02/第03集.mp4']
+let task: Recognition | null = params.has('empty') ? null : { id: 'fixture', purpose, revision: 1, state: 'completed', paths: ['/隔离测试'], items: paths.map((path,index) => {
+  const entry = paged ? works[index < 42 ? 0 : 1]! : null, season = entry?.type === 'tv' ? 1 : -1, episodes = entry?.type === 'tv' ? [index+1] : []
+  return { path, size: 1024, mtime: '1', group: path, season, episodes, metadata: {title:'仙逆',season:1,episodes:[],mediaType:'tv',tmdbId:null,year:2023},entry,candidates:works,state:entry?'ready':'review',reason:entry?'':'待确认',selected:false,removed:false,traceId:'fixture-trace',confirmation:entry ? {source:'user',at:'',identity:'',size:1024,mTime:1,type:entry.type,tmdbId:entry.tmdbId,season,episodes,basis:{kind:'manual',index:0,offset:0}} : undefined}
+}), completed:paths.length,total:paths.length,created:'',error:'' }
 const initial = task ? structuredClone(task) : null
 window.fetch = async (input, options) => {
   const url = String(input), body = options?.body ? JSON.parse(options.body as string) : null
@@ -31,15 +36,19 @@ window.fetch = async (input, options) => {
       task!.revision++
       task!.items = task!.items.map(file => {
         const update = body.items.find((row: any) => row.path === file.path)
-        return update ? {...file,entry:work,group:`${work.type}:${work.tmdbId}`,season:update.season,episodes:update.episodes,state:'ready',selected:true,confirmation:{source:'user',at:'',identity:'',size:file.size,mTime:1,type:work.type,tmdbId:work.tmdbId,season:update.season,episodes:update.episodes,basis:update.basis},layout:purpose === 'scrape' ? {workDir:'/隔离测试/仙逆 (2023)',seasonDir:'/隔离测试/仙逆 (2023)/Season 01',moviePrefix:false,manual:false}:undefined} : file
+        const picked = works.find(item=>item.tmdbId===update?.tmdbId && item.type===update?.type) || work
+        return update ? {...file,entry:picked,group:`${picked.type}:${picked.tmdbId}`,season:update.season,episodes:update.episodes,state:'ready',selected:true,confirmation:{source:'user',at:'',identity:'',size:file.size,mTime:1,type:picked.type,tmdbId:picked.tmdbId,season:update.season,episodes:update.episodes,basis:update.basis},layout:purpose === 'scrape' ? {workDir:'/隔离测试/仙逆 (2023)',seasonDir:'/隔离测试/仙逆 (2023)/Season 01',moviePrefix:false,manual:false}:undefined} : file
       })
       value = task
     } else if (options?.method === 'PUT') { task!.revision++; task!.items = task!.items.map(file => ({...file,...body.items.find((row: any) => row.path === file.path)})); value = task }
     else value = task
   }
-  if (url.startsWith('/api/search')) value = [work]
+  if (url.startsWith('/api/search')) value = works.filter(item=>item.title.includes(new URL(url,location.origin).searchParams.get('q') || ''))
   if (url.startsWith('/api/seasons')) value = [{number:1,name:'第一季',count:20},{number:2,name:'第二季',count:20}]
-  if (url.startsWith('/api/episodes')) value = Array.from({length:20},(_,index) => ({number:index+1,season:1,name:`第 ${index+1} 集`,airDate:''}))
+  if (url.startsWith('/api/episodes')) {
+    if (params.has('slow-validation')) await new Promise(resolve=>setTimeout(resolve,5000))
+    value = Array.from({length:paged ? 100 : 20},(_,index) => ({number:index+1,season:1,name:`第 ${index+1} 集`,airDate:''}))
+  }
   if (url === '/api/queue') value = {active:false,recognizing:false,revision:1,organize:{current:null,queued:0,queuedBatches:0,waitReason:''},scrape:{current:null,queued:0,queuedBatches:0,waitReason:''}}
   if (url === '/api/settings') value = {}
   if (url === '/api/batches/preview') {

@@ -39,7 +39,7 @@ describe('EliText ellipsis direction', () => {
   })
   it('uses start ellipsis at all dedicated path display sites', () => {
     const paths = [
-      'pages/AutomaticRecognitionPage.vue', 'features/workspace/SourceStep.vue', 'features/workspace/ConfirmationForm.vue',
+      'pages/AutomaticRecognitionPage.vue', 'features/workspace/SourceStep.vue', 'features/workspace/ConfirmationForm.vue', 'features/workspace/ConfirmationWorkGroup.vue',
       'features/workspace/PreviewStep.vue', 'features/scrape/LayoutEditor.vue', 'pages/SettingsPage.vue', 'components/jobs/RunDetails.vue',
       'features/extraction/ExtractionHistory.vue',
       'features/extraction/ExtractionHistoryDetail.vue', 'features/extraction/RuleExamples.vue',

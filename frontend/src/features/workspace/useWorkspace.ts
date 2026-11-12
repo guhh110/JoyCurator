@@ -31,7 +31,8 @@ export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
   const selected = computed(() => ready.value.filter(file => file.selected))
   const directories = computed(() => recognitionGroups(files.value, 'directories').map(group => ({ ...group, pending: group.files.filter(file => !isConfirmed(file) && !fileLocked(file)).length })))
   const current = computed(() => directories.value.find(group => group.id === directory.value))
-  const currentFiles = computed(() => (current.value?.files || []).filter(file => (status.value === 'confirmed' ? isConfirmed(file) : !isConfirmed(file)) && file.path.toLowerCase().includes(query.value.toLowerCase())))
+  const scopeFiles = computed(() => directory.value ? current.value?.files || [] : files.value)
+  const currentFiles = computed(() => scopeFiles.value.filter(file => (status.value === 'confirmed' ? isConfirmed(file) : !isConfirmed(file)) && file.path.toLowerCase().includes(query.value.toLowerCase())))
   const sources = computed(() => sourceSummaries(task.value?.items || [], task.value?.paths || []))
   const workGroups = computed(() => recognitionGroups(editable.value.filter(isConfirmed)))
   const modes = { copy: '复制', move: '移动', hardlink: '硬链接' }
@@ -61,7 +62,7 @@ export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
   function invalidatePreviews() { previewState.invalidate(); scrapePreviewState.invalidate() }
   watch(() => files.value.map(file => `${file.path}:${!!file.execution?.locked}:${!!file.execution?.completed}`).join('|'), invalidatePreviews)
   watch(() => runtime.settingsQuery?.data.value?.version, invalidatePreviews)
-  const confirmation = useConfirmation({ task, busy, act, accept: acceptTask, invalidate: invalidatePreviews })
+  const confirmation = useConfirmation({ task, busy, scope: currentFiles, act, accept: acceptTask, invalidate: invalidatePreviews })
   async function discardDraft() {
     if (busy.value || confirmation.saving.value) return false
     if (confirmation.dirty.value && !await confirmAction({ title: '放弃未确认修改？', description: '已确认的文件会保留。', confirmLabel: '放弃并继续', cancelLabel: '继续编辑' })) return false
@@ -69,15 +70,15 @@ export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
     return true
   }
   async function loadDirectory() {
-    if (!task.value || recognizing.value || !current.value) return
-    const usable = current.value.files.filter(file => !fileLocked(file))
+    if (!task.value || recognizing.value) return
+    const usable = scopeFiles.value.filter(file => !fileLocked(file))
     if (!confirmation.open.value) await confirmation.start(usable, file => !isConfirmed(file))
     else if (!confirmation.stale.value) await confirmation.add(usable, file => !isConfirmed(file))
   }
   async function chooseDirectory(path: string) {
     if (locked.value || confirmation.loading.value || directory.value === path && confirmation.open.value) return
-    // Navigation adds a scope to the same batch; it never discards its edits.
-    directory.value = path; query.value = ''
+    // Directory, confirmation status and search are independent filters.
+    directory.value = path
     await loadDirectory()
   }
   async function reloadDraft() {
@@ -103,14 +104,10 @@ export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
       await loadDirectory()
     }
   }, { immediate: true })
-  async function confirmBatch() {
-    const previous = directory.value
-    const count = confirmation.chosen.value.length
-    if (!await confirmation.confirm()) return
+  async function confirmGroup(key: string) {
+    const group = confirmation.group(key), count = group.chosen.value.length
+    if (!await group.confirm()) return
     notice.value = `已确认 ${count} 个文件`
-    const remaining = directories.value.find(group => group.id === previous && group.pending) || directories.value.find(group => group.pending)
-    directory.value = remaining?.id || previous
-    status.value = pendingCount.value ? 'pending' : 'confirmed'
     await loadDirectory()
   }
   async function save(items?: RecognitionItem[]) {
@@ -195,8 +192,8 @@ export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
   onDeactivated(() => { active.value = false; browser.value = false; confirmation.close(); reidentification.close(); invalidatePreviews(); if (step.value === 3) step.value = 2 })
   onUnmounted(() => { alive = false })
   return { purpose, runtime, task, taskQuery, loading: taskQuery.isPending, busy, locked, recognizing, error, notice,
-    step, browser, pendingPaths, files, editable, pendingCount, ready, selected, sources, directories, directory, current, currentFiles, query, status, workGroups, modes,
+    step, browser, pendingPaths, files, editable, pendingCount, ready, selected, sources, directories, directory, current, scopeFiles, currentFiles, query, status, workGroups, modes,
     confirmation, previewState, scrapePreviewState, reidentification, act, save, fileLocked, isConfirmed,
-    openBrowser, addPaths, scanSources, removeSource, goStep, chooseDirectory, reloadDraft, loadDirectory, discardDraft, confirmBatch, poll, retry, cancelRecognition, selectFile, selectReady, saveLayouts, execute, invalidatePreviews }
+    openBrowser, addPaths, scanSources, removeSource, goStep, chooseDirectory, reloadDraft, loadDirectory, discardDraft, confirmGroup, poll, retry, cancelRecognition, selectFile, selectReady, saveLayouts, execute, invalidatePreviews }
 }
 export type Workspace = ReturnType<typeof useWorkspace>
