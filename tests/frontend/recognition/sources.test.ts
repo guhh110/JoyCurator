@@ -33,4 +33,11 @@ describe('recognition sources', () => {
     expect(sourceFolder('/media/one.mkv', roots)).toBe('')
     expect(sourceFolder('/elsewhere/x.mkv', roots)).toBe('')
   })
+  it('counts completed files against their owning source while omitting them from pending totals', () => {
+    const done = { ...item('/source/one.mp4', 'g1', 'ready', true), execution: { runId: 'done', state: 'completed', locked: false, completed: true, manualReview: false } }
+    expect(sourceSummaries([done], ['/source', done.path])).toMatchObject([
+      { path: '/source', files: 0, completed: 0 },
+      { path: done.path, files: 0, completed: 1 },
+    ])
+  })
 })

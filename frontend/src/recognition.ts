@@ -79,6 +79,7 @@ export function sourceFolder(path: string, roots: string[]) {
 export interface SourceSummary {
   path: string
   files: number
+  completed: number
   works: number
   states: Record<string, number>
 }
@@ -91,12 +92,13 @@ export function sourceSummaries(
   for (const root of roots) {
     const path = root.replace(/\/+$/, '') || '/'
     if (!summaries.has(path))
-      summaries.set(path, { path, files: 0, works: 0, states: {}, groups: new Set() })
+      summaries.set(path, { path, files: 0, completed: 0, works: 0, states: {}, groups: new Set() })
   }
   for (const item of items) {
-    if (item.removed) continue
     const summary = summaries.get(sourceOf(item.path, roots))
     if (!summary) continue
+    if (item.execution?.completed) summary.completed++
+    if (item.removed) continue
     summary.files++
     summary.groups.add(item.group)
     summary.states[item.state] = (summary.states[item.state] || 0) + 1

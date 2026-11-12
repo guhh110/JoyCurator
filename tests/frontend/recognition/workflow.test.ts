@@ -32,7 +32,7 @@ function view(item: RecognitionItem): CandidateView {
   return { path: item.path, traceId: 'trace', document: { path: item.path, directory: '/source', fileId: item.path, sources: [{ id: 'name', kind: 'filename', depth: 0, text }], tokens: [], candidates: [] }, suggestion: { path: item.path, fileId: item.path, metadata: item.metadata, decisions: {} } }
 }
 async function settle() { for (let i = 0; i < 20; i++) await Promise.resolve(); await nextTick() }
-async function fixture(items = [file('/source/a/1.mp4'), file('/source/a/3.mp4'), file('/source/b/2.mp4')], purpose: 'organize' | 'scrape' = 'organize', cached = false) {
+async function fixture(items = [file('/source/a/1.mp4'), file('/source/a/3.mp4'), file('/source/b/2.mp4')], purpose: 'organize' | 'scrape' = 'organize', cached = false, completeScan = false) {
   let stored: Recognition = { id: 'workspace', purpose, revision: 1, state: 'completed', paths: ['/source'], items, total: items.length, completed: items.length, error: '', created: '' }
   let rejectConfirm: boolean | number = false
   const calls: { path: string; body: any }[] = []
@@ -60,7 +60,11 @@ async function fixture(items = [file('/source/a/1.mp4'), file('/source/a/3.mp4')
       stored = { ...stored, revision: stored.revision + 1, items: stored.items.map(item => ({ ...item, ...body.items.find((edit: any) => edit.path === item.path) })) }
       return response(stored)
     }
-    if (path === '/api/recognitions') { stored = { ...stored, id: body.id || 'new-workspace', state: 'running' }; return response(stored) }
+    if (path === '/api/recognitions') {
+      stored = { ...stored, id: body.id || 'new-workspace', state: 'running' }
+      if (completeScan) stored = { ...stored, state: 'completed', paths: body.paths, items: body.paths.map((path: string) => file(path)), completed: body.paths.length, total: body.paths.length }
+      return response(stored)
+    }
     return response(stored)
   })
   vi.stubGlobal('fetch', fetch)
@@ -70,11 +74,47 @@ async function fixture(items = [file('/source/a/1.mp4'), file('/source/a/3.mp4')
   const app = renderer.createApp({ setup() { w = useWorkspace(purpose); return () => h('div') } })
   app.use(VueQueryPlugin, { queryClient: client }); app.mount({})
   cleanup.push(() => { app.unmount(); client.clear() })
-  await vi.waitFor(() => expect(w.confirmation.rows.value.length).toBeGreaterThan(0))
+  await vi.waitFor(() => expect(w.task.value).not.toBeNull())
+  if (items.some(item => !item.removed)) await vi.waitFor(() => expect(w.confirmation.rows.value.length).toBeGreaterThan(0))
   return { w, calls, client, fetch, stored: () => stored, reject: (id?: number) => { rejectConfirm = id ?? true } }
 }
 
 describe('three-step workspace', () => {
+  it('shows a single empty state for initial, empty-scan and pending sources', async () => {
+    const { w } = await fixture([])
+    w.task.value!.paths = []
+    let html = await renderToString(h(SourceStep, { workspace: w }))
+    expect(html).toContain('选择需要整理的视频或目录')
+    expect(html).not.toContain('没有找到视频文件')
+    w.task.value!.paths = ['/source/empty']
+    html = await renderToString(h(SourceStep, { workspace: w }))
+    expect(html).toContain('没有找到视频文件')
+    expect(html).not.toContain('选择需要整理的视频或目录')
+    w.addPaths(['/source/one.mp4'])
+    html = await renderToString(h(SourceStep, { workspace: w }))
+    expect(html).toContain('开始识别')
+    expect(html).not.toContain('没有找到视频文件')
+  })
+  it('starts a new workspace when completed videos are added again', async () => {
+    const done = { ...confirmed(file('/source/one.mp4')), removed: true, execution: { runId: 'done', state: 'completed', locked: false, completed: true, manualReview: false } }
+    const { w, calls } = await fixture([done], 'organize', false, true)
+    w.task.value!.paths = [done.path]
+    const html = await renderToString(h(SourceStep, { workspace: w }))
+    expect(html).toContain('已完成整理，可添加视频或目录开始新一轮')
+    expect(html).not.toContain('没有找到视频文件')
+    expect(html).toContain('>已完成</span>')
+    w.addPaths([done.path, done.path])
+    expect(w.pendingPaths.value).toEqual([done.path])
+    const staged = await renderToString(h(SourceStep, { workspace: w }))
+    expect(staged).toContain('开始识别')
+    expect(staged).not.toContain('已完成')
+    await w.scanSources()
+    expect(calls.find(call => call.path === '/api/recognitions')?.body).toEqual({ paths: [done.path], purpose: 'organize', id: '' })
+    await vi.waitFor(() => expect(w.confirmation.rows.value).toHaveLength(1))
+    expect(w.step.value).toBe(2)
+    expect(w.confirmation.stale.value).toBe(false)
+    expect(w.confirmation.rows.value[0]!.file.path).toBe(done.path)
+  })
   it('initializes the directory and draft when the latest workspace is already cached', async () => {
     const { w } = await fixture([file('/source/a/1.mp4')], 'organize', true)
     expect(w.step.value).toBe(2)
@@ -283,18 +323,11 @@ describe('unified episode draft', () => {
     s.rows.value[0]!.text = '1,1'; expect(s.canConfirm.value).toBe(false)
     s.rows.value[0]!.text = '0,2'; expect(s.canConfirm.value).toBe(true)
   })
-  it('reuses the same confirmation mechanism for manual catalog assignment and movie batches', async () => {
+  it('confirms movie batches with manual episode basis', async () => {
     const { w, calls } = await fixture()
     await w.confirmation.group('unassigned').pick({...work,type:'movie'}); await settle(); expect(w.confirmation.group('movie:1').canConfirm.value).toBe(true)
     await w.confirmGroup('movie:1')
     expect(calls.find(call => call.path.endsWith('/confirm'))?.body.items.every((item: any) => item.season === -1 && item.episodes.length === 0 && item.basis.kind === 'manual')).toBe(true)
-  })
-  it('views TMDB seasons without changing the batch or saving any file', async () => {
-    const { w, calls } = await fixture([file('/source/a/1.mp4',[1])]); const s = w.confirmation.group('tv:1')
-    await w.confirmation.group('unassigned').pick(work); await settle(); const before = s.rows.value[0]!.season
-    s.viewSeason(2); await settle()
-    expect(s.episodeLists.value[2]).toHaveLength(121); expect(s.rows.value[0]!.season).toBe(before)
-    expect(calls.some(call => call.path.endsWith('/confirm') || call.path === '/api/batches/preview')).toBe(false)
   })
   it('blocks confirmation if a background task locks a selected file without changing the revision', async () => {
     const { w } = await fixture([file('/source/a/1.mp4',[1])]); const s = w.confirmation.group('tv:1')

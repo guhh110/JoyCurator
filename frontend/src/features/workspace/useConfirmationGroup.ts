@@ -87,10 +87,10 @@ export function useConfirmationGroup(options: {
     if (positive.length === 1) for (const row of missing) if (chosen.value.includes(row) && row.season < 0) row.season = positive[0]!.number
     loadEpisodes()
   }
-  function loadEpisodes(numbers = chosen.value.map(row => row.season)) {
+  function loadEpisodes() {
     const work = entry.value
     if (!alive || work?.type !== 'tv' || !seasonsLoaded.value) return
-    for (const number of new Set(numbers.filter(number => seasons.value.some(value => value.number === number)))) {
+    for (const number of new Set(chosen.value.map(row => row.season).filter(number => seasons.value.some(value => value.number === number)))) {
       if (episodeLists.value[number] || episodeRequests.has(number) || episodeErrors.value[number]) continue
       episodeRequests.add(number)
       read<Episode[]>(`/episodes?id=${work.tmdbId}&season=${number}`).then(list => {
@@ -169,6 +169,6 @@ export function useConfirmationGroup(options: {
     error.value = ''; seasonsError.value = ''; episodeErrors.value = {}
     return ensure()
   }
-  return { key: options.key, entry, files, rows, chosen, query, kind, results, searching, seasons, season, seasonsError, fetchingSeasons, episodeLists, episodeErrors, mode, sourceId, offset, samplePath, mappingKey, sample, source, parts, candidates, saving, error, validation, validating, canConfirm, problem, search, pick, ensure, applySeason, manual, applyMapping, mappingPreview, canApplyMapping, retry, confirm: options.confirm, viewSeason: (number: number) => loadEpisodes([number]) }
+  return { key: options.key, entry, files, rows, chosen, query, kind, results, searching, seasons, season, seasonsError, fetchingSeasons, episodeErrors, mode, sourceId, offset, samplePath, mappingKey, sample, source, parts, candidates, saving, error, validation, validating, canConfirm, problem, search, pick, ensure, applySeason, manual, applyMapping, mappingPreview, canApplyMapping, retry, confirm: options.confirm }
 }
 export type ConfirmationGroup = ReturnType<typeof useConfirmationGroup>

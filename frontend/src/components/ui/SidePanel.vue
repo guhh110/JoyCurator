@@ -6,7 +6,7 @@ import Button from './Button.vue'
 import { registerToastTarget } from '../../app/toast'
 
 const open = defineModel<boolean>('open', { default: false })
-defineProps<{ title: string }>()
+defineProps<{ title: string; bodyClass?: string }>()
 const surface = ref<HTMLElement>()
 let releaseToastTarget: (() => void) | undefined
 let returnFocus: HTMLElement | undefined
@@ -38,7 +38,7 @@ function restoreFocus(event: Event) {
             <DialogTitle class="ui-side-panel-title">{{ title }}</DialogTitle>
             <DialogClose as-child><Button variant="ghost" icon :aria-label="`关闭${title}`"><X :size="18" /></Button></DialogClose>
           </header>
-          <div class="ui-side-panel-body"><slot /></div>
+          <div class="ui-side-panel-body" :class="bodyClass"><slot /></div>
           <footer v-if="$slots.footer" class="ui-side-panel-footer"><slot name="footer" /></footer>
         </div>
       </DialogContent>

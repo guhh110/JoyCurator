@@ -96,6 +96,7 @@ export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
   watch(() => [task.value?.id, task.value?.state] as const, async (value, old) => {
     if (!task.value) return
     const newTask = value[0] !== old?.[0]
+    if (newTask) confirmation.close()
     if (recognizing.value) { step.value = 1; confirmation.close(); invalidatePreviews(); return }
     if (newTask || old?.[1] === 'running') {
       directory.value = directories.value.find(group => group.pending)?.id || directories.value[0]?.id || ''
@@ -129,18 +130,21 @@ export function useWorkspace(purpose: 'organize' | 'scrape' = 'organize') {
   function openBrowser() { browser.value = true }
   function addPaths(paths: string[]) {
     browser.value = false
-    pendingPaths.value = purpose === 'scrape' ? paths.slice(0, 1) : [...new Set([...pendingPaths.value, ...paths])].filter(path => !task.value?.paths.includes(path))
+    const existing = files.value.length ? task.value?.paths || [] : []
+    pendingPaths.value = purpose === 'scrape' ? paths.slice(0, 1) : [...new Set([...pendingPaths.value, ...paths])].filter(path => !existing.includes(path))
   }
   async function scanSources() {
     if (!pendingPaths.value.length || locked.value) return
     const replacing = purpose === 'scrape' && task.value && pendingPaths.value[0] !== task.value.paths[0]
     if (replacing && !await confirmAction({ title: '更换刮削目录？', description: '将为新目录打开新的工作区。', confirmLabel: '更换目录' })) return
     await act(async () => {
-      const value = await api<Recognition>('/recognitions', { paths: pendingPaths.value, purpose, id: replacing ? '' : task.value?.id || '' })
+      const startNew = purpose === 'organize' && task.value?.state === 'completed' && !files.value.length
+      const value = await api<Recognition>('/recognitions', { paths: pendingPaths.value, purpose, id: replacing || startNew ? '' : task.value?.id || '' })
       if (!alive) return
       acceptTask(value); pendingPaths.value = []; invalidatePreviews()
       await runtime.refreshQueue()
     })
+    if (alive && step.value === 2) await loadDirectory()
   }
   async function removeSource(path: string) {
     if (!await confirmAction({ title: '移出来源？', description: path, confirmLabel: '移出来源', destructive: true })) return
