@@ -19,16 +19,15 @@ type Item struct {
 	Original     *model.MediaMapping `json:"original,omitempty"`
 	Execution    *FileExecution      `json:"execution,omitempty"`
 	model.File
-	Metadata   recognition.Metadata `json:"metadata"`
-	Group      string               `json:"group"`
-	Entry      *model.Entry         `json:"entry"`
-	Candidates []model.Entry        `json:"candidates"`
-	State      string               `json:"state"`
-	Reason     string               `json:"reason"`
-	Selected   bool                 `json:"selected"`
-	Removed    bool                 `json:"removed"`
-	Edited     bool                 `json:"edited,omitempty"`
-	TraceID    string               `json:"traceId,omitempty"`
+	Metadata recognition.Metadata `json:"metadata"`
+	Group    string               `json:"group"`
+	Entry    *model.Entry         `json:"entry"`
+	State    string               `json:"state"`
+	Reason   string               `json:"reason"`
+	Selected bool                 `json:"selected"`
+	Removed  bool                 `json:"removed"`
+	Edited   bool                 `json:"edited,omitempty"`
+	TraceID  string               `json:"traceId,omitempty"`
 }
 type Workspace struct {
 	Purpose   string   `json:"purpose"`

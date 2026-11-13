@@ -17,7 +17,7 @@ func TestMappingStateFollowsNewestActiveScrape(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	mapping := model.MediaMapping{Path: filepath.Join(settings.TargetRoot, "film.mkv"), RunID: "organize", Identity: "1:2", State: "pending"}
+	mapping := model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: filepath.Join(settings.TargetRoot, "film.mkv"), RunID: "organize", Identity: "1:2", State: "pending"}
 	if err = store.SaveMapping(mapping); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestMappingStateFollowsNewestActiveScrape(t *testing.T) {
 	if err != nil || current.State != "completed" {
 		t.Fatalf("older run replaced current state: %+v %v", current, err)
 	}
-	if err = store.DeleteMapping(model.MediaMapping{Path: mapping.Path, RunID: "other", Identity: mapping.Identity}); err != nil {
+	if err = store.DeleteMapping(model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: mapping.Path, RunID: "other", Identity: mapping.Identity}); err != nil {
 		t.Fatal(err)
 	}
 	current, err = store.Mapping(mapping.Path)
@@ -83,10 +83,10 @@ func TestOlderOrganizeRetryCannotReplaceNewerMapping(t *testing.T) {
 		}
 	}
 	path := filepath.Join(settings.TargetRoot, "film.mkv")
-	if err = store.SaveMapping(model.MediaMapping{Path: path, RunID: "new", Identity: "new"}); err != nil {
+	if err = store.SaveMapping(model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: path, RunID: "new", Identity: "new"}); err != nil {
 		t.Fatal(err)
 	}
-	if err = store.SaveMapping(model.MediaMapping{Path: path, RunID: "old", Identity: "old"}); err == nil {
+	if err = store.SaveMapping(model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: path, RunID: "old", Identity: "old"}); err == nil {
 		t.Fatal("old retry replaced newer mapping")
 	}
 	current, err := store.Mapping(path)

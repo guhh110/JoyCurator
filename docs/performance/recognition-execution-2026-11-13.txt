@@ -1,0 +1,666 @@
+Recognition execution benchmarks — 2026-11-13
+Darwin arm64 / Apple M4 / Go 1.24.2
+All samples serially launched; TMPDIR canonical local/tmp for workspace and RSS.
+Before source: frozen recognition package loaded through Go overlay.
+Saved rules: execution-baseline-pipeline.json; defaults: current editable JS.
+Main workspace saved comparison uses JOY_BENCH_RULES=saved with BenchmarkWorkspace2000.
+BenchmarkWorkspaceSavedRules2000 has a longer temporary prefix; auxiliary only.
+RSS: os.wait4 ru_maxrss, Darwin bytes, one fresh process per sample.
+
+
+[recognition-before-bench.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/PureRecognition           	       1	3346008250 ns/op	4564795704 B/op	79423322 allocs/op
+BenchmarkRecognition2000/PureRecognition           	       1	4578031458 ns/op	4529495752 B/op	79402700 allocs/op
+BenchmarkRecognition2000/PureRecognition           	       1	4471004917 ns/op	4525248456 B/op	79402006 allocs/op
+BenchmarkRecognition2000/PureRecognition-4         	       1	3375278333 ns/op	4563419272 B/op	79423565 allocs/op
+BenchmarkRecognition2000/PureRecognition-4         	       1	3366183708 ns/op	4563948232 B/op	79423878 allocs/op
+BenchmarkRecognition2000/PureRecognition-4         	       1	3371744416 ns/op	4563954096 B/op	79424275 allocs/op
+BenchmarkRecognition2000/SnapshotWrite             	       1	 478723375 ns/op	118832632 B/op	  724730 allocs/op
+BenchmarkRecognition2000/SnapshotWrite             	       1	 513589417 ns/op	118829080 B/op	  724698 allocs/op
+BenchmarkRecognition2000/SnapshotWrite             	       1	 521342750 ns/op	118827904 B/op	  724690 allocs/op
+BenchmarkRecognition2000/SnapshotWrite-4           	       1	 462829583 ns/op	118829536 B/op	  724708 allocs/op
+BenchmarkRecognition2000/SnapshotWrite-4           	       1	 481197833 ns/op	118829264 B/op	  724700 allocs/op
+BenchmarkRecognition2000/SnapshotWrite-4           	       1	 458977917 ns/op	118830312 B/op	  724714 allocs/op
+BenchmarkRecognition2000/LightImport               	       1	3971072000 ns/op	  45299944 db_growth_bytes/op	     78034 sqlite_rows/op	4686092672 B/op	80148367 allocs/op
+BenchmarkRecognition2000/LightImport               	       1	5326364500 ns/op	  45299944 db_growth_bytes/op	     78034 sqlite_rows/op	4646464376 B/op	80127273 allocs/op
+BenchmarkRecognition2000/LightImport               	       1	5286045375 ns/op	  45299944 db_growth_bytes/op	     78034 sqlite_rows/op	4646464328 B/op	80127248 allocs/op
+BenchmarkRecognition2000/LightImport-4             	       1	3950819042 ns/op	  45299944 db_growth_bytes/op	     78034 sqlite_rows/op	4685715728 B/op	80148246 allocs/op
+BenchmarkRecognition2000/LightImport-4             	       1	3962347667 ns/op	  45299944 db_growth_bytes/op	     78034 sqlite_rows/op	4684491496 B/op	80147395 allocs/op
+BenchmarkRecognition2000/LightImport-4             	       1	3982360708 ns/op	  45299944 db_growth_bytes/op	     78034 sqlite_rows/op	4682322600 B/op	80146196 allocs/op
+BenchmarkRecognition2000/FullDebug                 	       1	3960664917 ns/op	  21593751 response_bytes/op	         0 sqlite_rows/op	4785878216 B/op	82502517 allocs/op
+BenchmarkRecognition2000/FullDebug                 	       1	4870410000 ns/op	  21593779 response_bytes/op	         0 sqlite_rows/op	4748464128 B/op	82493989 allocs/op
+BenchmarkRecognition2000/FullDebug                 	       1	4873302000 ns/op	  21593705 response_bytes/op	         0 sqlite_rows/op	4748427184 B/op	82493987 allocs/op
+BenchmarkRecognition2000/FullDebug-4               	       1	3792919208 ns/op	  21593763 response_bytes/op	         0 sqlite_rows/op	4776715752 B/op	82501851 allocs/op
+BenchmarkRecognition2000/FullDebug-4               	       1	3800326375 ns/op	  21593804 response_bytes/op	         0 sqlite_rows/op	4772152224 B/op	82501606 allocs/op
+BenchmarkRecognition2000/FullDebug-4               	       1	3822230083 ns/op	  21593814 response_bytes/op	         0 sqlite_rows/op	4764076536 B/op	82501661 allocs/op
+PASS
+
+[recognition-before-final-bench.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/PureRecognition           	       1	3629467791 ns/op	4564681768 B/op	79422665 allocs/op
+BenchmarkRecognition2000/PureRecognition           	       1	4889890917 ns/op	4529483352 B/op	79402556 allocs/op
+BenchmarkRecognition2000/PureRecognition           	       1	5114582666 ns/op	4525237912 B/op	79401863 allocs/op
+BenchmarkRecognition2000/PureRecognition-4         	       1	3437917167 ns/op	4563289768 B/op	79423324 allocs/op
+BenchmarkRecognition2000/PureRecognition-4         	       1	3457216375 ns/op	4562493448 B/op	79422924 allocs/op
+BenchmarkRecognition2000/PureRecognition-4         	       1	3398028584 ns/op	4561870456 B/op	79422262 allocs/op
+BenchmarkRecognition2000/SnapshotWrite             	       1	 479337667 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118831728 B/op	  724719 allocs/op
+BenchmarkRecognition2000/SnapshotWrite             	       1	 560166458 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118828232 B/op	  724696 allocs/op
+BenchmarkRecognition2000/SnapshotWrite             	       1	 528322916 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118828016 B/op	  724693 allocs/op
+BenchmarkRecognition2000/SnapshotWrite-4           	       1	 675853833 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118831144 B/op	  724718 allocs/op
+BenchmarkRecognition2000/SnapshotWrite-4           	       1	 639900500 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118830264 B/op	  724714 allocs/op
+BenchmarkRecognition2000/SnapshotWrite-4           	       1	 537055250 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118831000 B/op	  724713 allocs/op
+BenchmarkRecognition2000/LightImport               	       1	4524964334 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	4681917112 B/op	80146115 allocs/op
+BenchmarkRecognition2000/LightImport               	       1	6339903084 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	4646452712 B/op	80127139 allocs/op
+BenchmarkRecognition2000/LightImport               	       1	5999883208 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	4646450568 B/op	80127087 allocs/op
+BenchmarkRecognition2000/LightImport-4             	       1	4276391000 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	4681011664 B/op	80145524 allocs/op
+BenchmarkRecognition2000/LightImport-4             	       1	4229559084 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	4683877904 B/op	80147448 allocs/op
+BenchmarkRecognition2000/LightImport-4             	       1	4898134833 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	4682286584 B/op	80146482 allocs/op
+BenchmarkRecognition2000/FullDebug                 	       1	4149824875 ns/op	  21593676 response_bytes/op	         0 sqlite_rows/op	4778613288 B/op	82502773 allocs/op
+BenchmarkRecognition2000/FullDebug                 	       1	6019551875 ns/op	  21593670 response_bytes/op	         0 sqlite_rows/op	4761116632 B/op	82494845 allocs/op
+BenchmarkRecognition2000/FullDebug                 	       1	5159694667 ns/op	  21593716 response_bytes/op	         0 sqlite_rows/op	4748463016 B/op	82493974 allocs/op
+BenchmarkRecognition2000/FullDebug-4               	       1	4174351250 ns/op	  21593605 response_bytes/op	         0 sqlite_rows/op	4773152352 B/op	82501884 allocs/op
+BenchmarkRecognition2000/FullDebug-4               	       1	4495763083 ns/op	  21593626 response_bytes/op	         0 sqlite_rows/op	4775566864 B/op	82500956 allocs/op
+BenchmarkRecognition2000/FullDebug-4               	       1	4110250917 ns/op	  21593700 response_bytes/op	         0 sqlite_rows/op	4772995352 B/op	82501787 allocs/op
+PASS
+
+[recognition-after-bench.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/PureRecognition           	       1	1099161250 ns/op	2934923072 B/op	43444847 allocs/op
+BenchmarkRecognition2000/PureRecognition           	       1	2948362708 ns/op	2933790960 B/op	43443824 allocs/op
+BenchmarkRecognition2000/PureRecognition           	       1	2866401959 ns/op	2933788776 B/op	43443808 allocs/op
+BenchmarkRecognition2000/PureRecognition-4         	       1	1371671584 ns/op	2934810992 B/op	43444645 allocs/op
+BenchmarkRecognition2000/PureRecognition-4         	       1	1187678958 ns/op	2934833744 B/op	43444524 allocs/op
+BenchmarkRecognition2000/PureRecognition-4         	       1	1378151541 ns/op	2934674928 B/op	43444657 allocs/op
+BenchmarkRecognition2000/SnapshotWrite             	       1	 490693542 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118829696 B/op	  724706 allocs/op
+BenchmarkRecognition2000/SnapshotWrite             	       1	 539437417 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118828000 B/op	  724693 allocs/op
+BenchmarkRecognition2000/SnapshotWrite             	       1	 531985250 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118827536 B/op	  724682 allocs/op
+BenchmarkRecognition2000/SnapshotWrite-4           	       1	 497757458 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118828944 B/op	  724689 allocs/op
+BenchmarkRecognition2000/SnapshotWrite-4           	       1	 479016750 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118829520 B/op	  724708 allocs/op
+BenchmarkRecognition2000/SnapshotWrite-4           	       1	 515991542 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118830400 B/op	  724710 allocs/op
+BenchmarkRecognition2000/LightImport               	       1	1844408041 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3056025840 B/op	44169203 allocs/op
+BenchmarkRecognition2000/LightImport               	       1	3562129459 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3055044256 B/op	44168250 allocs/op
+BenchmarkRecognition2000/LightImport               	       1	3511807417 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3055044360 B/op	44168252 allocs/op
+BenchmarkRecognition2000/LightImport-4             	       1	1635096917 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3055923272 B/op	44169040 allocs/op
+BenchmarkRecognition2000/LightImport-4             	       1	1778923001 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3055771128 B/op	44169244 allocs/op
+BenchmarkRecognition2000/LightImport-4             	       1	1800740958 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3055966592 B/op	44169047 allocs/op
+BenchmarkRecognition2000/FullDebug                 	       1	2560194500 ns/op	  21595400 response_bytes/op	         0 sqlite_rows/op	3179770032 B/op	46606145 allocs/op
+BenchmarkRecognition2000/FullDebug                 	       1	3425871666 ns/op	  21595406 response_bytes/op	         0 sqlite_rows/op	3113256344 B/op	46600455 allocs/op
+BenchmarkRecognition2000/FullDebug                 	       1	3147133042 ns/op	  21595311 response_bytes/op	         0 sqlite_rows/op	3113218528 B/op	46600438 allocs/op
+BenchmarkRecognition2000/FullDebug-4               	       1	2347324500 ns/op	  21595387 response_bytes/op	         0 sqlite_rows/op	3178529824 B/op	46604432 allocs/op
+BenchmarkRecognition2000/FullDebug-4               	       1	2348800083 ns/op	  21595296 response_bytes/op	         0 sqlite_rows/op	3179705600 B/op	46605187 allocs/op
+BenchmarkRecognition2000/FullDebug-4               	       1	2387864667 ns/op	  21595368 response_bytes/op	         0 sqlite_rows/op	3191208352 B/op	46605058 allocs/op
+BenchmarkRecognitionSavedRules2000/PureRecognition           	       1	1276632500 ns/op	3668677144 B/op	52597187 allocs/op
+BenchmarkRecognitionSavedRules2000/PureRecognition           	       1	3448606000 ns/op	3667084856 B/op	52596429 allocs/op
+BenchmarkRecognitionSavedRules2000/PureRecognition           	       1	3480921208 ns/op	3667084096 B/op	52596411 allocs/op
+BenchmarkRecognitionSavedRules2000/PureRecognition-4         	       1	1278362416 ns/op	3668574408 B/op	52597232 allocs/op
+BenchmarkRecognitionSavedRules2000/PureRecognition-4         	       1	1442143375 ns/op	3668803848 B/op	52597273 allocs/op
+BenchmarkRecognitionSavedRules2000/PureRecognition-4         	       1	1309275042 ns/op	3668158456 B/op	52597099 allocs/op
+BenchmarkRecognitionSavedRules2000/SnapshotWrite             	       1	 480300834 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118830056 B/op	  724710 allocs/op
+BenchmarkRecognitionSavedRules2000/SnapshotWrite             	       1	 535746750 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118827600 B/op	  724684 allocs/op
+BenchmarkRecognitionSavedRules2000/SnapshotWrite             	       1	 544936250 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118827984 B/op	  724692 allocs/op
+BenchmarkRecognitionSavedRules2000/SnapshotWrite-4           	       1	 483496459 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118829520 B/op	  724708 allocs/op
+BenchmarkRecognitionSavedRules2000/SnapshotWrite-4           	       1	 486853041 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118830312 B/op	  724715 allocs/op
+BenchmarkRecognitionSavedRules2000/SnapshotWrite-4           	       1	 466196459 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118830248 B/op	  724716 allocs/op
+BenchmarkRecognitionSavedRules2000/LightImport               	       1	1823376917 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3790106856 B/op	53321768 allocs/op
+BenchmarkRecognitionSavedRules2000/LightImport               	       1	4119602874 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3788345576 B/op	53320953 allocs/op
+BenchmarkRecognitionSavedRules2000/LightImport               	       1	4123032750 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3788346792 B/op	53320981 allocs/op
+BenchmarkRecognitionSavedRules2000/LightImport-4             	       1	1814856583 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3789922560 B/op	53321781 allocs/op
+BenchmarkRecognitionSavedRules2000/LightImport-4             	       1	2034809083 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3789576112 B/op	53321810 allocs/op
+BenchmarkRecognitionSavedRules2000/LightImport-4             	       1	1882132375 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3789964432 B/op	53321770 allocs/op
+BenchmarkRecognitionSavedRules2000/FullDebug                 	       1	2803505500 ns/op	  21593619 response_bytes/op	         0 sqlite_rows/op	3927656768 B/op	55758885 allocs/op
+BenchmarkRecognitionSavedRules2000/FullDebug                 	       1	3643804500 ns/op	  21593608 response_bytes/op	         0 sqlite_rows/op	3846519232 B/op	55752551 allocs/op
+BenchmarkRecognitionSavedRules2000/FullDebug                 	       1	3707520166 ns/op	  21593487 response_bytes/op	         0 sqlite_rows/op	3846520216 B/op	55752562 allocs/op
+BenchmarkRecognitionSavedRules2000/FullDebug-4               	       1	2927385042 ns/op	  21593479 response_bytes/op	         0 sqlite_rows/op	3925118072 B/op	55757529 allocs/op
+BenchmarkRecognitionSavedRules2000/FullDebug-4               	       1	2874678500 ns/op	  21593546 response_bytes/op	         0 sqlite_rows/op	3914319824 B/op	55758503 allocs/op
+BenchmarkRecognitionSavedRules2000/FullDebug-4               	       1	2823944042 ns/op	  21593625 response_bytes/op	         0 sqlite_rows/op	3914969712 B/op	55758462 allocs/op
+PASS
+
+[workspace-before-bench.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000     	       1	3749383708 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3810636952 B/op	66077203 allocs/op
+BenchmarkWorkspace2000     	       1	4902705750 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3778819840 B/op	65858097 allocs/op
+BenchmarkWorkspace2000     	       1	5025533000 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3778839872 B/op	65861509 allocs/op
+BenchmarkWorkspace2000-4   	       1	3719432584 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3810566656 B/op	66080534 allocs/op
+BenchmarkWorkspace2000-4   	       1	3718009167 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3808127504 B/op	66074096 allocs/op
+BenchmarkWorkspace2000-4   	       1	4180127459 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3811850080 B/op	66115864 allocs/op
+PASS
+
+[workspace-after-bench.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000               	       1	1698982625 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	2507026848 B/op	36489981 allocs/op
+BenchmarkWorkspace2000               	       1	3111951416 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	2508216952 B/op	36554058 allocs/op
+BenchmarkWorkspace2000               	       1	3119939750 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	2508317816 B/op	36559917 allocs/op
+BenchmarkWorkspace2000-4             	       1	1893164500 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	2507304464 B/op	36503987 allocs/op
+BenchmarkWorkspace2000-4             	       1	1704499208 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	2506575600 B/op	36488687 allocs/op
+BenchmarkWorkspace2000-4             	       1	1876656333 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	2507149288 B/op	36505289 allocs/op
+BenchmarkWorkspaceSavedRules2000     	       1	1790275958 ns/op	  42262488 db_growth_bytes/op	         0 provider_calls/batch	3036416712 B/op	43073049 allocs/op
+BenchmarkWorkspaceSavedRules2000     	       1	3549621209 ns/op	  42221408 db_growth_bytes/op	         0 provider_calls/batch	3038087616 B/op	43147252 allocs/op
+BenchmarkWorkspaceSavedRules2000     	       1	3526232875 ns/op	  42262488 db_growth_bytes/op	         0 provider_calls/batch	3036129256 B/op	43082329 allocs/op
+BenchmarkWorkspaceSavedRules2000-4   	       1	2032803125 ns/op	  42262488 db_growth_bytes/op	         0 provider_calls/batch	3036970728 B/op	43086454 allocs/op
+BenchmarkWorkspaceSavedRules2000-4   	       1	1847689583 ns/op	  42262488 db_growth_bytes/op	         0 provider_calls/batch	3036710144 B/op	43074351 allocs/op
+BenchmarkWorkspaceSavedRules2000-4   	       1	1817942500 ns/op	  42262488 db_growth_bytes/op	         0 provider_calls/batch	3036846144 B/op	43074261 allocs/op
+PASS
+
+[workspace-saved-bench.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000     	       1	1991197667 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3036128368 B/op	43077300 allocs/op
+BenchmarkWorkspace2000     	       1	4232490667 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3034096328 B/op	43047953 allocs/op
+BenchmarkWorkspace2000     	       1	4474591333 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3035921440 B/op	43110280 allocs/op
+BenchmarkWorkspace2000-4   	       1	2121642167 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3036117840 B/op	43088760 allocs/op
+BenchmarkWorkspace2000-4   	       1	2067543000 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3035966200 B/op	43089876 allocs/op
+BenchmarkWorkspace2000-4   	       1	2267411500 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3036299296 B/op	43105199 allocs/op
+PASS
+
+[rss-before-PureRecognition-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/PureRecognition-4         	       1	4103691209 ns/op	4566739160 B/op	79423885 allocs/op
+PASS
+
+wait4 maximum resident set size: 258441216 bytes
+process wall: 4.200977 s; user: 5.839510 s; system: 0.225287 s
+
+[rss-before-PureRecognition-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/PureRecognition-4         	       1	3665446125 ns/op	4560778384 B/op	79422643 allocs/op
+PASS
+
+wait4 maximum resident set size: 262701056 bytes
+process wall: 3.683605 s; user: 5.348879 s; system: 0.154694 s
+
+[rss-before-PureRecognition-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/PureRecognition-4         	       1	3962897667 ns/op	4564578248 B/op	79422414 allocs/op
+PASS
+
+wait4 maximum resident set size: 267845632 bytes
+process wall: 4.012077 s; user: 5.575317 s; system: 0.190609 s
+
+[rss-saved-PureRecognition-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/PureRecognition-4         	       1	1635191250 ns/op	3668936160 B/op	52597638 allocs/op
+PASS
+
+wait4 maximum resident set size: 216956928 bytes
+process wall: 2.593588 s; user: 4.672193 s; system: 0.246251 s
+
+[rss-saved-PureRecognition-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/PureRecognition-4         	       1	1426307084 ns/op	3668864600 B/op	52597644 allocs/op
+PASS
+
+wait4 maximum resident set size: 198967296 bytes
+process wall: 1.445870 s; user: 4.132322 s; system: 0.155624 s
+
+[rss-saved-PureRecognition-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/PureRecognition-4         	       1	1441898458 ns/op	3669398416 B/op	52597825 allocs/op
+PASS
+
+wait4 maximum resident set size: 220233728 bytes
+process wall: 1.459098 s; user: 4.232738 s; system: 0.179864 s
+
+[rss-defaults-PureRecognition-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/PureRecognition-4         	       1	1278083792 ns/op	2935019576 B/op	43445006 allocs/op
+PASS
+
+wait4 maximum resident set size: 242155520 bytes
+process wall: 1.294134 s; user: 3.788022 s; system: 0.143765 s
+
+[rss-defaults-PureRecognition-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/PureRecognition-4         	       1	1062717166 ns/op	2934761624 B/op	43444722 allocs/op
+PASS
+
+wait4 maximum resident set size: 234143744 bytes
+process wall: 1.078316 s; user: 3.105746 s; system: 0.094672 s
+
+[rss-defaults-PureRecognition-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/PureRecognition-4         	       1	1092722166 ns/op	2935102560 B/op	43444835 allocs/op
+PASS
+
+wait4 maximum resident set size: 234160128 bytes
+process wall: 1.108222 s; user: 3.174152 s; system: 0.108064 s
+
+[rss-before-SnapshotWrite-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/SnapshotWrite-4         	       1	 517150250 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118832224 B/op	  724724 allocs/op
+PASS
+
+wait4 maximum resident set size: 306233344 bytes
+process wall: 4.602411 s; user: 6.158957 s; system: 0.286577 s
+
+[rss-before-SnapshotWrite-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/SnapshotWrite-4         	       1	 498445625 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118831152 B/op	  724718 allocs/op
+PASS
+
+wait4 maximum resident set size: 316653568 bytes
+process wall: 4.603180 s; user: 6.033263 s; system: 0.275681 s
+
+[rss-before-SnapshotWrite-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/SnapshotWrite-4         	       1	 550276167 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118830720 B/op	  724717 allocs/op
+PASS
+
+wait4 maximum resident set size: 282886144 bytes
+process wall: 4.631949 s; user: 6.233311 s; system: 0.299504 s
+
+[rss-saved-SnapshotWrite-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/SnapshotWrite-4         	       1	 649045833 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118833768 B/op	  724734 allocs/op
+PASS
+
+wait4 maximum resident set size: 233865216 bytes
+process wall: 1.950653 s; user: 4.271219 s; system: 0.234411 s
+
+[rss-saved-SnapshotWrite-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/SnapshotWrite-4         	       1	 478569583 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118829864 B/op	  724711 allocs/op
+PASS
+
+wait4 maximum resident set size: 274874368 bytes
+process wall: 1.949675 s; user: 4.848389 s; system: 0.242883 s
+
+[rss-saved-SnapshotWrite-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/SnapshotWrite-4         	       1	 527590667 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118831496 B/op	  724731 allocs/op
+PASS
+
+wait4 maximum resident set size: 245743616 bytes
+process wall: 1.825915 s; user: 4.303335 s; system: 0.202456 s
+
+[rss-defaults-SnapshotWrite-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/SnapshotWrite-4         	       1	 618256958 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118830016 B/op	  724706 allocs/op
+PASS
+
+wait4 maximum resident set size: 303710208 bytes
+process wall: 1.979194 s; user: 4.387977 s; system: 0.258034 s
+
+[rss-defaults-SnapshotWrite-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/SnapshotWrite-4         	       1	 467890708 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118832040 B/op	  724733 allocs/op
+PASS
+
+wait4 maximum resident set size: 264093696 bytes
+process wall: 1.562598 s; user: 3.562669 s; system: 0.175536 s
+
+[rss-defaults-SnapshotWrite-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/SnapshotWrite-4         	       1	 486942375 ns/op	  18729400 db_growth_bytes/op	     78034 sqlite_rows/op	118832056 B/op	  724723 allocs/op
+PASS
+
+wait4 maximum resident set size: 282411008 bytes
+process wall: 1.695741 s; user: 3.894658 s; system: 0.197039 s
+
+[rss-before-LightImport-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/LightImport-4         	       1	4049447250 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	4681785608 B/op	80146777 allocs/op
+PASS
+
+wait4 maximum resident set size: 280051712 bytes
+process wall: 4.238998 s; user: 5.841236 s; system: 0.234018 s
+
+[rss-before-LightImport-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/LightImport-4         	       1	4575998667 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	4681044584 B/op	80146124 allocs/op
+PASS
+
+wait4 maximum resident set size: 275120128 bytes
+process wall: 4.752181 s; user: 6.089515 s; system: 0.260185 s
+
+[rss-before-LightImport-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/LightImport-4         	       1	4435705042 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	4682080904 B/op	80146987 allocs/op
+PASS
+
+wait4 maximum resident set size: 285278208 bytes
+process wall: 4.598459 s; user: 6.401300 s; system: 0.286294 s
+
+[rss-saved-LightImport-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/LightImport-4         	       1	1977676875 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3790122120 B/op	53322260 allocs/op
+PASS
+
+wait4 maximum resident set size: 243187712 bytes
+process wall: 2.149508 s; user: 4.918770 s; system: 0.258621 s
+
+[rss-saved-LightImport-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/LightImport-4         	       1	1879509834 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3789827416 B/op	53322016 allocs/op
+PASS
+
+wait4 maximum resident set size: 287686656 bytes
+process wall: 2.069435 s; user: 4.638370 s; system: 0.266907 s
+
+[rss-saved-LightImport-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/LightImport-4         	       1	1886262749 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3789722352 B/op	53322042 allocs/op
+PASS
+
+wait4 maximum resident set size: 251543552 bytes
+process wall: 2.057121 s; user: 4.636615 s; system: 0.240034 s
+
+[rss-defaults-LightImport-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/LightImport-4         	       1	1581221625 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3056303264 B/op	44169341 allocs/op
+PASS
+
+wait4 maximum resident set size: 282558464 bytes
+process wall: 1.745557 s; user: 3.710955 s; system: 0.192152 s
+
+[rss-defaults-LightImport-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/LightImport-4         	       1	1744594416 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3056114480 B/op	44169299 allocs/op
+PASS
+
+wait4 maximum resident set size: 290455552 bytes
+process wall: 1.905540 s; user: 3.955492 s; system: 0.223648 s
+
+[rss-defaults-LightImport-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/LightImport-4         	       1	1576925916 ns/op	  45299912 db_growth_bytes/op	     78034 sqlite_rows/op	3056092472 B/op	44169397 allocs/op
+PASS
+
+wait4 maximum resident set size: 281149440 bytes
+process wall: 1.742470 s; user: 3.712682 s; system: 0.194046 s
+
+[rss-before-FullDebug-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/FullDebug-4         	       1	4063018417 ns/op	  21593627 response_bytes/op	         0 sqlite_rows/op	4784947688 B/op	82502611 allocs/op
+PASS
+
+wait4 maximum resident set size: 409075712 bytes
+process wall: 4.079529 s; user: 6.089325 s; system: 0.129280 s
+
+[rss-before-FullDebug-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/FullDebug-4         	       1	4665919375 ns/op	  21593628 response_bytes/op	         0 sqlite_rows/op	4782235152 B/op	82503023 allocs/op
+PASS
+
+wait4 maximum resident set size: 466206720 bytes
+process wall: 4.690253 s; user: 7.083533 s; system: 0.235443 s
+
+[rss-before-FullDebug-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/FullDebug-4         	       1	4252909334 ns/op	  21593807 response_bytes/op	         0 sqlite_rows/op	4766392928 B/op	82503453 allocs/op
+PASS
+
+wait4 maximum resident set size: 421134336 bytes
+process wall: 4.273820 s; user: 6.778687 s; system: 0.158720 s
+
+[rss-saved-FullDebug-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/FullDebug-4         	       1	2896076500 ns/op	  21593644 response_bytes/op	         0 sqlite_rows/op	3915662152 B/op	55759917 allocs/op
+PASS
+
+wait4 maximum resident set size: 352960512 bytes
+process wall: 2.916440 s; user: 4.786182 s; system: 0.099480 s
+
+[rss-saved-FullDebug-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/FullDebug-4         	       1	2954761292 ns/op	  21593593 response_bytes/op	         0 sqlite_rows/op	3914879040 B/op	55759641 allocs/op
+PASS
+
+wait4 maximum resident set size: 399130624 bytes
+process wall: 2.972399 s; user: 4.809705 s; system: 0.107947 s
+
+[rss-saved-FullDebug-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognitionSavedRules2000/FullDebug-4         	       1	2775596834 ns/op	  21593574 response_bytes/op	         0 sqlite_rows/op	3916338112 B/op	55760365 allocs/op
+PASS
+
+wait4 maximum resident set size: 398114816 bytes
+process wall: 2.799252 s; user: 4.557599 s; system: 0.097363 s
+
+[rss-defaults-FullDebug-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/FullDebug-4         	       1	2382502958 ns/op	  21595433 response_bytes/op	         0 sqlite_rows/op	3179201632 B/op	46606048 allocs/op
+PASS
+
+wait4 maximum resident set size: 419463168 bytes
+process wall: 2.404230 s; user: 3.857684 s; system: 0.083563 s
+
+[rss-defaults-FullDebug-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/FullDebug-4         	       1	2234652125 ns/op	  21595393 response_bytes/op	         0 sqlite_rows/op	3180636992 B/op	46606914 allocs/op
+PASS
+
+wait4 maximum resident set size: 416169984 bytes
+process wall: 2.251657 s; user: 3.608716 s; system: 0.065456 s
+
+[rss-defaults-FullDebug-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/infra/sqlite
+cpu: Apple M4
+BenchmarkRecognition2000/FullDebug-4         	       1	2312469458 ns/op	  21595377 response_bytes/op	         0 sqlite_rows/op	3181052696 B/op	46606992 allocs/op
+PASS
+
+wait4 maximum resident set size: 401866752 bytes
+process wall: 2.330100 s; user: 3.892907 s; system: 0.076812 s
+
+[rss-before-Workspace2000-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000-4   	       1	4083889000 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3815399856 B/op	66110148 allocs/op
+PASS
+
+wait4 maximum resident set size: 227360768 bytes
+process wall: 4.351985 s; user: 5.577490 s; system: 0.613901 s
+
+[rss-before-Workspace2000-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000-4   	       1	4632131167 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3812848136 B/op	66137416 allocs/op
+PASS
+
+wait4 maximum resident set size: 238026752 bytes
+process wall: 4.844115 s; user: 5.925502 s; system: 0.664806 s
+
+[rss-before-Workspace2000-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000-4   	       1	4111998250 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3813323712 B/op	66110893 allocs/op
+PASS
+
+wait4 maximum resident set size: 235732992 bytes
+process wall: 4.316518 s; user: 5.600579 s; system: 0.616600 s
+
+[rss-saved-Workspace2000-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000-4   	       1	2231862500 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3036475696 B/op	43087641 allocs/op
+PASS
+
+wait4 maximum resident set size: 219774976 bytes
+process wall: 2.488814 s; user: 4.188436 s; system: 0.617899 s
+
+[rss-saved-Workspace2000-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000-4   	       1	1965648833 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3036395608 B/op	43083533 allocs/op
+PASS
+
+wait4 maximum resident set size: 229949440 bytes
+process wall: 2.202310 s; user: 3.971011 s; system: 0.570052 s
+
+[rss-saved-Workspace2000-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000-4   	       1	2327007958 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	3036505944 B/op	43111496 allocs/op
+PASS
+
+wait4 maximum resident set size: 209059840 bytes
+process wall: 2.539364 s; user: 4.758262 s; system: 0.619967 s
+
+[rss-after-Workspace2000-1.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000-4   	       1	2086822333 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	2507692520 B/op	36516267 allocs/op
+PASS
+
+wait4 maximum resident set size: 243810304 bytes
+process wall: 2.377251 s; user: 3.983805 s; system: 0.631717 s
+
+[rss-after-Workspace2000-2.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000-4   	       1	1816929500 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	2507300416 B/op	36495472 allocs/op
+PASS
+
+wait4 maximum resident set size: 235896832 bytes
+process wall: 2.042948 s; user: 3.373092 s; system: 0.534249 s
+
+[rss-after-Workspace2000-3.txt]
+goos: darwin
+goarch: arm64
+pkg: joycurator/internal/app
+cpu: Apple M4
+BenchmarkWorkspace2000-4   	       1	1835974708 ns/op	  41983144 db_growth_bytes/op	         0 provider_calls/batch	2507153152 B/op	36499090 allocs/op
+PASS
+
+wait4 maximum resident set size: 265977856 bytes
+process wall: 2.075455 s; user: 3.488707 s; system: 0.550760 s

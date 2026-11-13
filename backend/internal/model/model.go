@@ -141,6 +141,7 @@ type MediaLayout struct {
 
 // MediaMapping is the durable bridge between organization and scraping.
 type MediaMapping struct {
+	Entry    *Entry        `json:"entry"`
 	Layout   MediaLayout   `json:"layout"`
 	Original *MediaMapping `json:"original,omitempty"`
 	Path     string        `json:"path"`

@@ -7,7 +7,6 @@ import (
 	"joycurator/internal/infra/fsops"
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
-	"strings"
 )
 
 func (a *WorkspaceService) Reidentify(id string, revision int, paths []string) (matching.Workspace, error) {
@@ -31,13 +30,6 @@ func (a *WorkspaceService) Reidentify(id string, revision int, paths []string) (
 		return task, errors.New("工作区已更新，请刷新后重试")
 	}
 	s, err := a.settings.Load()
-	if err != nil {
-		return task, err
-	}
-	if s.Token == "" {
-		return task, errors.New("请先配置 TMDB API Read Access Token")
-	}
-	client, err := a.factory(s, nil)
 	if err != nil {
 		return task, err
 	}
@@ -77,7 +69,7 @@ func (a *WorkspaceService) Reidentify(id string, revision int, paths []string) (
 		task.Items[i].State = "reidentifying"
 	}
 	task.State, task.Error = "running", ""
-	task.Completed, task.Total = len(task.Items)-len(positions), len(task.Items)
+	task.Completed, task.Total = 0, len(positions)
 	data, err := json.Marshal(task)
 	if err != nil {
 		return task, err
@@ -89,23 +81,26 @@ func (a *WorkspaceService) Reidentify(id string, revision int, paths []string) (
 	if err := a.store.CheckpointWorkspace(&task, positions); err != nil {
 		return task, err
 	}
+	a.recognitionFailures.Delete(task.ID)
 	ctx, cancel := context.WithCancel(context.Background())
 	a.coordinator.TrackRecognitionLocked(id, cancel)
 	workerTask.Revision = task.Revision
-	go a.recognize(ctx, cancel, workerTask, s, client)
+	go a.recognize(ctx, cancel, workerTask, s)
 	return task, nil
 }
 
 // Only marked rows are read and checkpointed. The marker survives cancellation
 // and service interruption, so the ordinary retry entry can finish the same work.
-func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.Workspace, s model.Settings, client matching.Provider) {
+func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.Workspace, s model.Settings) {
 	dirty := []int{}
 	persist := func() error {
 		a.coordinator.Lock()
 		defer a.coordinator.Unlock()
 		if err := a.store.CheckpointWorkspace(&task, dirty); err != nil {
+			a.recognitionFailures.Store(task.ID, err.Error())
 			return err
 		}
+		a.recognitionFailures.Delete(task.ID)
 		dirty = nil
 		return nil
 	}
@@ -125,15 +120,19 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 			wanted = append(wanted, item.Path)
 		}
 	}
-	freshItems, extractErr := a.extractContexts(ctx, task.Paths, wanted, s, task.ID, task.Purpose)
+	task.Completed, task.Total = 0, len(wanted)
+	freshItems, extractErr := a.extractContexts(ctx, task.Paths, wanted, s, task.ID, task.Purpose, nil, func(done, total int) error {
+		if done%10 == 0 || done == total {
+			return a.store.RecognitionProgress(task.ID, done, total)
+		}
+		return nil
+	})
 	if extractErr != nil {
 		failure(extractErr)
 		return
 	}
-	memo := matching.NewResolver(client)
-	resolved := map[string]matching.Item{}
 	processed := 0
-	failures := []string{}
+	refreshed := map[int]bool{}
 	for i, old := range task.Items {
 		if old.State != "reidentifying" {
 			continue
@@ -153,60 +152,29 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 		}
 		fresh := freshItems[old.Path]
 		fresh.Original = old.Original
+		fresh.Identity, fresh.Size, fresh.MTime = fsops.Identity(info), info.Size(), info.ModTime().UnixNano()
 		if task.Purpose == "scrape" {
-			fresh.Identity = fsops.Identity(info)
 			if old.Layout.Manual {
 				fresh.Layout = old.Layout
 			}
 		}
-		if old.Edited || old.Confirmed() {
-			// Refresh raw metadata/trace while keeping every manual decision and snapshot.
-			fresh.Entry, fresh.Candidates, fresh.Group = old.Entry, old.Candidates, old.Group
-			fresh.Season, fresh.Episodes = old.Season, old.Episodes
-			fresh.Edited, fresh.Selected, fresh.Removed = true, old.Selected, old.Removed
-			if fresh.Identity == old.Identity && fresh.Size == old.Size && fresh.MTime == old.MTime {
-				fresh.Confirmation = old.Confirmation
-			}
-			fresh.State, fresh.Reason = "review", "已保留人工修正，请确认作品"
-			if fresh.Entry != nil {
-				if fresh.Entry.Type == "tv" && (old.Season < 0 || len(old.Episodes) == 0) {
-					fresh.Reason = "已保留人工修正，季集仍需确认"
-				} else {
-					memo.Validate(ctx, &fresh)
-				}
-			}
-			if !fresh.Confirmed() && fresh.State != "failed" {
-				fresh.State, fresh.Reason = "review", "请确认作品与季集"
-			}
-			if fresh.State != "ready" {
-				fresh.Selected = false
+		// Reidentification refreshes evidence only; manual drafts and selection survive.
+		fresh.Entry, fresh.Group = old.Entry, old.Group
+		fresh.Season, fresh.Episodes = old.Season, old.Episodes
+		fresh.Edited, fresh.Selected, fresh.Removed = old.Edited, old.Selected, old.Removed
+		fresh.State, fresh.Reason = "review", ""
+		if fresh.Identity == old.Identity && fresh.Size == old.Size && fresh.MTime == old.MTime {
+			fresh.Confirmation = old.Confirmation
+			if fresh.Confirmed() {
+				fresh.State = "ready"
 			}
 		} else {
-			match, ok := resolved[fresh.Group]
-			if !ok {
-				match = fresh
-				memo.Suggest(ctx, &match)
-				resolved[fresh.Group] = match
-			}
-			fresh.Entry, fresh.Candidates, fresh.State, fresh.Reason = match.Entry, match.Candidates, match.State, match.Reason
-			if fresh.Entry != nil {
-				fresh.Group = matching.EntryGroup(*fresh.Entry)
-				memo.Validate(ctx, &fresh)
-			}
-			fresh.Selected = fresh.State == "ready"
+			fresh.Selected = false
+			fresh.Reason = "文件已变化，请重新确认"
 		}
-		// If cancellation interrupted matching, leave this row marked for retry.
-		if err := ctx.Err(); err != nil {
-			failure(err)
-			return
-		}
-		if fresh.State == "failed" {
-			failures = append(failures, fresh.Reason)
-			fresh.State = "reidentifying"
-		} else {
-			task.Completed++
-		}
+		task.Completed++
 		task.Items[i] = fresh
+		refreshed[i] = true
 		dirty = append(dirty, i)
 		processed++
 		if processed%10 == 0 {
@@ -217,15 +185,20 @@ func (a *WorkspaceService) recognizeSelected(ctx context.Context, task matching.
 		}
 	}
 	if task.Purpose == "scrape" {
-		matching.InferLayouts(task.Items, s.TargetRoot)
+		layouts := append([]matching.Item(nil), task.Items...)
+		matching.InferLayouts(layouts, s.TargetRoot)
 		for i := range task.Items {
-			dirty = append(dirty, i)
+			if refreshed[i] {
+				task.Items[i].Layout = layouts[i].Layout
+				dirty = append(dirty, i)
+			}
 		}
 	}
-	task.State, task.Error = "completed", ""
-	if len(failures) > 0 {
-		task.State, task.Error = "failed", strings.Join(failures, "\n")
+	if err := ctx.Err(); err != nil {
+		failure(err)
+		return
 	}
+	task.State, task.Error = "completed", ""
 	if err := persist(); err != nil {
 		failure(err)
 	}

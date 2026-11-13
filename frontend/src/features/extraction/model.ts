@@ -118,7 +118,7 @@ export interface Step {
   startedAt: string
   durationMs: number
 }
-export interface ExtractionResult {
+export interface RecognitionOutput {
   context: {
     contextRoot: string
     sourceBoundary: string
@@ -128,8 +128,13 @@ export interface ExtractionResult {
   tree: { path: string; parent: string; fileIds: string[] }[]
   documents: Document[]
   files: FileResult[]
-  steps: Step[]
   error?: string
+}
+export interface ExtractionResult extends RecognitionOutput { steps: Step[] }
+export interface RecognitionSnapshot extends RecognitionOutput {
+  pipeline: Pipeline
+  digest: string
+  diagnostics: { stage: string; fileId: string; ruleId: string; message: string; line: number; column: number }[]
 }
 export type Catalog = Rule
 export interface RuleLibrary {
@@ -148,7 +153,6 @@ export interface Trace {
   startedAt: string
   finishedAt?: string
   error?: string
-  stepCount: number
 }
 export const targets: Record<Target, string> = {
   tmdbId: 'TMDB ID',

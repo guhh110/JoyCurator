@@ -35,7 +35,7 @@ func (a *WorkspaceService) evidence(task matching.Workspace, paths []string) ([]
 	for _, it := range task.Items {
 		items[it.Path] = it
 	}
-	cache := map[string]recognition.BatchResult{}
+	cache := map[string]recognition.Snapshot{}
 	out := []CandidateView{}
 	seen := map[string]bool{}
 	for _, path := range paths {
@@ -48,14 +48,11 @@ func (a *WorkspaceService) evidence(task matching.Workspace, paths []string) ([]
 		if it.TraceID != "" {
 			batch, ok := cache[it.TraceID]
 			if !ok {
-				_, steps, err := a.extract.Detail(it.TraceID)
+				_, snapshot, err := a.extract.Detail(it.TraceID)
 				if err != nil {
 					return nil, err
 				}
-				batch, err = recognition.RestoreBatch(steps)
-				if err != nil {
-					return nil, err
-				}
+				batch = snapshot
 				cache[it.TraceID] = batch
 			}
 			found := false

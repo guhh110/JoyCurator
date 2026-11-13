@@ -292,7 +292,7 @@ func executionFixture(t *testing.T, run func(context.Context, *Operation, func()
 			}
 			info, _ := os.Stat(src)
 			op := Work{Operation: Operation{Kind: "video", Source: src, Target: dst, Mode: "copy", Status: "pending", Size: info.Size(), MTime: info.ModTime().UnixNano()}, Owner: src}
-			mapping := model.MediaMapping{Path: dst, Source: src, Type: "movie", TMDBID: 1, State: "pending"}
+			mapping := model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: dst, Source: src, Type: "movie", TMDBID: 1, State: "pending"}
 			item := matching.Item{Identity: fsops.Identity(info), File: model.File{Path: src, Size: info.Size(), MTime: info.ModTime().UnixNano()}, Entry: &model.Entry{Type: "movie", TMDBID: 1}, State: "ready", Selected: true}
 			item.Confirm("user", matching.EpisodeBasis{Kind: "manual"})
 			workspace.Items = append(workspace.Items, item)

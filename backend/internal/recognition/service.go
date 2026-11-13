@@ -43,7 +43,7 @@ func (a *Service) Save(rules Pipeline) error {
 func (a *Service) History(page int, path, workspace string) ([]Trace, int, error) {
 	return a.store.TraceHistory(page, path, workspace)
 }
-func (a *Service) Detail(id string) (Trace, []Step, error) {
+func (a *Service) Detail(id string) (Trace, Snapshot, error) {
 	return a.store.TraceDetail(id)
 }
 func (a *Service) Delete(id string) error { return a.store.DeleteTrace(id) }

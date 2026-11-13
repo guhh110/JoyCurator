@@ -49,7 +49,7 @@ func scrapeOptionsFixture(t *testing.T) (*App, *organizer.Service, *organizer.Co
 			t.Fatal(err)
 		}
 		info, _ := os.Stat(path)
-		if err := a.store.SaveMapping(model.MediaMapping{Layout: model.MediaLayout{WorkDir: filepath.Dir(filepath.Dir(path)), SeasonDir: filepath.Dir(path)}, Path: path, Type: "tv", TMDBID: 2, Season: 0, Episodes: []int{0}, RunID: "organized", Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano(), State: "pending"}); err != nil {
+		if err := a.store.SaveMapping(model.MediaMapping{Entry: &model.Entry{Type: "tv", TMDBID: 2, Title: "fixture"}, Layout: model.MediaLayout{WorkDir: filepath.Dir(filepath.Dir(path)), SeasonDir: filepath.Dir(path)}, Path: path, Type: "tv", TMDBID: 2, Season: 0, Episodes: []int{0}, RunID: "organized", Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano(), State: "pending"}); err != nil {
 			t.Fatal(err)
 		}
 		paths = append(paths, path)

@@ -24,8 +24,8 @@ func TestRelationalWorkspaceSnapshotsAndCheckpoint(t *testing.T) {
 	empty := ""
 	entry := model.Entry{TMDBID: 1, Type: "tv", Title: "original", Genres: []string{"g2", "g1"}, Countries: []string{"CN"}, Cast: []model.Actor{{Name: "actor", Role: "role"}}}
 	w := matching.Workspace{Purpose: "organize", ID: "workspace", State: "completed", Paths: []string{"/b", "/a"}, Items: []matching.Item{
-		{File: model.File{Path: "/b", MTime: 123456789012345678, Season: 0, Episodes: []int{0, 2}}, Metadata: recognition.Metadata{TMDBID: &zero, Title: &empty, Season: &zero, Episodes: []int{0, 1}}, Entry: &entry, Candidates: []model.Entry{entry}, Execution: &matching.FileExecution{Locked: true}},
-		{File: model.File{Path: "/a"}, Metadata: recognition.Metadata{Episodes: []int{}}, Candidates: []model.Entry{}},
+		{File: model.File{Path: "/b", MTime: 123456789012345678, Season: 0, Episodes: []int{0, 2}}, Metadata: recognition.Metadata{TMDBID: &zero, Title: &empty, Season: &zero, Episodes: []int{0, 1}}, Entry: &entry, Execution: &matching.FileExecution{Locked: true}},
+		{File: model.File{Path: "/a"}, Metadata: recognition.Metadata{Episodes: []int{}}},
 	}}
 	if err := s.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
@@ -50,7 +50,7 @@ func TestRelationalWorkspaceSnapshotsAndCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	current, err := s.Workspace(w.ID)
-	if err != nil || current.Items[0].Candidates[0].Title != "original" || current.Items[0].Entry.Title != "changed" || !reflect.DeepEqual(current.Items[0].File.Episodes, []int{0, 2}) {
+	if err != nil || current.Items[0].Entry.Title != "changed" || !reflect.DeepEqual(current.Items[0].File.Episodes, []int{0, 2}) {
 		t.Fatal(current, err)
 	}
 	oldRevision := current.Revision
@@ -77,7 +77,7 @@ func TestRelationalOperationsUndoAndAtomicCheckpoint(t *testing.T) {
 	r := organizer.Run{ID: "run", Purpose: "organize", State: "running", Ops: []organizer.Work{
 		{Operation: organizer.Operation{ID: 99, Kind: "video", Target: "/target", Content: []byte{0, 255, 1}, Status: "published", Undo: &organizer.Operation{ID: 99, Status: "pending", Undo: &organizer.Operation{Status: "preparing"}}}, Owner: "/source", Owners: []string{"/b", "/a"}},
 		{Operation: organizer.Operation{ID: 99, Target: "/second", Status: "pending", Undo: &organizer.Operation{Status: "pending"}}},
-	}, Mappings: []model.MediaMapping{{Path: "/target", Source: "/source", Episodes: []int{0, 2}, State: "pending"}}}
+	}, Mappings: []model.MediaMapping{{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: "/target", Source: "/source", Episodes: []int{0, 2}, State: "pending"}}}
 	if err := s.SaveRun(r); err != nil {
 		t.Fatal(err)
 	}
@@ -134,27 +134,29 @@ func TestRelationalTraceDynamicValuesAndRules(t *testing.T) {
 	if err = s.StartTrace(trace); err != nil {
 		t.Fatal(err)
 	}
-	step := recognition.Step{RuleConfig: r, Inputs: []string{"b", "a"}, Captures: map[string]string{"name": "value"}, ExtractedValue: map[string]any{"x": true}, StartedAt: time.Now().UTC(), Attempts: []recognition.Attempt{{Input: "a", Captures: map[string]string{"c": "capture"}, Trace: []recognition.ScriptEvent{{Phase: "run", Data: []any{"text", true, nil}}}}}}
+	snapshot := sampleSnapshot(t)
+	snapshot.Pipeline = pipelineWith(r)
 	trace.Status = "completed"
 	trace.Metadata.Episodes = []int{0, 1}
-	bad := step
-	bad.Before = math.NaN()
-	if err = s.FinishTrace(trace, []recognition.Step{step, bad}); err == nil {
+	snapshot.Documents[0].Candidates[0].Value = math.NaN()
+	if err = s.FinishTrace(trace, snapshot); err == nil {
 		t.Fatal("non JSON dynamic value accepted")
 	}
-	current, steps, err := s.TraceDetail(trace.ID)
-	if err != nil || current.Status != "running" || len(steps) != 0 {
-		t.Fatal(current, steps, err)
+	current, saved, err := s.TraceDetail(trace.ID)
+	if err != nil || current.Status != "running" || len(saved.Documents) != 0 {
+		t.Fatal(current, saved, err)
 	}
-	if err = s.FinishTrace(trace, []recognition.Step{step}); err != nil {
+	snapshot = sampleSnapshot(t)
+	snapshot.Pipeline = pipelineWith(r)
+	if err = s.FinishTrace(trace, snapshot); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.SaveRules(emptyPipeline()); err != nil {
 		t.Fatal(err)
 	}
-	_, steps, err = s.TraceDetail(trace.ID)
-	if err != nil || len(steps) != 1 || !reflect.DeepEqual(steps[0], step) {
-		t.Fatal(steps, err)
+	_, saved, err = s.TraceDetail(trace.ID)
+	if err != nil || !sameSnapshot(t, saved, snapshot) {
+		t.Fatal(saved, err)
 	}
 	var extra any
 	if err = decode(`true false`, &extra); err == nil {
@@ -171,7 +173,7 @@ func TestRelationalTraceDynamicValuesAndRules(t *testing.T) {
 	if err = s.DeleteTrace(trace.ID); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"trace_metadata", "trace_episodes", "extraction_steps", "step_rules", "step_rule_examples", "step_inputs", "step_attempts", "attempt_events", "step_captures", "attempt_captures"} {
+	for _, table := range []string{"trace_metadata", "trace_episodes", "snapshot_documents", "snapshot_rules", "snapshot_rule_examples", "snapshot_context", "snapshot_candidates", "snapshot_sources", "snapshot_decisions", "snapshot_references"} {
 		var n int
 		if err = s.db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&n); err != nil || n != 0 {
 			t.Fatal(table, n, err)
@@ -203,7 +205,7 @@ func TestStorageFormatRejectionDoesNotRewriteDatabase(t *testing.T) {
 				}
 				statement := "DROP INDEX runs_state"
 				if kind == "previous-version" {
-					statement = "PRAGMA user_version=4"
+					statement = "PRAGMA user_version=5"
 				}
 				if _, err = s.db.Exec(statement); err != nil {
 					t.Fatal(err)

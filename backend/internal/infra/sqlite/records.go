@@ -9,11 +9,8 @@ import (
 	"joycurator/internal/model"
 	"joycurator/internal/organizer"
 	"joycurator/internal/recognition"
-	"sort"
-	"time"
 )
 
-type capture struct{ Name, Value string }
 type queryer interface {
 	Query(string, ...any) (*sql.Rows, error)
 	QueryRow(string, ...any) *sql.Row
@@ -545,6 +542,19 @@ func putWorkspaceItems(q queryer, key, root, owner string, position int, v match
 }
 
 func writeWorkspaceItems(q queryer, key, root, owner string, position int, v matching.Item) error {
+	for _, id := range []string{v.TraceID, confirmationTrace(v)} {
+		if id == "" {
+			continue
+		}
+		var saved bool
+		if err := q.QueryRow("SELECT EXISTS(SELECT 1 FROM extraction_snapshots s JOIN extraction_traces t ON t.id=s.id WHERE s.id=? AND t.f_status='completed')", id).Scan(&saved); err != nil {
+			return err
+		}
+		if !saved {
+			return fmt.Errorf("识别快照尚未保存成功：%s", id)
+		}
+	}
+
 	if err := putWorkspaceItems(q, key, root, owner, position, v); err != nil {
 		return err
 	}
@@ -576,14 +586,6 @@ func writeWorkspaceItems(q queryer, key, root, owner string, position int, v mat
 			return err
 		}
 	}
-	if _, err := q.Exec("DELETE FROM item_candidates WHERE owner=?", key); err != nil {
-		return err
-	}
-	for i, x := range v.Candidates {
-		if err := writeItemCandidates(q, childKey(key, i), root, key, i, x); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -603,10 +605,6 @@ func readWorkspaceItems(q queryer, root string) ([]rowWorkspaceItems, error) {
 		return nil, err
 	}
 	cItemEntries, err := readItemEntries(q, root)
-	if err != nil {
-		return nil, err
-	}
-	cItemCandidates, err := readItemCandidates(q, root)
 	if err != nil {
 		return nil, err
 	}
@@ -683,22 +681,6 @@ func readWorkspaceItems(q queryer, root string) ([]rowWorkspaceItems, error) {
 			}
 			x := c.Value
 			out[i].Value.Entry = &x
-		}
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Candidates = []model.Entry{}
-		}
-		for _, c := range cItemCandidates {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan item_candidates")
-			}
-			out[i].Value.Candidates = append(out[i].Value.Candidates, c.Value)
 		}
 	}
 	return out, nil
@@ -1312,273 +1294,6 @@ func readItemEntriesCast(q queryer, root string) ([]rowItemEntriesCast, error) {
 	return out, nil
 }
 
-func scanItemCandidates(s scanner) (model.Entry, error) {
-	var v model.Entry
-	var err error
-	err = s.Scan(&v.TMDBID, &v.Type, &v.Title, &v.OriginalTitle, &v.Year, &v.Overview, &v.Date, &v.PosterPath, &v.BackdropPath)
-	if err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func putItemCandidates(q queryer, key, root, owner string, position int, v model.Entry) error {
-	_, err := q.Exec("INSERT INTO item_candidates(k,root,owner,position,f_tmdbid,f_type,f_title,f_original_title,f_year,f_overview,f_date,f_poster_path,f_backdrop_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_tmdbid=excluded.f_tmdbid,f_type=excluded.f_type,f_title=excluded.f_title,f_original_title=excluded.f_original_title,f_year=excluded.f_year,f_overview=excluded.f_overview,f_date=excluded.f_date,f_poster_path=excluded.f_poster_path,f_backdrop_path=excluded.f_backdrop_path", key, root, owner, position, v.TMDBID, v.Type, v.Title, v.OriginalTitle, v.Year, v.Overview, v.Date, v.PosterPath, v.BackdropPath)
-	return err
-}
-
-func writeItemCandidates(q queryer, key, root, owner string, position int, v model.Entry) error {
-	if err := putItemCandidates(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	if _, err := q.Exec("DELETE FROM item_candidates_genres WHERE owner=?", key); err != nil {
-		return err
-	}
-	for i, x := range v.Genres {
-		if err := writeItemCandidatesGenres(q, childKey(key, i), root, key, i, x); err != nil {
-			return err
-		}
-	}
-	if _, err := q.Exec("DELETE FROM item_candidates_countries WHERE owner=?", key); err != nil {
-		return err
-	}
-	for i, x := range v.Countries {
-		if err := writeItemCandidatesCountries(q, childKey(key, i), root, key, i, x); err != nil {
-			return err
-		}
-	}
-	if _, err := q.Exec("DELETE FROM item_candidates_cast WHERE owner=?", key); err != nil {
-		return err
-	}
-	for i, x := range v.Cast {
-		if err := writeItemCandidatesCast(q, childKey(key, i), root, key, i, x); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type rowItemCandidates struct {
-	Key, Owner string
-	Position   int
-	Value      model.Entry
-}
-
-func readItemCandidates(q queryer, root string) ([]rowItemCandidates, error) {
-	cItemCandidatesGenres, err := readItemCandidatesGenres(q, root)
-	if err != nil {
-		return nil, err
-	}
-	cItemCandidatesCountries, err := readItemCandidatesCountries(q, root)
-	if err != nil {
-		return nil, err
-	}
-	cItemCandidatesCast, err := readItemCandidatesCast(q, root)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := q.Query("SELECT k,owner,position,f_tmdbid,f_type,f_title,f_original_title,f_year,f_overview,f_date,f_poster_path,f_backdrop_path FROM item_candidates WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowItemCandidates{}
-	for rows.Next() {
-		var r rowItemCandidates
-		var v model.Entry
-		v, err = scanItemCandidates(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Genres = []string{}
-		}
-		for _, c := range cItemCandidatesGenres {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan item_candidates_genres")
-			}
-			out[i].Value.Genres = append(out[i].Value.Genres, c.Value)
-		}
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Countries = []string{}
-		}
-		for _, c := range cItemCandidatesCountries {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan item_candidates_countries")
-			}
-			out[i].Value.Countries = append(out[i].Value.Countries, c.Value)
-		}
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Cast = []model.Actor{}
-		}
-		for _, c := range cItemCandidatesCast {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan item_candidates_cast")
-			}
-			out[i].Value.Cast = append(out[i].Value.Cast, c.Value)
-		}
-	}
-	return out, nil
-}
-
-func scanItemCandidatesGenres(s scanner) (string, error) {
-	var v string
-	var err error
-	err = s.Scan(&v)
-	if err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func writeItemCandidatesGenres(q queryer, key, root, owner string, position int, v string) error {
-	_, err := q.Exec("INSERT INTO item_candidates_genres(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
-	return err
-}
-
-type rowItemCandidatesGenres struct {
-	Key, Owner string
-	Position   int
-	Value      string
-}
-
-func readItemCandidatesGenres(q queryer, root string) ([]rowItemCandidatesGenres, error) {
-	rows, err := q.Query("SELECT k,owner,position,value FROM item_candidates_genres WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowItemCandidatesGenres{}
-	for rows.Next() {
-		var r rowItemCandidatesGenres
-		var v string
-		v, err = scanItemCandidatesGenres(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func scanItemCandidatesCountries(s scanner) (string, error) {
-	var v string
-	var err error
-	err = s.Scan(&v)
-	if err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func writeItemCandidatesCountries(q queryer, key, root, owner string, position int, v string) error {
-	_, err := q.Exec("INSERT INTO item_candidates_countries(k,root,owner,position,value) VALUES(?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,value=excluded.value", key, root, owner, position, v)
-	return err
-}
-
-type rowItemCandidatesCountries struct {
-	Key, Owner string
-	Position   int
-	Value      string
-}
-
-func readItemCandidatesCountries(q queryer, root string) ([]rowItemCandidatesCountries, error) {
-	rows, err := q.Query("SELECT k,owner,position,value FROM item_candidates_countries WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowItemCandidatesCountries{}
-	for rows.Next() {
-		var r rowItemCandidatesCountries
-		var v string
-		v, err = scanItemCandidatesCountries(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func scanItemCandidatesCast(s scanner) (model.Actor, error) {
-	var v model.Actor
-	var err error
-	err = s.Scan(&v.Name, &v.Role)
-	if err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func writeItemCandidatesCast(q queryer, key, root, owner string, position int, v model.Actor) error {
-	_, err := q.Exec("INSERT INTO item_candidates_cast(k,root,owner,position,f_name,f_role) VALUES(?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,f_name=excluded.f_name,f_role=excluded.f_role", key, root, owner, position, v.Name, v.Role)
-	return err
-}
-
-type rowItemCandidatesCast struct {
-	Key, Owner string
-	Position   int
-	Value      model.Actor
-}
-
-func readItemCandidatesCast(q queryer, root string) ([]rowItemCandidatesCast, error) {
-	rows, err := q.Query("SELECT k,owner,position,f_name,f_role FROM item_candidates_cast WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowItemCandidatesCast{}
-	for rows.Next() {
-		var r rowItemCandidatesCast
-		var v model.Actor
-		v, err = scanItemCandidatesCast(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 const columnsRuns = "f_title,f_mode,f_state,f_created,f_error,f_completed,f_total,f_undo,f_batch_id,f_version,f_recognition_id,f_purpose"
 
 func scanRuns(s scanner) (organizer.Run, error) {
@@ -1615,6 +1330,9 @@ func writeRunMappings(q queryer, key, root, owner string, position int, v model.
 	if err := putRunMappings(q, key, root, owner, position, v); err != nil {
 		return err
 	}
+	if err := writeWork(q, "run_mapping", key, v.Entry); err != nil {
+		return err
+	}
 	if err := writeMappingSnapshot(q, "run", key, root, v.Original); err != nil {
 		return err
 	}
@@ -1636,6 +1354,10 @@ type rowRunMappings struct {
 }
 
 func readRunMappings(q queryer, root string) ([]rowRunMappings, error) {
+	works, err := readWorks(q, "run_mapping", "run_mappings", "k", "WHERE p.root=?", root)
+	if err != nil {
+		return nil, err
+	}
 	cRunMappingEpisodes, err := readRunMappingEpisodes(q, root)
 	if err != nil {
 		return nil, err
@@ -1658,6 +1380,10 @@ func readRunMappings(q queryer, root string) ([]rowRunMappings, error) {
 			return nil, err
 		}
 		v.Original = originals[r.Key]
+		v.Entry = works[r.Key]
+		if v.Entry == nil {
+			return nil, fmt.Errorf("任务映射缺少已确认作品快照")
+		}
 		r.Value = v
 		out = append(out, r)
 	}
@@ -1702,6 +1428,9 @@ func putMediaMappings(q queryer, key, root, owner string, position int, v model.
 
 func writeMediaMappings(q queryer, key, root, owner string, position int, v model.MediaMapping) error {
 	if err := putMediaMappings(q, key, root, owner, position, v); err != nil {
+		return err
+	}
+	if err := writeWork(q, "mapping", key, v.Entry); err != nil {
 		return err
 	}
 	if _, err := q.Exec("DELETE FROM mapping_episodes WHERE owner=?", key); err != nil {
@@ -1837,678 +1566,9 @@ func scanExtractionTraces(s scanner) (recognition.Trace, error) {
 	return v, nil
 }
 
-func scanExtractionSteps(s scanner) (recognition.Step, error) {
-	var v recognition.Step
-	var err error
-	var raw6 sql.NullString
-	var raw7 sql.NullString
-	var raw8 sql.NullString
-	var raw11 sql.NullString
-	err = s.Scan(&v.RuleID, &v.RuleName, &v.Order, &v.Target, &v.Stage, &v.FileID, &v.Status, &v.MatchedText, &raw6, &raw7, &raw8, &v.Applied, &v.Reason, &raw11, &v.DurationMS)
-	if err != nil {
-		return v, err
-	}
-	if raw6.Valid {
-		if err = decode(raw6.String, &v.ExtractedValue); err != nil {
-			return v, err
-		}
-	}
-	if raw7.Valid {
-		if err = decode(raw7.String, &v.Before); err != nil {
-			return v, err
-		}
-	}
-	if raw8.Valid {
-		if err = decode(raw8.String, &v.After); err != nil {
-			return v, err
-		}
-	}
-	if v.StartedAt, err = time.Parse(time.RFC3339Nano, raw11.String); err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func putExtractionSteps(q queryer, key, root, owner string, position int, v recognition.Step) error {
-	j6, err := dynamicJSON(v.ExtractedValue)
-	if err != nil {
-		return err
-	}
-	j7, err := dynamicJSON(v.Before)
-	if err != nil {
-		return err
-	}
-	j8, err := dynamicJSON(v.After)
-	if err != nil {
-		return err
-	}
-	_, err = q.Exec("INSERT INTO extraction_steps(k,root,owner,position,f_rule_id,f_rule_name,f_order,f_target,f_stage,f_file_id,f_status,f_matched_text,f_extracted_value,f_before,f_after,f_applied,f_reason,f_started_at,f_duration_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", key, root, owner, position, v.RuleID, v.RuleName, v.Order, v.Target, v.Stage, v.FileID, v.Status, v.MatchedText, j6, j7, j8, v.Applied, v.Reason, v.StartedAt.Format(time.RFC3339Nano), v.DurationMS)
-	return err
-}
-
-func writeExtractionSteps(q queryer, key, root, owner string, position int, v recognition.Step) error {
-	if err := putExtractionSteps(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	if v.RuleConfig.ID != "" {
-		if err := writeStepRules(q, childKey(key, 0), root, key, 0, v.RuleConfig); err != nil {
-			return err
-		}
-	}
-	for i, x := range v.Inputs {
-		if err := writeStepInputs(q, childKey(key, i), root, key, i, x); err != nil {
-			return err
-		}
-	}
-	{
-		keys := make([]string, 0, len(v.Captures))
-		for k := range v.Captures {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for i, k := range keys {
-			if err := writeStepCaptures(q, childKey(key, i), root, key, i, capture{k, v.Captures[k]}); err != nil {
-				return err
-			}
-		}
-	}
-	for i, x := range v.Attempts {
-		if err := writeStepAttempts(q, childKey(key, i), root, key, i, x); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type rowExtractionSteps struct {
-	Key, Owner string
-	Position   int
-	Value      recognition.Step
-}
-
-func readExtractionSteps(q queryer, root string) ([]rowExtractionSteps, error) {
-	cStepRules, err := readStepRules(q, root)
-	if err != nil {
-		return nil, err
-	}
-	cStepInputs, err := readStepInputs(q, root)
-	if err != nil {
-		return nil, err
-	}
-	cStepCaptures, err := readStepCaptures(q, root)
-	if err != nil {
-		return nil, err
-	}
-	cStepAttempts, err := readStepAttempts(q, root)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := q.Query("SELECT k,owner,position,f_rule_id,f_rule_name,f_order,f_target,f_stage,f_file_id,f_status,f_matched_text,f_extracted_value,f_before,f_after,f_applied,f_reason,f_started_at,f_duration_ms FROM extraction_steps WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowExtractionSteps{}
-	for rows.Next() {
-		var r rowExtractionSteps
-		var v recognition.Step
-		v, err = scanExtractionSteps(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-
-		for _, c := range cStepRules {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan step_rules")
-			}
-			out[i].Value.RuleConfig = c.Value
-		}
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Inputs = []string{}
-		}
-		for _, c := range cStepInputs {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan step_inputs")
-			}
-			out[i].Value.Inputs = append(out[i].Value.Inputs, c.Value)
-		}
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Captures = map[string]string{}
-		}
-		for _, c := range cStepCaptures {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan step_captures")
-			}
-			out[i].Value.Captures[c.Value.Name] = c.Value.Value
-		}
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Attempts = []recognition.Attempt{}
-		}
-		for _, c := range cStepAttempts {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan step_attempts")
-			}
-			out[i].Value.Attempts = append(out[i].Value.Attempts, c.Value)
-		}
-	}
-	return out, nil
-}
-
-func scanStepRules(s scanner) (recognition.Rule, error) {
-	var v recognition.Rule
-	var err error
-	var raw11 sql.NullString
-	var raw14 sql.NullString
-	err = s.Scan(&v.ID, &v.Name, &v.Description, &v.Target, &v.Source, &v.Order, &v.Enabled, &v.Kind, &v.Stage, &v.Config.Code, &raw11, &v.Config.Pattern, &v.Config.Capture, &raw14)
-	if err != nil {
-		return v, err
-	}
-	if raw11.Valid {
-		if err = decode(raw11.String, &v.Config.Params); err != nil {
-			return v, err
-		}
-	}
-	if raw14.Valid {
-		if err = decode(raw14.String, &v.Config.Value); err != nil {
-			return v, err
-		}
-	}
-	return v, nil
-}
-
-func putStepRules(q queryer, key, root, owner string, position int, v recognition.Rule) error {
-	j11, err := dynamicJSON(v.Config.Params)
-	if err != nil {
-		return err
-	}
-	j14, err := dynamicJSON(v.Config.Value)
-	if err != nil {
-		return err
-	}
-	_, err = q.Exec("INSERT INTO step_rules(k,root,owner,position,f_id,f_name,f_description,f_target,f_source,f_order,f_enabled,f_kind,f_stage,f_config_code,f_config_params,f_config_pattern,f_config_capture,f_config_value) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", key, root, owner, position, v.ID, v.Name, v.Description, v.Target, v.Source, v.Order, v.Enabled, v.Kind, v.Stage, v.Config.Code, j11, v.Config.Pattern, v.Config.Capture, j14)
-	return err
-}
-
-func writeStepRules(q queryer, key, root, owner string, position int, v recognition.Rule) error {
-	if err := putStepRules(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	for i, x := range v.Examples {
-		if err := writeStepRuleExamples(q, childKey(key, i), root, key, i, x); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type rowStepRules struct {
-	Key, Owner string
-	Position   int
-	Value      recognition.Rule
-}
-
-func readStepRules(q queryer, root string) ([]rowStepRules, error) {
-	cStepRuleExamples, err := readStepRuleExamples(q, root)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := q.Query("SELECT k,owner,position,f_id,f_name,f_description,f_target,f_source,f_order,f_enabled,f_kind,f_stage,f_config_code,f_config_params,f_config_pattern,f_config_capture,f_config_value FROM step_rules WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowStepRules{}
-	for rows.Next() {
-		var r rowStepRules
-		var v recognition.Rule
-		v, err = scanStepRules(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Examples = []recognition.Example{}
-		}
-		for _, c := range cStepRuleExamples {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan step_rule_examples")
-			}
-			out[i].Value.Examples = append(out[i].Value.Examples, c.Value)
-		}
-	}
-	return out, nil
-}
-
-func scanStepRuleExamples(s scanner) (recognition.Example, error) {
-	var v recognition.Example
-	var raw sql.NullString
-	err := s.Scan(&v.Root, &raw)
-	if err == nil && raw.Valid {
-		err = decode(raw.String, &v.Expected)
-	}
-	return v, err
-}
-func writeStepRuleExamples(q queryer, key, root, owner string, position int, v recognition.Example) error {
-	raw, err := dynamicJSON(v.Expected)
-	if err != nil {
-		return err
-	}
-	_, err = q.Exec("INSERT INTO step_rule_examples(k,root,owner,position,f_root,f_expected) VALUES(?,?,?,?,?,?)", key, root, owner, position, v.Root, raw)
-	if err != nil {
-		return err
-	}
-	for _, kind := range []string{"paths", "targets"} {
-
-		values := v.Paths
-		if kind == "targets" {
-			values = v.Targets
-		}
-		for i, x := range values {
-			if _, err = q.Exec("INSERT INTO step_rule_examples_"+kind+"(owner,position,value) VALUES(?,?,?)", key, i, x); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-type rowStepRuleExamples struct {
-	Key, Owner string
-	Position   int
-	Value      recognition.Example
-}
-
-func readStepRuleExamples(q queryer, root string) ([]rowStepRuleExamples, error) {
-	rows, err := q.Query("SELECT k,owner,position,f_root,f_expected FROM step_rule_examples WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	out := []rowStepRuleExamples{}
-	for rows.Next() {
-		var r rowStepRuleExamples
-		r.Value, err = scanStepRuleExamples(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			rows.Close()
-			return nil, err
-		}
-		r.Value.Paths = []string{}
-		r.Value.Targets = []string{}
-		out = append(out, r)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	index := map[string]int{}
-	for i, r := range out {
-		index[r.Key] = i
-	}
-	for _, kind := range []string{"paths", "targets"} {
-		rows, err = q.Query("SELECT c.owner,c.value FROM step_rule_examples_"+kind+" c JOIN step_rule_examples p ON p.k=c.owner WHERE p.root=? ORDER BY c.owner,c.position", root)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var owner, value string
-			if err = rows.Scan(&owner, &value); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			i, ok := index[owner]
-			if !ok {
-				rows.Close()
-				return nil, fmt.Errorf("orphan example")
-			}
-			if kind == "paths" {
-				out[i].Value.Paths = append(out[i].Value.Paths, value)
-			} else {
-				out[i].Value.Targets = append(out[i].Value.Targets, value)
-			}
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-
-func scanStepInputs(s scanner) (string, error) {
-	var v string
-	var err error
-	err = s.Scan(&v)
-	if err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func writeStepInputs(q queryer, key, root, owner string, position int, v string) error {
-	_, err := q.Exec("INSERT INTO step_inputs(k,root,owner,position,value) VALUES(?,?,?,?,?)", key, root, owner, position, v)
-	return err
-}
-
-type rowStepInputs struct {
-	Key, Owner string
-	Position   int
-	Value      string
-}
-
-func readStepInputs(q queryer, root string) ([]rowStepInputs, error) {
-	rows, err := q.Query("SELECT k,owner,position,value FROM step_inputs WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowStepInputs{}
-	for rows.Next() {
-		var r rowStepInputs
-		var v string
-		v, err = scanStepInputs(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func scanStepCaptures(s scanner) (capture, error) {
-	var v capture
-	var err error
-	err = s.Scan(&v.Name, &v.Value)
-	if err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func writeStepCaptures(q queryer, key, root, owner string, position int, v capture) error {
-	_, err := q.Exec("INSERT INTO step_captures(k,root,owner,position,f_name,f_value) VALUES(?,?,?,?,?,?)", key, root, owner, position, v.Name, v.Value)
-	return err
-}
-
-type rowStepCaptures struct {
-	Key, Owner string
-	Position   int
-	Value      capture
-}
-
-func readStepCaptures(q queryer, root string) ([]rowStepCaptures, error) {
-	rows, err := q.Query("SELECT k,owner,position,f_name,f_value FROM step_captures WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowStepCaptures{}
-	for rows.Next() {
-		var r rowStepCaptures
-		var v capture
-		v, err = scanStepCaptures(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func scanStepAttempts(s scanner) (recognition.Attempt, error) {
-	var v recognition.Attempt
-	var err error
-	err = s.Scan(&v.Input, &v.Matched, &v.MatchedText, &v.Error)
-	if err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func putStepAttempts(q queryer, key, root, owner string, position int, v recognition.Attempt) error {
-	_, err := q.Exec("INSERT INTO step_attempts(k,root,owner,position,f_input,f_matched,f_matched_text,f_error) VALUES(?,?,?,?,?,?,?,?)", key, root, owner, position, v.Input, v.Matched, v.MatchedText, v.Error)
-	return err
-}
-
-func writeStepAttempts(q queryer, key, root, owner string, position int, v recognition.Attempt) error {
-	if err := putStepAttempts(q, key, root, owner, position, v); err != nil {
-		return err
-	}
-	{
-		keys := make([]string, 0, len(v.Captures))
-		for k := range v.Captures {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for i, k := range keys {
-			if err := writeAttemptCaptures(q, childKey(key, i), root, key, i, capture{k, v.Captures[k]}); err != nil {
-				return err
-			}
-		}
-	}
-	for i, x := range v.Trace {
-		if err := writeAttemptEvents(q, childKey(key, i), root, key, i, x); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type rowStepAttempts struct {
-	Key, Owner string
-	Position   int
-	Value      recognition.Attempt
-}
-
-func readStepAttempts(q queryer, root string) ([]rowStepAttempts, error) {
-	cAttemptCaptures, err := readAttemptCaptures(q, root)
-	if err != nil {
-		return nil, err
-	}
-	cAttemptEvents, err := readAttemptEvents(q, root)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := q.Query("SELECT k,owner,position,f_input,f_matched,f_matched_text,f_error FROM step_attempts WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowStepAttempts{}
-	for rows.Next() {
-		var r rowStepAttempts
-		var v recognition.Attempt
-		v, err = scanStepAttempts(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Captures = map[string]string{}
-		}
-		for _, c := range cAttemptCaptures {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan attempt_captures")
-			}
-			out[i].Value.Captures[c.Value.Name] = c.Value.Value
-		}
-	}
-	{
-		index := map[string]int{}
-		for i := range out {
-			index[out[i].Key] = i
-		}
-		for i := range out {
-			out[i].Value.Trace = []recognition.ScriptEvent{}
-		}
-		for _, c := range cAttemptEvents {
-			i, ok := index[c.Owner]
-			if !ok {
-				return nil, fmt.Errorf("orphan attempt_events")
-			}
-			out[i].Value.Trace = append(out[i].Value.Trace, c.Value)
-		}
-	}
-	return out, nil
-}
-
-func scanAttemptCaptures(s scanner) (capture, error) {
-	var v capture
-	var err error
-	err = s.Scan(&v.Name, &v.Value)
-	if err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
-func writeAttemptCaptures(q queryer, key, root, owner string, position int, v capture) error {
-	_, err := q.Exec("INSERT INTO attempt_captures(k,root,owner,position,f_name,f_value) VALUES(?,?,?,?,?,?)", key, root, owner, position, v.Name, v.Value)
-	return err
-}
-
-type rowAttemptCaptures struct {
-	Key, Owner string
-	Position   int
-	Value      capture
-}
-
-func readAttemptCaptures(q queryer, root string) ([]rowAttemptCaptures, error) {
-	rows, err := q.Query("SELECT k,owner,position,f_name,f_value FROM attempt_captures WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowAttemptCaptures{}
-	for rows.Next() {
-		var r rowAttemptCaptures
-		var v capture
-		v, err = scanAttemptCaptures(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func scanAttemptEvents(s scanner) (recognition.ScriptEvent, error) {
-	var v recognition.ScriptEvent
-	var err error
-	var raw6 sql.NullString
-	err = s.Scan(&v.Phase, &v.Line, &v.Column, &v.Function, &v.Operation, &v.Message, &raw6)
-	if err != nil {
-		return v, err
-	}
-	if raw6.Valid {
-		if err = decode(raw6.String, &v.Data); err != nil {
-			return v, err
-		}
-	}
-	return v, nil
-}
-
-func writeAttemptEvents(q queryer, key, root, owner string, position int, v recognition.ScriptEvent) error {
-	j6, err := dynamicJSON(v.Data)
-	if err != nil {
-		return err
-	}
-	_, err = q.Exec("INSERT INTO attempt_events(k,root,owner,position,f_phase,f_line,f_column,f_function,f_operation,f_message,f_data) VALUES(?,?,?,?,?,?,?,?,?,?,?)", key, root, owner, position, v.Phase, v.Line, v.Column, v.Function, v.Operation, v.Message, j6)
-	return err
-}
-
-type rowAttemptEvents struct {
-	Key, Owner string
-	Position   int
-	Value      recognition.ScriptEvent
-}
-
-func readAttemptEvents(q queryer, root string) ([]rowAttemptEvents, error) {
-	rows, err := q.Query("SELECT k,owner,position,f_phase,f_line,f_column,f_function,f_operation,f_message,f_data FROM attempt_events WHERE root=? ORDER BY owner,position", root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []rowAttemptEvents{}
-	for rows.Next() {
-		var r rowAttemptEvents
-		var v recognition.ScriptEvent
-		v, err = scanAttemptEvents(prefixScanner{rows, []any{&r.Key, &r.Owner, &r.Position}})
-		if err != nil {
-			return nil, err
-		}
-		r.Value = v
-		out = append(out, r)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
+func confirmationTrace(v matching.Item) string {
+	if v.Confirmation != nil {
+		return v.Confirmation.Basis.TraceID
+	}
+	return ""
 }

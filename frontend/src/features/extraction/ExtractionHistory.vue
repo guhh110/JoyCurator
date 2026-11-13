@@ -33,7 +33,7 @@ function changePage(value: number) {
 
 <template>
   <section class="history-page" aria-label="识别历史">
-    <PageHeader title="识别历史" eyebrow="RECOGNITION HISTORY" description="查看文件的识别结果与规则执行轨迹。">
+    <PageHeader title="识别历史" eyebrow="RECOGNITION HISTORY">
       <template #actions><RouterLink class="button" :to="{ name: 'settings', query: { section: 'maintenance' } }">批量清理</RouterLink><RouterLink class="button" :to="{ name: 'automatic-recognition' }">返回整理工作区</RouterLink></template>
     </PageHeader>
     <form class="history-search" @submit.prevent="search">
@@ -47,10 +47,10 @@ function changePage(value: number) {
           <div class="trace-info">
             <RouterLink class="trace-name" :to="{ name: 'extraction-history-detail', params: { traceId: item.id }, query: historyContext(route.query) }">{{ name(item.path) }}</RouterLink>
             <EliText :text="item.path" ellipsis="start" class="trace-path" />
-            <p class="trace-meta"><span class="state-pill" :class="item.status">{{ historyStates[item.status] || item.status }}</span><span>{{ historyTime(item.startedAt) }}</span><span>{{ item.stepCount }} 步</span></p>
+            <p class="trace-meta"><span class="state-pill" :class="item.status">{{ historyStates[item.status] || item.status }}</span><span>{{ historyTime(item.startedAt) }}</span></p>
           </div>
           <div class="trace-actions">
-            <RouterLink class="text-button" :to="{ name: 'extraction-history-detail', params: { traceId: item.id }, query: historyContext(route.query) }">查看过程</RouterLink>
+            <RouterLink class="text-button" :to="{ name: 'extraction-history-detail', params: { traceId: item.id }, query: historyContext(route.query) }">查看结果</RouterLink>
             <button v-if="item.status !== 'running'" class="text-button danger" :disabled="!!pendingId" @click="remove(item)">{{ pendingId === item.id ? '处理中…' : '清理' }}</button>
           </div>
         </article>

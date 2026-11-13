@@ -10,7 +10,7 @@
 flowchart LR
   P[文件绝对路径文本] --> E[recognition 规则链]
   E --> M[Metadata + Step 数组]
-  M --> A[app 匹配 TMDB 与校验季集]
+  M --> A[app 保存离线候选快照]
   A --> W[识别工作区与人工修正]
   W --> V[整理预览]
   V --> J[确认后创建整理任务]
@@ -18,7 +18,7 @@ flowchart LR
 ```
 
 1. **路径提取**：从文本提取 ID、标题、年份、季集等；不读取文件，不访问 TMDB。代码在 `internal/recognition`。
-2. **作品识别**：消费提取结果，查询 TMDB、判断候选、校验季集、形成可整理或待处理状态。代码在 `internal/matching/`。
+2. **作品识别**：消费本地候选，等待用户主动搜索并选择作品后查询 TMDB、校验季集；人工确认后形成可整理状态。代码在 `internal/matching/`。
 3. **整理与刮削**：整理预览直接使用工作区快照，检查源文件与目标冲突，只执行视频／字幕复制、移动或硬链接；刮削另行查询 TMDB 并生成 NFO／图片。代码在 `organizer/preview.go`、`organizer/jobs.go`、`organizer/batch.go`、`organizer/fast.go` 和 `organizer`。
 
 这三个环节的边界需要保持。比如“某个标题对应哪个 TMDB 作品”属于作品识别，“S02E03 提取为季 2、集 3”属于路径提取，“最终保存在哪个目录”属于命名与整理。
@@ -36,7 +36,7 @@ backend/
   internal/
     app/                      装配、HTTP、工作区流程、认证与设置接入
     recognition/              路径规则、Metadata、调试、轨迹
-    matching/                 TMDB 匹配、候选与季集策略
+    matching/                 人工选作品后的详情查询、季集策略
     organizer/                Run、队列、文件操作、记录与回退
     model/                    共用文件、作品、设置与操作 DTO
     infra/tmdb/               TMDB 请求、响应转换和缓存端口
@@ -93,21 +93,21 @@ main.main
 
 ## 4. 当前数据模型
 
-`Pipeline` 包含唯一分词脚本、有序标注列表和唯一裁决脚本。`Token` 保留结构及 UTF-16 原文范围；`Candidate` 保留语义身份、强度、有效性和依据；`FileResult` 保存六字段 Metadata 和可跨文件的候选引用。`Step` 记录阶段、文件、输出、诊断和时间，同一规则仅首次步骤携带源码快照。详见下节。
+`Pipeline` 包含唯一分词脚本、有序标注列表和唯一裁决脚本。`Token` 保留结构及 UTF-16 原文范围；`Candidate` 保留语义身份、强度、有效性和依据；`FileResult` 保存六字段 Metadata 和可跨文件的候选引用。普通识别保存候选与建议快照；调试的 `Step` 记录阶段、文件、输出、诊断和时间，同一规则仅首次步骤携带源码快照。详见下节。
 
 ## 5. 三阶段识别
 
 当前识别架构、脚本契约、边界与存储规范统一见 [RECOGNITION.md](RECOGNITION.md)。核心入口为 `Compile(Pipeline)`、`ExtractBatch(BatchInput)`；应用通过 `extractContexts` 收集完整目录树，再调用 `Service.ExtractTree`，每树固定配置快照和共享历史。默认分词按非中英文数字字符分隔，保留完整词及括号结构；标注消费词和相邻词，正则逐词匹配。片名标注最后从排除元信息后的连续区段生成候选，保留推测集数文字，词间统一空格；裁决脚本按同目录命名结构、明确季集依据和不同数字值佐证唯一集数位置，再裁剪片名并逐目标输出 Metadata。单文件裸数字及无剧集依据的数字变化保留歧义，派生片名引用原片名与集数依据。下游匹配和整理接口继续消费 Metadata。
 
-规则 API 仅接受 `{pipeline:{tokenizer,annotators,resolver}}`。调试输入多路径文本快照及 targets；样例使用 paths/root/targets/expected。旧数组、覆盖与来源清理格式均拒绝。存储格式为 5，不迁移或重建旧库；全部验证使用临时空目录。
+规则 API 仅接受 `{pipeline:{tokenizer,annotators,resolver}}`。调试输入多路径文本快照及 targets；样例使用 paths/root/targets/expected。旧数组、覆盖与来源清理格式均拒绝。存储格式为 6，不迁移或重建旧库；全部验证使用临时空目录。
 
 ## 6. 编辑与历史
 
-规则列表按三个阶段展示，标注顺序可跨身份调整；单规则编辑器的试跑和保存使用同一份流水线草稿。结果和历史按文件展示片段、候选、跨文件证据和源码定位。每条规则快照及共享上下文只保存一次，文件行引用同一目录 traceId。选择性重新识别依然只写选中行，保留人工决定、锁与重试语义。
+规则列表按三个阶段展示，标注顺序可跨身份调整；单规则编辑器的试跑和保存使用同一份流水线草稿。结果和历史按文件展示片段、候选、跨文件证据和规则快照；调试保留完整过程和源码定位。每条规则快照及共享上下文只保存一次，文件行引用同一目录 traceId。选择性重新识别依然只写选中行，保留人工决定、锁与重试语义。
 
 ## 7. 验证
 
-运行 `make check`；目录级 `BenchmarkRecognition2000` 同时检查完整结果、共享规则快照和重建历史。根目录 `tests/` 覆盖 100 个路径样本与目录推理、非法引用、取消、重启、持久化及选择性更新。
+运行 `make check`；目录级 `BenchmarkRecognition2000/LightImport` 检查快照读写，`FullDebug` 独立测量相同路径的完整调试响应。根目录 `tests/` 覆盖 100 个路径样本与目录推理、非法引用、取消、重启、持久化及选择性更新。
 
 ## 8. 自动识别、匹配与人工修正
 
@@ -119,17 +119,17 @@ AutomaticRecognitionPage → useWorkspace.scanSources
   → recognize
     → scanner.Walk（不 Probe）
     → 收集完整目录快照 → ExtractTree → 每目标 Metadata → 初始 query 分组
-    → Resolver.Suggest → DecideMatch：作品候选排序与同批查询去重
+    → 保存本地候选、目录建议、依据及规则快照，等待人工确认
     → 用户确认 → Resolver.Validate：季集有效性，不补季号
     → 按 type + TMDB ID 合并作品，同剧多季同组
     → 仅确认成功后默认勾选，既有登记可复用确认
-    → 分批保存工作区进度
+    → 分批更新进度摘要，快照与工作区保存后完成
   → 前端 TanStack Query 轮询
 ```
 
 关键入口：`app/workspace.go` 管任务准入，`app/recognition_job.go` 管异步流程，`app/workspace_edits.go` 管修正；`matching/match.go`、`validate.go` 管查询协调，`policy.go` 管不依赖网络的判断。TMDB 客户端负责请求、响应缓存与重试，规则引擎不参与网络。
 
-匹配策略：明确 ID 优先；类型不明时查电影和剧集，ID 在两类中都存在也需消歧。标题／原名标准化精确匹配、已知年份一致、无同等候选也仅作为建议，所有新文件均待确认；模糊、同名、年份冲突与去年份回退进入 review。没有搜索结果与网络／凭据错误分开处理。缺季号时唯一常规季也只作为建议；不自动换算跨季连续集号。
+识别不访问 TMDB，不要求 Token，也不创建客户端。只有用户主动搜索、选择作品后的季集校验以及刮削会访问 TMDB。明确 ID、唯一建议或明确季集均不能自动确认。未变化的已登记目标从本地映射与已确认作品快照复用，不补查详情。
 
 状态分两层：
 
@@ -198,7 +198,7 @@ organize drain → 一次取得全部访问占用 → 再校验配置、授权�
 | 设置与 TMDB 凭据 | SQLite config | 对外只返回凭据存在标志 |
 | TMDB 响应 | SQLite tmdb_cache | 带过期时间，正常响应缓存 24 小时 |
 | 当前提取规则链 | SQLite rule_chain / rules / rule_examples | 关系表，保存即替换，空链重启不填充 |
-| 提取执行与步骤 | SQLite extraction_traces / extraction_steps | 长期保留，人工清理 |
+| 识别候选与目录建议 | SQLite extraction_traces / extraction_snapshots / snapshot_* | 长期保留，人工清理 |
 | 自动识别工作区 | SQLite recognitions / workspace_items 等 | 摘要、路径、季集和作品快照拆表，含 revision 与 traceId |
 | 整理／刮削／撤销记录 | SQLite runs / operations / run_mappings 等 | 摘要、检查点与映射快照拆表，操作内容使用 BLOB |
 | 执行顺序与任务引用 | SQLite execution_queue | 自增 position、唯一 run_id、purpose；与 Run 原子入队 |
@@ -273,8 +273,8 @@ main.ts
 | --- | --- | --- |
 | 片名／季集提取错误 | 调试页、Step、scripts | 输入来源和边界 → 结构片段 → 候选诊断 → 裁决引用与依据 |
 | Matrix 被当成某一集 | ID 标签保护、集数脚本 | 是否使用当前链 → 是否把路径别处数字当集数 → Step 的实际输入 |
-| ID 对应错误类型 | matching/match.go 与 policy.go | 路径类型依据 → 电影／剧集候选 → 标题／年份消歧 |
-| 有候选却未自动采用 | 文件 reason 和候选比较 | 同名／年份冲突／回退／模糊匹配是否需要人工确认 |
+| ID 对应错误类型 | 选择作品面板 | 路径类型建议 → 用户主动搜索 → 人工选定类型及作品 |
+| 有建议却未确认 | 文件确认记录 | 所有新文件均须人工确认，建议不授予执行资格 |
 | 页面切换后状态不对 | feature 草稿、runtime、query keys | KeepAlive → 查询启停 → revision → 缓存失效范围 |
 | 页面刷新 404 | 后端根路由／反向代理 | 是否命中 SPA 回退 → API 与资源是否被误回退 |
 | 整理预览过期 | Plan、配置 version、工作区 revision | 是否修改过设置／选择／映射 → 重新预览 |
@@ -282,7 +282,7 @@ main.ts
 | 设置无法保存 | 执行互斥与 version | 队列是否仍活动 → 表单 version 是否过期 |
 | 规则改了但历史没变化 | RuleConfig 快照 | 历史按当时配置解释；重新识别才产生新轨迹 |
 
-后端日志负责服务级启动和异常，规则提取的业务解释以持久化 Step 为准。看到轨迹引用不存在，先确认是否旧数据无轨迹或已手工清理，不要自动补造历史。
+后端日志负责服务级启动和异常，普通识别的业务解释以持久化 Snapshot 为准，调试 Step 用于排查规则；缺失的当前格式快照直接报错，不自动补造历史。
 
 ## 15. 开发、检查与构建
 
@@ -314,7 +314,7 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 
 1. 调整提取行为优先编辑脚本、补路径样例；只有运行环境能力不足时才修改 script.go。避免重新增加不可查看的领域处理器。
 2. 新增 Metadata 字段要同步 target 枚举、转换校验、前端模型、编辑器与展示，以及所有消费方；不要在脚本返回任意字段字典。
-3. TMDB 匹配策略继续留在 matching 模块，现阶段不属于可排序的路径提取链。新引擎的 Step 仅追踪路径提取，不能据此声称已持久化完整 TMDB 决策链。
+3. 人工选作品后的 TMDB 查询与季集校验继续留在 matching 模块，现阶段不属于可排序的路径提取链。新引擎的 Step 仅追踪路径提取，不能据此声称已持久化完整 TMDB 决策链。
 4. 规则单步错误容错继续执行，最终结果可能是部分字段。需要严格拒绝某种结果时在消费边界明确处理，避免把规则运行 error 和网络 failed 混为一种状态。
 5. 轨迹长期保留、没有自动清理，较大目录会持续增加数据库体积；支持逐条清理，也支持“设置 → 数据维护”预览后按结束时间批量清理历史，并清理过期 TMDB 缓存；运行中轨迹不参与。
 6. 当前规则保存不做多编辑者版本冲突控制，后保存者替换当前链；工作区修正和设置则分别有 revision/version。
@@ -330,8 +330,13 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 本轮新增入口：记录列表的 `search/state` 筛选在 SQL 分页前执行，列表总数与当前页使用同一读取事务；详情异常筛选只作用于已加载操作。数据维护由 `app/maintenance.go` 校验选项与截止时间，`infra/sqlite/maintenance.go` 事务执行预览或清理，HTTP 不直接访问存储。清理按 `finishedAt` 截止，保留边界时刻及运行记录；缓存使用预览时确定的 `cacheBefore`，执行时不自动向后移动。数量可能随并发识别变化，响应报告实际删除数量。子表级联删除失败时历史与缓存一起回滚，工作区结果、revision、历史引用及媒体文件不改写。
 
 
-后续新增选择性重跑入口见 `app/reidentify.go` 与 `features/workspace/useReidentification.ts`。不同于普通导入对未变化文件的复用，该入口持久化 reidentifying 标记，强制按当前规则重提取选中文件；任务 HTTP 回执与 worker 使用独立副本。人工修正字段不被新自动匹配覆盖，未指定条目不写入；取消、匹配失败与中断恢复后普通 retry 只继续未完成标记。存在标记时新增来源会明确拒绝，避免扩大重跑范围。
+后续新增选择性重跑入口见 `app/reidentify.go` 与 `features/workspace/useReidentification.ts`。不同于普通导入对未变化文件的复用，该入口持久化 reidentifying 标记，强制按当前规则刷新选中文件的本地候选和建议；任务 HTTP 回执与 worker 使用独立副本。人工修正字段保留，文件变化时撤销确认并取消选择，未指定条目不写入；取消、识别或保存失败与中断恢复后普通 retry 只继续未完成标记。存在标记时新增来源会明确拒绝，避免扩大重跑范围。
 
 刮削预览新增必填 content（all/nfo/images）及 onlyMissing（布尔）；前端调用和测试均使用当前请求。跳过已有产物不会登记归属，只有实际计划生成项才参加撤销；全跳过不会创建任务或改写映射状态。部分内容刮削已完成不代表全部 NFO／图片齐全，完整行为见 API 文档。
 
-整理与目录刮削共用添加文件／确认／预览三步页，编辑选择和执行选择分别出现在对应步骤。useConfirmation／ConfirmationForm 支持批量选作品、季度及原文数字位置取集号；按各文件快照生成行，不依赖排序补号。确认记录独立于 Edited，普通 Update 不授予确认。存储格式 5，验证用独立临时目录。
+整理与目录刮削共用添加文件／确认／预览三步页，编辑选择和执行选择分别出现在对应步骤。useConfirmation／ConfirmationForm 支持批量选作品、季度及原文数字位置取集号；按各文件快照生成行，不依赖排序补号。确认记录独立于 Edited，普通 Update 不授予确认。存储格式 6，验证用独立临时目录。
+
+
+## 离线识别执行器
+
+普通识别固定规则与文件身份后，以 `min(4, GOMAXPROCS, 文件数)` 路处理文件，文件内阶段仍串行；按路径顺序合并并提交进度，成功后只执行一次整树建议。调试／Observer 保持串行，复用相同文件核心。规则编译时准备参数、固定输出与摘要；输入直接构造并逐层冻结原生 JS 数据，返回值有界读取后直接转换，调用仍使用独立运行时。既有规则只应用执行器优化，新默认源码只用于新配置与主动恢复默认。HTTP、快照与格式 6 不变。冻结结果回归和完整测量见 [识别说明](RECOGNITION.md) 与 [性能记录](PERFORMANCE.md)。

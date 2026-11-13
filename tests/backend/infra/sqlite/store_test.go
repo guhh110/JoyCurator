@@ -47,7 +47,7 @@ func TestTraceSnapshotsPaginationAndCascade(t *testing.T) {
 		if err := store.StartTrace(recognition.Trace{ID: id, Path: "/source/file.mkv", Root: "/source", Status: "running"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := store.FinishTrace(recognition.Trace{ID: id, Status: "completed", Metadata: recognition.Metadata{Episodes: []int{}}}, []recognition.Step{{RuleID: rule.ID, RuleConfig: rule, Status: "matched"}}); err != nil {
+		if err := store.FinishTrace(recognition.Trace{ID: id, Status: "completed", Metadata: recognition.Metadata{Episodes: []int{}}}, sampleSnapshot(t)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -63,14 +63,14 @@ func TestTraceSnapshotsPaginationAndCascade(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, steps, err := store.TraceDetail(page[0].ID)
-	if err != nil || len(steps) != 1 || steps[0].RuleConfig.Config.Code != rule.Config.Code {
+	if err != nil || len(steps.Documents) != 2 || steps.Pipeline.Tokenizer.Config.Code != rule.Config.Code {
 		t.Fatal(steps, err)
 	}
 	if err := store.DeleteTrace(page[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	var count int
-	if err := store.db.QueryRow("SELECT COUNT(*) FROM extraction_steps WHERE root=?", page[0].ID).Scan(&count); err != nil || count != 0 {
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM snapshot_documents WHERE root=?", page[0].ID).Scan(&count); err != nil || count != 0 {
 		t.Fatal(count, err)
 	}
 	if err := store.StartTrace(recognition.Trace{ID: "active", Path: "/file", Root: "/", Status: "running"}); err != nil {
@@ -124,10 +124,10 @@ func TestSharedTraceCanBeFoundByContextFilePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	trace.Status = "completed"
-	if err := store.FinishTrace(trace, []recognition.Step{{Inputs: []string{"/source/Show/01.mkv"}}}); err != nil {
+	if err := store.FinishTrace(trace, sampleSnapshot(t)); err != nil {
 		t.Fatal(err)
 	}
-	items, total, err := store.TraceHistory(1, "/source/Show/01.mkv", "")
+	items, total, err := store.TraceHistory(1, "/source/Show.S01E01.mkv", "")
 	if err != nil || total != 1 || len(items) != 1 || items[0].ID != "tree" {
 		t.Fatal(items, total, err)
 	}

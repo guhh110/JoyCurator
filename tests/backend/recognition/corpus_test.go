@@ -197,3 +197,16 @@ func TestRecognitionKnownGapsPromoted(t *testing.T) {
 		t.Fatal("all known gaps must be covered by passing corpus", err)
 	}
 }
+
+func TestPathCorpusLightAndDebugParity(t *testing.T) {
+	for _, sample := range loadPathSamples(t) {
+		t.Run(sample.ID, func(t *testing.T) {
+			in := r.BatchInput{SourceBoundary: sample.Root, Paths: []string{sample.Path}, Targets: []string{sample.Path}}
+			debug, debugErr := r.DefaultEngine().ExtractBatch(context.Background(), in, nil)
+			light, lightErr := r.DefaultEngine().Snapshot(context.Background(), in)
+			if (debugErr == nil) != (lightErr == nil) || !r.Equal(debug.Documents, light.Documents) || !r.Equal(debug.Files, light.Files) {
+				t.Fatal("execution modes changed evidence", debugErr, lightErr)
+			}
+		})
+	}
+}

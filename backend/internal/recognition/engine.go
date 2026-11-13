@@ -3,6 +3,7 @@ package recognition
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,16 +22,20 @@ type compiledRule struct {
 	program *goja.Program
 	regex   *regexp.Regexp
 	capture int
+	params  map[string]any
+	fixed   any
 }
 type Engine struct {
 	pipeline   Pipeline
+	digest     string
 	tokenizer  compiledRule
 	annotators []compiledRule
 	resolver   compiledRule
 }
 type matchValue struct {
-	value any
-	trace []ScriptEvent
+	value        any
+	trace        []ScriptEvent
+	line, column int32
 }
 
 func clone[T any](v T) T {
@@ -114,7 +119,12 @@ func Compile(p Pipeline) (*Engine, error) {
 				return nil, errors.New("参数必须为 JSON 对象")
 			}
 		}
-		c := compiledRule{rule: r}
+		c := compiledRule{rule: r, params: map[string]any{}}
+		if len(r.Config.Params) > 0 {
+			if err := json.Unmarshal(r.Config.Params, &c.params); err != nil {
+				return nil, err
+			}
+		}
 		var err error
 		switch r.Kind {
 		case "script":
@@ -136,6 +146,7 @@ func Compile(p Pipeline) (*Engine, error) {
 					if err := strict(r.Config.Value, &value); err != nil {
 						return nil, err
 					}
+					c.fixed = value
 					if contains(Targets(), r.Target) {
 						if _, err := convert(r.Target, value); err != nil {
 							return nil, err
@@ -176,6 +187,8 @@ func Compile(p Pipeline) (*Engine, error) {
 	for _, c := range e.annotators {
 		e.pipeline.Annotators = append(e.pipeline.Annotators, c.rule)
 	}
+	raw, _ := json.Marshal(e.pipeline)
+	e.digest = fmt.Sprintf("%x", sha256.Sum256(raw))
 	return e, nil
 }
 func (e *Engine) Rules() Pipeline { return clone(e.pipeline) }
@@ -276,9 +289,13 @@ type proposal struct {
 }
 
 func candidates(d Document, r Rule, value any) ([]Candidate, error) {
-	var items []proposal
-	if err := strict(value, &items); err != nil {
-		return nil, err
+	items, ok := value.([]proposal)
+	if !ok {
+		var err error
+		items, err = resultArray(value, resultProposal)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if items == nil || len(items) > 512 || len(items)+len(d.Candidates) > 1024 {
 		return nil, errors.New("候选数量无效或超限")
@@ -313,7 +330,7 @@ func candidates(d Document, r Rule, value any) ([]Candidate, error) {
 	}
 	return out, nil
 }
-func (c compiledRule) run(ctx context.Context, values map[string]any, d *Document) (matchValue, error) {
+func (c compiledRule) run(ctx context.Context, values map[string]any, d *Document, capture bool) (matchValue, error) {
 	if d != nil && c.rule.Stage == "annotate" && c.rule.Source != AllSources {
 		filtered := *d
 		filtered.Sources = []TextSource{}
@@ -347,14 +364,9 @@ func (c compiledRule) run(ctx context.Context, values map[string]any, d *Documen
 		values["tokens"] = filtered.Tokens
 		values["candidates"] = filtered.Candidates
 	}
-	values["params"] = map[string]any{}
-	if len(c.rule.Config.Params) > 0 {
-		var p any
-		_ = json.Unmarshal(c.rule.Config.Params, &p)
-		values["params"] = p
-	}
+	values["params"] = c.params
 	if c.program != nil {
-		return executeScript(ctx, c.program, values, c.rule.Stage)
+		return executeScript(ctx, c.program, values, c.rule.Stage, capture)
 	}
 	items := []proposal{}
 	for _, s := range d.Sources {
@@ -371,7 +383,7 @@ func (c compiledRule) run(ctx context.Context, values map[string]any, d *Documen
 			}
 			for _, m := range matches {
 				a, b := m[0], m[1]
-				v := any(c.rule.Config.Value)
+				v := c.fixed
 				if c.capture > 0 {
 					a, b = m[c.capture*2], m[c.capture*2+1]
 					if a < 0 || b <= a {
@@ -389,6 +401,23 @@ func (c compiledRule) run(ctx context.Context, values map[string]any, d *Documen
 	return matchValue{value: items, trace: []ScriptEvent{}}, nil
 }
 func (e *Engine) ExtractBatch(ctx context.Context, in BatchInput, observer Observer) (BatchResult, error) {
+	result, _, err := e.extractBatch(ctx, in, observer, true, nil)
+	return result, err
+}
+func (e *Engine) Snapshot(ctx context.Context, in BatchInput, progress ...Progress) (Snapshot, error) {
+	var update Progress
+	if len(progress) > 0 {
+		update = progress[0]
+	}
+	result, diagnostics, err := e.extractBatch(ctx, in, nil, false, update)
+	return Snapshot{Context: result.Context, Tree: result.Tree, Documents: result.Documents, Files: result.Files, Pipeline: e.Rules(), Digest: e.digest, Diagnostics: diagnostics}, err
+}
+func (e *Engine) extractBatch(ctx context.Context, in BatchInput, observer Observer, capture bool, progress Progress) (result BatchResult, diagnostics []Diagnostic, failure error) {
+	diagnostics = []Diagnostic{}
+	result, failure = e.runBatch(ctx, in, observer, capture, &diagnostics, progress)
+	return
+}
+func (e *Engine) runBatch(ctx context.Context, in BatchInput, observer Observer, capture bool, diagnostics *[]Diagnostic, progress Progress) (BatchResult, error) {
 	result := BatchResult{Context: in, Tree: []TreeNode{}, Documents: []Document{}, Files: []FileResult{}, Steps: []Step{}}
 	if len(in.Paths) == 0 || len(in.Paths) > 2000 || len(in.Targets) == 0 {
 		return result, errors.New("目录上下文需要 1–2000 个视频与非空更新目标")
@@ -480,6 +509,9 @@ func (e *Engine) ExtractBatch(ctx context.Context, in BatchInput, observer Obser
 	var observerFailure error
 	emit := func(c compiledRule, d *Document, values map[string]any, apply func(any) (any, error)) error {
 		r := c.rule
+		if !capture {
+			return lightEmitter(ctx, diagnostics)(c, d, values, apply)
+		}
 		step := Step{RuleID: r.ID, RuleName: r.Name, Order: r.Order, Stage: r.Stage, RuleConfig: r, Target: r.Target, Inputs: []string{}, Attempts: []Attempt{}, Captures: map[string]string{}, StartedAt: time.Now().UTC(), Status: "matched", Before: map[string]any{"stage": r.Stage}}
 		if r.Stage == "resolve" {
 			step.Before = map[string]any{"fileCount": len(result.Documents), "targetCount": len(in.Targets)}
@@ -506,7 +538,7 @@ func (e *Engine) ExtractBatch(ctx context.Context, in BatchInput, observer Obser
 		} else if !r.Enabled {
 			step.Status = "disabled"
 		} else {
-			m, runErr := c.run(ctx, values, d)
+			m, runErr := c.run(ctx, values, d, true)
 			err = runErr
 			attempt := Attempt{Matched: err == nil, Trace: m.trace}
 			if err == nil {
@@ -537,41 +569,22 @@ func (e *Engine) ExtractBatch(ctx context.Context, in BatchInput, observer Obser
 		return err
 	}
 	var failures []error
-	for i := range result.Documents {
-		d := &result.Documents[i]
-		err := emit(e.tokenizer, d, map[string]any{"file": fileIdentity(*d), "sources": d.Sources}, func(v any) (any, error) {
-			var tokens []Token
-			if err := strict(v, &tokens); err != nil {
-				return nil, err
-			}
-			if err := validateTokens(*d, tokens); err != nil {
-				return nil, err
-			}
-			d.Tokens = tokens
-			return tokens, nil
-		})
-		if err != nil {
-			return result, err
+	if !capture {
+		var fatal error
+		failures, fatal = e.processDocuments(ctx, result.Documents, target, len(in.Targets), progress, diagnostics)
+		if fatal != nil {
+			return result, fatal
 		}
-		for _, c := range e.annotators {
-			err = emit(c, d, map[string]any{"file": fileIdentity(*d), "sources": d.Sources, "tokens": d.Tokens, "candidates": d.Candidates}, func(v any) (any, error) {
-				items, err := candidates(*d, c.rule, v)
-				if err == nil {
-					d.Candidates = append(d.Candidates, items...)
-				}
-				return items, err
-			})
-			if observerFailure != nil {
-				return result, observerFailure
-			}
-			if err != nil {
-				failures = append(failures, fmt.Errorf("%s: %w", c.rule.ID, err))
-			}
-			if ctx.Err() != nil {
-				return result, ctx.Err()
+	} else {
+		for i := range result.Documents {
+			current, fatal := e.processDocument(ctx, &result.Documents[i], emit, &observerFailure)
+			failures = append(failures, current...)
+			if fatal != nil {
+				return result, fatal
 			}
 		}
 	}
+
 	if len(failures) > 0 {
 		return result, errors.Join(failures...)
 	}
@@ -584,21 +597,8 @@ func (e *Engine) ExtractBatch(ctx context.Context, in BatchInput, observer Obser
 	// The shared context snapshot is recorded once, not on every file step.
 	values := map[string]any{"contextRoot": in.ContextRoot, "sourceBoundary": in.SourceBoundary, "tree": result.Tree, "files": result.Documents, "targetFileIds": ids}
 	err = emit(e.resolver, nil, values, func(v any) (any, error) {
-		var files []FileResult
-		var rawFiles []map[string]json.RawMessage
-		if err := strict(v, &rawFiles); err != nil {
-			return nil, err
-		}
-		for _, f := range rawFiles {
-			var fields map[string]json.RawMessage
-			if err := strict(f["metadata"], &fields); err != nil {
-				return nil, err
-			}
-			if len(fields) != len(Targets()) {
-				return nil, errors.New("裁决元数据必须提供完整六个字段")
-			}
-		}
-		if err := strict(v, &files); err != nil {
+		files, err := resultArray(v, resultFile)
+		if err != nil {
 			return nil, err
 		}
 		if err := validateResults(result.Documents, ids, files); err != nil {

@@ -12,7 +12,7 @@ afterEach(()=>{cleanup.splice(0).forEach(fn=>fn());clearToasts();vi.unstubAllGlo
 const metadata={title:'1',tmdbId:null,mediaType:null,year:null,season:null,episodes:[]}
 const work:Entry={type:'tv',tmdbId:2,title:'作品',originalTitle:'',year:2024,overview:'',posterPath:''}
 function view(name:string,values:number[]=[]):CandidateView {return {path:`/target/1-159/${name}.mp4`,traceId:'snapshot',document:{fileId:name,path:`/target/1-159/${name}.mp4`,directory:'/target/1-159',sources:[{id:'name',kind:'filename',depth:0,text:name},{id:'dir-0',kind:'directories',depth:1,text:'1-159'}],tokens:[],candidates:values.length?[{id:'episodes:0',ruleId:'episodes',role:'episodes',value:values,spans:[{sourceId:'name',start:0,end:name.length}],strength:'heuristic',status:'valid',reason:'数字'}]:[]},suggestion:{fileId:name,path:`/target/1-159/${name}.mp4`,metadata:{...metadata,episodes:values},decisions:{}}}}
-function file(v:CandidateView):RecognitionItem{return {path:v.path,group:v.path,state:'review',reason:'待确认',size:10,mtime:'1',season:-1,episodes:[],metadata:{...metadata},entry:null,candidates:[work],selected:false,removed:false,traceId:v.traceId}}
+function file(v:CandidateView):RecognitionItem{return {path:v.path,group:v.path,state:'review',reason:'待确认',size:10,mtime:'1',season:-1,episodes:[],metadata:{...metadata},entry:null,selected:false,edited:false,removed:false,traceId:v.traceId}}
 async function settle(){for(let i=0;i<15;i++)await Promise.resolve();await nextTick()}
 function fixture(views=[view('1'),view('2')]){
  const task=ref<Recognition|null>({purpose:'scrape',id:'w',revision:3,state:'completed',paths:['/target'],items:views.map(file),total:views.length,completed:views.length,error:'',created:''})
@@ -34,6 +34,16 @@ describe('explicit workspace confirmation',()=>{
   expect(recognitionGroups(files,'works')).toHaveLength(2)
   expect(recognitionGroups(files,'directories')).toHaveLength(1)
   expect(files.every(f=>!f.selected)).toBe(true)
+ })
+ it('restores an unconfirmed manual work and empty season draft after reidentification',async()=>{
+  const {state,task,views}=fixture([view('1',[1])])
+  const item=task.value!.items[0]!
+  item.entry=work;item.edited=true;item.season=-1;item.episodes=[]
+  vi.stubGlobal('fetch',backend(views,()=>task.value))
+  await state.start(task.value!.items);await settle()
+  const row=state.rows.value[0]!
+  expect(row.entry).toEqual(work);expect(row.season).toBe(-1);expect(row.text).toBe('')
+  expect(row.basis.kind).toBe('manual');expect(state.group('tv:2').canConfirm.value).toBe(false)
  })
  it('maps bare filenames by clicked digits and submits one explicit confirmation',async()=>{
   const {state,task,invalidate,views}=fixture();let input:any

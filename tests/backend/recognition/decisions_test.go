@@ -48,7 +48,7 @@ func TestCompactSeasonNumbersRequireDirectoryCorroboration(t *testing.T) {
 	if !reflect.DeepEqual(got.Files[:1], reversed.Files) {
 		t.Fatal("order or target subset changed decision", reversed.Files)
 	}
-	restored, err := r.RestoreBatch(got.Steps)
+	restored, err := r.DefaultEngine().Snapshot(context.Background(), got.Context)
 	if err != nil || !reflect.DeepEqual(restored.Files, got.Files) {
 		t.Fatal(restored.Files, err)
 	}
@@ -191,7 +191,7 @@ func TestNumericEvidenceAndDerivedTitleSurviveHistory(t *testing.T) {
 			t.Fatal(c)
 		}
 	}
-	restored, err := r.RestoreBatch(got.Steps)
+	restored, err := r.DefaultEngine().Snapshot(context.Background(), got.Context)
 	if err != nil {
 		t.Fatal(err)
 	}

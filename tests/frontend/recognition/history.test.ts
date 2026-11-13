@@ -42,7 +42,7 @@ describe('recognition history queries', () => {
     expect(fetch.mock.calls[0]![0]).toBe('/api/extraction/traces?page=2&path=%2Fmedia%2Fa.mkv')
   })
   it('loads only the selected detail and changes requests when its ID changes', async () => {
-    const fetch = vi.fn().mockResolvedValue(mockResponse({ trace, metadata: {}, steps: [] }))
+    const fetch = vi.fn().mockResolvedValue(mockResponse({ trace, context: {}, tree: [], documents: [], files: [], pipeline: {}, digest: 'saved', diagnostics: [] }))
     vi.stubGlobal('fetch', fetch)
     const id = ref('trace-1')
     const { state } = mount(() => useHistoryDetail(id))

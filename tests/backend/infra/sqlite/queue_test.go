@@ -65,7 +65,7 @@ func TestVideoCheckpointAndMappingAreAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Ops[0].Status = "completed"
-	m := model.MediaMapping{Path: "/target/video.mkv", RunID: r.ID, Identity: "file", State: "pending"}
+	m := model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: "/target/video.mkv", RunID: r.ID, Identity: "file", State: "pending"}
 	if err := s.SaveCheckpoint(r, []int{0}, nil, []model.MediaMapping{m}); err == nil {
 		t.Fatal("partial commit accepted")
 	}
@@ -159,8 +159,8 @@ func TestRecoveryRejectsWrongRunningTicketWithoutRewritingRun(t *testing.T) {
 }
 func TestFileExecutionProjectionPreservesCompletedAndUnknownFiles(t *testing.T) {
 	s := openStore(t)
-	first := model.MediaMapping{Path: "/target/a.mkv", Source: "/source/a.mkv", RunID: "run", Identity: "video"}
-	second := model.MediaMapping{Path: "/target/b.mkv", Source: "/source/b.mkv"}
+	first := model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: "/target/a.mkv", Source: "/source/a.mkv", RunID: "run", Identity: "video"}
+	second := model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: "/target/b.mkv", Source: "/source/b.mkv"}
 	r := organizer.Run{ID: "run", Purpose: "organize", State: "running", RecognitionID: "workspace", Mappings: []model.MediaMapping{first, second}, Ops: []organizer.Work{
 		{Operation: organizer.Operation{Kind: "video", Target: first.Path, Status: "completed"}},
 		{Operation: organizer.Operation{Kind: "video", Target: second.Path, Status: "manual_review"}},
@@ -193,7 +193,7 @@ func TestFileExecutionProjectionPreservesCompletedAndUnknownFiles(t *testing.T) 
 		t.Fatal(other, err)
 	}
 	r.ID = "skip"
-	r.Mappings = []model.MediaMapping{{Path: "/target/skip.mkv", Source: "/source/skip.mkv", RunID: "skip", Identity: "existing"}}
+	r.Mappings = []model.MediaMapping{{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: "/target/skip.mkv", Source: "/source/skip.mkv", RunID: "skip", Identity: "existing"}}
 	r.Ops = nil
 	r.State = "completed"
 	if err = s.SaveRun(r); err != nil {

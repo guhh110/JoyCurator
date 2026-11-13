@@ -2,56 +2,172 @@ package sqlite
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
 	"joycurator/internal/organizer"
 	"joycurator/internal/recognition"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
+// All modes use precisely the same 2000 paths. PureRecognition and SnapshotWrite
+// isolate execution and persistence; LightImport and FullDebug measure their
+// respective complete output modes.
 func BenchmarkRecognition2000(b *testing.B) {
-	store := openStore(b)
-	service, err := recognition.New(store, func() bool { return false })
+	benchmarkRecognition2000(b, recognition.DefaultPipeline())
+}
+
+// Frozen pre-optimization scripts model saved user rules: executor changes apply
+// to them without replacing their source with the new default templates.
+func BenchmarkRecognitionSavedRules2000(b *testing.B) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "tests", "backend", "recognition", "testdata", "execution-baseline-pipeline.json"))
 	if err != nil {
 		b.Fatal(err)
 	}
-	b.ReportAllocs()
-	b.ResetTimer()
+	var pipeline recognition.Pipeline
+	if err = json.Unmarshal(raw, &pipeline); err != nil {
+		b.Fatal(err)
+	}
+	benchmarkRecognition2000(b, pipeline)
+}
+
+func benchmarkRecognition2000(b *testing.B, pipeline recognition.Pipeline) {
+	engine, err := recognition.Compile(pipeline)
+	if err != nil {
+		b.Fatal(err)
+	}
 	paths := []string{}
 	for i := 0; i < 2000; i++ {
 		paths = append(paths, fmt.Sprintf("/source/Show/Season 1/Show.S01E%04d.1080p.mkv", i))
 	}
-	for n := 0; n < b.N; n++ {
-		result, id, err := service.ExtractTree(context.Background(), recognition.BatchInput{ContextRoot: "/source/Show", SourceBoundary: "/source", Paths: paths, Targets: paths}, "benchmark")
-		if err != nil || len(result.Files) != 2000 {
-			b.Fatal(len(result.Files), err)
-		}
-		b.StopTimer()
-		_, steps, err := store.TraceDetail(id)
-		if err != nil {
-			b.Fatal(err)
-		}
-		restored, err := recognition.RestoreBatch(steps)
-		if err != nil {
-			b.Fatal(err)
-		}
-		if len(restored.Files) != 2000 || len(restored.Documents) != 2000 {
-			b.Fatal("batch snapshot lost")
-		}
-		var snapshots int
-		for _, s := range steps {
-			if s.RuleConfig.ID != "" {
-				snapshots++
+	input := recognition.BatchInput{ContextRoot: "/source/Show", SourceBoundary: "/source", Paths: paths, Targets: paths}
+	b.Run("PureRecognition", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			result, err := engine.Snapshot(context.Background(), input)
+			if err != nil || len(result.Files) != len(paths) {
+				b.Fatal("recognition failed", err)
 			}
 		}
-		if snapshots != len(service.Current().Rules().Rules()) {
-			b.Fatal("duplicate rule snapshots", snapshots)
+	})
+	b.Run("SnapshotWrite", func(b *testing.B) {
+		store := openStore(b)
+		result, err := engine.Snapshot(context.Background(), input)
+		if err != nil {
+			b.Fatal(err)
 		}
-		b.StartTimer()
-	}
-
+		var dbPath, dbName string
+		var dbSequence int
+		if err = store.db.QueryRow("PRAGMA database_list").Scan(&dbSequence, &dbName, &dbPath); err != nil {
+			b.Fatal(err)
+		}
+		footprint := func() int64 {
+			var size int64
+			for _, p := range []string{dbPath, dbPath + "-wal"} {
+				if info, e := os.Stat(p); e == nil {
+					size += info.Size()
+				}
+			}
+			return size
+		}
+		beforeBytes := footprint()
+		var beforeRows, afterRows int64
+		if err = store.db.QueryRow("SELECT total_changes()").Scan(&beforeRows); err != nil {
+			b.Fatal(err)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			trace := recognition.Trace{ID: fmt.Sprint(n), Status: "running"}
+			if err := store.StartTrace(trace); err != nil {
+				b.Fatal(err)
+			}
+			trace.Status = "completed"
+			if err := store.FinishTrace(trace, result); err != nil {
+				b.Fatal(err)
+			}
+		}
+		b.StopTimer()
+		if err = store.db.QueryRow("SELECT total_changes()").Scan(&afterRows); err != nil {
+			b.Fatal(err)
+		}
+		b.ReportMetric(float64(afterRows-beforeRows)/float64(b.N), "sqlite_rows/op")
+		b.ReportMetric(float64(footprint()-beforeBytes)/float64(b.N), "db_growth_bytes/op")
+	})
+	b.Run("LightImport", func(b *testing.B) {
+		store := openStore(b)
+		service, err := recognition.New(store, func() bool { return false })
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err = service.Save(pipeline); err != nil {
+			b.Fatal(err)
+		}
+		var path, name string
+		var sequence int
+		if err = store.db.QueryRow("PRAGMA database_list").Scan(&sequence, &name, &path); err != nil {
+			b.Fatal(err)
+		}
+		footprint := func() int64 {
+			var size int64
+			for _, p := range []string{path, path + "-wal"} {
+				if info, e := os.Stat(p); e == nil {
+					size += info.Size()
+				}
+			}
+			return size
+		}
+		var before, after int64
+		if err = store.db.QueryRow("SELECT total_changes()").Scan(&before); err != nil {
+			b.Fatal(err)
+		}
+		bytesBefore := footprint()
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			result, id, err := service.ExtractTree(context.Background(), input, "benchmark")
+			if err != nil || len(result.Files) != 2000 {
+				b.Fatal(len(result.Files), err)
+			}
+			b.StopTimer()
+			_, restored, err := store.TraceDetail(id)
+			if err != nil || len(restored.Files) != 2000 || len(restored.Documents) != 2000 {
+				b.Fatal("snapshot lost", err)
+			}
+			b.StartTimer()
+		}
+		b.StopTimer()
+		if err = store.db.QueryRow("SELECT total_changes()").Scan(&after); err != nil {
+			b.Fatal(err)
+		}
+		b.ReportMetric(float64(after-before)/float64(b.N), "sqlite_rows/op")
+		b.ReportMetric(float64(footprint()-bytesBefore)/float64(b.N), "db_growth_bytes/op")
+	})
+	b.Run("FullDebug", func(b *testing.B) {
+		writer := &benchmarkWriter{}
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			result, err := engine.ExtractBatch(context.Background(), input, nil)
+			if err != nil || len(result.Files) != 2000 || len(result.Steps) == 0 {
+				b.Fatal("debug failed", err)
+			}
+			if err = json.NewEncoder(writer).Encode(result); err != nil {
+				b.Fatal(err)
+			}
+		}
+		b.ReportMetric(float64(writer.bytes)/float64(b.N), "response_bytes/op")
+		b.ReportMetric(0, "sqlite_rows/op")
+	})
 }
+
+type benchmarkWriter struct{ bytes int64 }
+
+func (w *benchmarkWriter) Write(p []byte) (int, error) { w.bytes += int64(len(p)); return len(p), nil }
 
 func BenchmarkRunHistory(b *testing.B) {
 	store := openStore(b)
@@ -86,7 +202,7 @@ func BenchmarkFileExecutionProjection1000(b *testing.B) {
 	for i := 0; i < 1000; i++ {
 		path := fmt.Sprintf("/target/%d.mkv", i)
 		run.Ops = append(run.Ops, organizer.Work{Operation: organizer.Operation{Kind: "video", Target: path, Status: "completed"}})
-		run.Mappings = append(run.Mappings, model.MediaMapping{Path: path, Source: fmt.Sprintf("/source/%d.mkv", i), RunID: run.ID, Identity: fmt.Sprint(i)})
+		run.Mappings = append(run.Mappings, model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: path, Source: fmt.Sprintf("/source/%d.mkv", i), RunID: run.ID, Identity: fmt.Sprint(i)})
 	}
 	if err := store.SaveRun(run); err != nil {
 		b.Fatal(err)

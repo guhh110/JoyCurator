@@ -1,6 +1,7 @@
 package organizer
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -10,6 +11,58 @@ import (
 
 	"joycurator/internal/infra/fsops"
 )
+
+type cancelAfterPartialCopy struct {
+	context.Context
+	op     *Operation
+	cancel context.CancelFunc
+}
+
+func (c cancelAfterPartialCopy) Err() error {
+	if c.op.Temp != "" {
+		if info, err := os.Stat(c.op.Temp); err == nil && info.Size() > 0 {
+			c.cancel()
+		}
+	}
+	return c.Context.Err()
+}
+
+func TestCancelPartialCopyKeepsSourceAndRemovesStaging(t *testing.T) {
+	for _, mode := range []string{"copy", "move"} {
+		t.Run(mode, func(t *testing.T) {
+			e, op, _ := fixture(t, mode)
+			if mode == "move" {
+				e.FS.DeviceOf = func(os.FileInfo) uint64 { return ^uint64(0) }
+			}
+			body := bytes.Repeat([]byte("video"), 2<<20)
+			if err := os.WriteFile(op.Source, body, 0644); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(op.Source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			op.Size, op.MTime = info.Size(), info.ModTime().UnixNano()
+			base, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			ctx := cancelAfterPartialCopy{base, op, cancel}
+			err = e.Run(ctx, op, func() error { return nil })
+			if !errors.Is(err, context.Canceled) || op.Status != "pending" || op.Temp != "" {
+				t.Fatal("partial copy was not cleaned up", op.Status, op.Temp, err)
+			}
+			if got, err := os.ReadFile(op.Source); err != nil || !bytes.Equal(got, body) {
+				t.Fatal("cancelled copy changed source", err)
+			}
+			if _, err := os.Stat(op.Target); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("cancelled copy published target", err)
+			}
+			staged, err := filepath.Glob(filepath.Join(filepath.Dir(op.Target), ".joycurator-*"))
+			if err != nil || len(staged) != 0 {
+				t.Fatal("cancelled copy left temporary files", staged, err)
+			}
+		})
+	}
+}
 
 func fixture(t *testing.T, mode string) (*Engine, *Operation, []byte) {
 	t.Helper()

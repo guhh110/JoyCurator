@@ -120,7 +120,7 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 		row := Row{Source: f.Path, Season: f.Season, Episodes: f.Episodes, Artifacts: []string{}, Issues: []string{}, Action: "create"}
 		fail := func(msg string) { row.Issues = append(row.Issues, msg); plan.Issues = append(plan.Issues, msg) }
 		info, e := a.access.Stat(f.Path)
-		if e != nil || !info.Mode().IsRegular() || info.Size() != f.Size || info.ModTime().UnixNano() != f.MTime || fsops.Identity(info)!=item.Identity {
+		if e != nil || !info.Mode().IsRegular() || info.Size() != f.Size || info.ModTime().UnixNano() != f.MTime || fsops.Identity(info) != item.Identity {
 			fail("源文件已变化，请重新添加：" + filepath.Base(f.Path))
 			plan.Rows = append(plan.Rows, row)
 			continue
@@ -140,7 +140,7 @@ func (a *Service) buildPreview(ctx context.Context, items []matching.Item, mode,
 			continue
 		}
 		row.Target = target
-		mapping := model.MediaMapping{Path: target, Source: f.Path, Type: entry.Type, TMDBID: entry.TMDBID, Season: f.Season, Episodes: f.Episodes, State: "pending"}
+		mapping := model.MediaMapping{Entry: &entry, Path: target, Source: f.Path, Type: entry.Type, TMDBID: entry.TMDBID, Season: f.Season, Episodes: f.Episodes, State: "pending"}
 		add(&row, Operation{Kind: "video", Mode: mode, Source: f.Path, Target: target, Size: f.Size, MTime: f.MTime, SourceIdentity: fsops.Identity(info)})
 		if row.Action == "skip" {
 			if existing, err := a.access.Stat(target); err == nil {

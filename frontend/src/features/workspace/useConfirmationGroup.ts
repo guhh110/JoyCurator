@@ -34,7 +34,7 @@ export function useConfirmationGroup(options: {
   const results = computed(() => {
     if (searchResults.value) return searchResults.value
     const found = new Map<string, Entry>()
-    for (const row of chosen.value) for (const work of [...(row.entry ? [row.entry] : []), ...row.file.candidates]) found.set(`${work.type}:${work.tmdbId}`, work)
+    for (const row of chosen.value) for (const work of (row.entry ? [row.entry] : [])) found.set(`${work.type}:${work.tmdbId}`, work)
     return [...found.values()]
   })
   let alive = true, searchRequest = 0, seasonsRequest: Promise<void> | null = null

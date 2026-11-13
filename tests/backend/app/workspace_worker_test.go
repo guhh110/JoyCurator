@@ -60,7 +60,7 @@ func TestCancelledWorkerPersistsTaskAndReleasesRegistration(t *testing.T) {
 			} else {
 				cancel()
 			}
-			service.recognize(ctx, cancel, matching.Workspace{Purpose: "organize", ID: "workspace", State: "running", Paths: []string{filepath.Join(source, "cancel.mkv")}}, model.Settings{}, nil)
+			service.recognize(ctx, cancel, matching.Workspace{Purpose: "organize", ID: "workspace", State: "running", Paths: []string{filepath.Join(source, "cancel.mkv")}}, model.Settings{})
 			want := "cancelled"
 			if shutdown {
 				want = "interrupted"
@@ -84,3 +84,8 @@ func (s *workspaceStore) CheckpointWorkspace(w *matching.Workspace, positions []
 }
 
 func (s *workspaceStore) Mapping(string) (*model.MediaMapping, error) { return nil, nil }
+
+func (s *workspaceStore) RecognitionProgress(_ string, completed, total int) error {
+	s.value.Completed, s.value.Total = completed, total
+	return nil
+}

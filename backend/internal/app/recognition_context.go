@@ -14,8 +14,11 @@ import (
 )
 
 // Context includes every descendant video. Targets alone are replaced in the workspace.
-func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets []string, s model.Settings, workspace, purpose string) (map[string]matching.Item, error) {
+// scanned contains the completed import walk, when available. A file import
+// still needs its parent scanned so sibling evidence is never lost.
+func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets []string, s model.Settings, workspace, purpose string, scanned map[string]fs.FileInfo, progress ...recognition.Progress) (map[string]matching.Item, error) {
 	roots := []string{}
+	scannedRoots := map[string]bool{}
 	for _, path := range imports {
 		relevant := false
 		for _, target := range targets {
@@ -36,6 +39,9 @@ func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets
 			root = filepath.Dir(path)
 		}
 		root = a.files.Access.Canonical(root)
+		if info != nil && info.IsDir() {
+			scannedRoots[root] = true
+		}
 		if !a.allowed(purpose, root, s) {
 			return nil, errors.New("上下文目录超出源目录范围")
 		}
@@ -59,6 +65,7 @@ func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets
 	}
 	sort.Strings(collapsed)
 	out := map[string]matching.Item{}
+	completed := 0
 	for _, root := range collapsed {
 		wanted := []string{}
 		for _, p := range targets {
@@ -77,7 +84,10 @@ func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets
 			excluded = []string{s.TargetRoot}
 			boundary = s.SourceRoot
 		}
-		err := scanner.Walk(ctx, a.files.Access, []string{root}, excluded, func(path string, info fs.FileInfo) error {
+		visit := func(path string, info fs.FileInfo) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if len(paths) >= 2000 {
 				return errors.New("目录上下文最多包含 2000 个视频，请缩小导入目录")
 			}
@@ -87,14 +97,33 @@ func (a *WorkspaceService) extractContexts(ctx context.Context, imports, targets
 			paths = append(paths, path)
 			infos[path] = info
 			return nil
+		}
+		var err error
+		if scanned != nil && scannedRoots[root] {
+			for path, info := range scanned {
+				if fsops.Within(root, path) {
+					if err = visit(path, info); err != nil {
+						break
+					}
+				}
+			}
+		} else {
+			err = scanner.Walk(ctx, a.files.Access, []string{root}, excluded, visit)
+		}
+		if err != nil {
+			return nil, err
+		}
+		sort.Strings(paths)
+		batch, trace, err := a.extract.ExtractTree(ctx, recognition.BatchInput{ContextRoot: root, SourceBoundary: boundary, Paths: paths, Targets: wanted}, workspace, func(done, total int) error {
+			if len(progress) > 0 && progress[0] != nil {
+				return progress[0](completed+done, len(targets))
+			}
+			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
-		batch, trace, err := a.extract.ExtractTree(ctx, recognition.BatchInput{ContextRoot: root, SourceBoundary: boundary, Paths: paths, Targets: wanted}, workspace)
-		if err != nil {
-			return nil, err
-		}
+		completed += len(wanted)
 		for _, f := range batch.Files {
 			out[f.Path] = itemFromMetadata(f.Path, infos[f.Path], f.Metadata, trace)
 		}

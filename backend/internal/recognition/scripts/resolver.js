@@ -1,19 +1,31 @@
 // 先确定季集，再从保留原文的片名候选中排除已确认的集数。
 function extract(ctx) {
   const rank = { explicit: 0, contextual: 1, heuristic: 2 },
-    states = new Map()
+    states = new Map(), eligibility = new Map(), orderCache = new Map(),
+    sourceDepths = new Map()
+  for (const f of ctx.files) {
+    const depths = new Map()
+    for (const source of f.sources) depths.set(source.id, source.depth)
+    sourceDepths.set(f.fileId, depths)
+  }
   const norm = (s) => (s || '').toLowerCase().replace(/[\s._-]/g, '')
   const ref = (f, c) => ({ fileId: f.fileId, candidateId: c.id })
   const unique = (refs) => [...new Map(refs.map((r) =>
     [r.fileId + '/' + r.candidateId, r])).values()]
   const depth = (f, c) => Math.min(...c.spans.map((p) =>
-    f.sources.find((s) => s.id === p.sourceId).depth))
+    sourceDepths.get(f.fileId).get(p.sourceId)))
   const compare = (f, a, b) => rank[a.strength] - rank[b.strength] ||
     depth(f, a) - depth(f, b) || a.spans[0].start - b.spans[0].start ||
     a.ruleId.localeCompare(b.ruleId) || a.id.localeCompare(b.id)
   const overlap = (a, b) => a.spans.some((x) => b.spans.some((y) =>
     x.sourceId === y.sourceId && x.start < y.end && x.end > y.start))
   function eligible(f, c) {
+    if (eligibility.has(c)) return eligibility.get(c)
+    const result = eligibleValue(f, c)
+    eligibility.set(c, result)
+    return result
+  }
+  function eligibleValue(f, c) {
     const ids = f.candidates.filter((x) => x.role === 'tmdbId')
     if (['season', 'episodes', 'year'].includes(c.role) && ids.some((x) => overlap(c, x)))
       return false
@@ -25,8 +37,15 @@ function extract(ctx) {
           eligible(f, x) && overlap(c, x))) return false
     return true
   }
-  const ordered = (f, role) => f.candidates.filter((c) => c.role === role && eligible(f, c))
-    .slice().sort((a, b) => compare(f, a, b))
+  function ordered(f, role) {
+    let cache = orderCache.get(f.fileId)
+    if (!cache) { cache = new Map(); orderCache.set(f.fileId, cache) }
+    if (cache.has(role)) return cache.get(role)
+    const result = f.candidates.filter((c) => c.role === role && eligible(f, c))
+      .sort((a, b) => compare(f, a, b))
+    cache.set(role, result)
+    return result
+  }
   function first(f, role) {
     const c = ordered(f, role)[0]
     return c && c.status === 'valid' ? c : null

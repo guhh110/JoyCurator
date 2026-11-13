@@ -9,6 +9,7 @@ import (
 type WorkspaceStore interface {
 	Workspace(string) (matching.Workspace, error)
 	SaveWorkspace(*matching.Workspace) error
+	RecognitionProgress(string, int, int) error
 	CheckpointWorkspace(*matching.Workspace, []int) error
 	LatestWorkspace(string) (*matching.Workspace, error)
 	FileExecutions(string) (map[string]matching.FileExecution, error)

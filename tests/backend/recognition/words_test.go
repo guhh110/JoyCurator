@@ -61,7 +61,7 @@ func TestSharedChinesePathWithWordAnnotations(t *testing.T) {
 	if !reflect.DeepEqual(titles, []string{"斗破苍穹 三年之约", "HD1080P", "无水印 去片头片尾纯享版 AAC H264 AVC 酷安 此间微凉"}) {
 		t.Fatal(titles)
 	}
-	restored, err := r.RestoreBatch(got.Steps)
+	restored, err := r.DefaultEngine().Snapshot(context.Background(), got.Context)
 	if err != nil || !reflect.DeepEqual(restored.Files, got.Files) {
 		t.Fatal(restored.Files, err)
 	}

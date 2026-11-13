@@ -9,7 +9,7 @@ import (
 type memoryStore struct {
 	rules              Pipeline
 	trace              Trace
-	steps              []Step
+	snapshot           Snapshot
 	saveErr, finishErr error
 	afterStart         func()
 }
@@ -24,7 +24,7 @@ func (s *memoryStore) SaveRules(rules Pipeline) error {
 }
 func (s *memoryStore) StartTrace(value Trace) error {
 	s.trace = value
-	s.steps = nil
+	s.snapshot = Snapshot{}
 	if s.afterStart != nil {
 		f := s.afterStart
 		s.afterStart = nil
@@ -32,19 +32,19 @@ func (s *memoryStore) StartTrace(value Trace) error {
 	}
 	return nil
 }
-func (s *memoryStore) FinishTrace(value Trace, steps []Step) error {
+func (s *memoryStore) FinishTrace(value Trace, snapshot Snapshot) error {
 	if s.finishErr != nil {
 		return s.finishErr
 	}
 	s.trace = value
-	s.steps = steps
+	s.snapshot = snapshot
 	return nil
 }
 func (s *memoryStore) TraceHistory(int, string, string) ([]Trace, int, error) {
 	return []Trace{s.trace}, 1, nil
 }
-func (s *memoryStore) TraceDetail(string) (Trace, []Step, error) {
-	return s.trace, s.steps, nil
+func (s *memoryStore) TraceDetail(string) (Trace, Snapshot, error) {
+	return s.trace, s.snapshot, nil
 }
 func (s *memoryStore) DeleteTrace(string) error { return nil }
 func extractionFixture(t *testing.T) (*Service, *memoryStore) {
@@ -88,25 +88,25 @@ func TestFileUsesOneSnapshotWhileNextUsesSavedPipeline(t *testing.T) {
 		}
 	}
 	result, id, err := service.ExtractFile(context.Background(), "/source/Show.S02E03.mkv", "/source", "workspace")
-	if err != nil || id == "" || len(result.Steps) != count || len(store.steps) != count || result.Metadata.Season == nil || *result.Metadata.Season != 2 {
+	if err != nil || id == "" || len(result.Steps) != 0 || len(store.snapshot.Pipeline.Rules()) != count || result.Metadata.Season == nil || *result.Metadata.Season != 2 {
 		t.Fatal(result.Metadata, len(result.Steps), err)
 	}
 	if store.trace.Status != "completed" || store.trace.WorkspaceID != "workspace" {
 		t.Fatal(store.trace)
 	}
 	next, _, err := service.ExtractFile(context.Background(), "/source/Show.S02E03.mkv", "/source", "workspace")
-	if err != nil || len(next.Steps) != 2 || next.Metadata.Title != nil {
+	if err != nil || len(next.Steps) != 0 || len(store.snapshot.Pipeline.Rules()) != 2 || next.Metadata.Title != nil {
 		t.Fatal(next, err)
 	}
 }
 
-func TestCancellationAndStorageFailurePreserveCompletedSteps(t *testing.T) {
+func TestCancellationAndStorageFailurePreserveRetryableSnapshotState(t *testing.T) {
 	service, store := extractionFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	store.afterStart = cancel
 	result, _, err := service.ExtractFile(ctx, "/source/Show.S02E03.mkv", "/source", "workspace")
-	if !errors.Is(err, context.Canceled) || store.trace.Status != "cancelled" || len(store.steps) != 1 || result.Steps[0].Status != "skipped" {
-		t.Fatal(store.trace.Status, len(store.steps), err)
+	if !errors.Is(err, context.Canceled) || store.trace.Status != "cancelled" || len(store.snapshot.Diagnostics) != 0 || len(result.Steps) != 0 {
+		t.Fatal(store.trace.Status, len(store.snapshot.Documents), err)
 	}
 	store.finishErr = errors.New("cannot append trace")
 	_, _, err = service.ExtractFile(context.Background(), "/source/file.mkv", "/source", "")

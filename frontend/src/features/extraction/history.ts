@@ -5,7 +5,7 @@ import { api, name } from '../../api'
 import { confirmAction } from '../../app/confirm'
 import { keys } from '../../app/query'
 import { pageNumber } from '../../app/routing'
-import type { ExtractionResult, Trace } from './model'
+import type { RecognitionSnapshot, Trace } from './model'
 import { notify, useToastFeedback } from '../../app/toast'
 
 export const historyStates: Record<string, string> = {
@@ -38,7 +38,7 @@ export function useHistoryList(page: Ref<number>, path: Ref<string>) {
 export function useHistoryDetail(id: Ref<string>) {
   return useQuery({
     queryKey: computed(() => keys.trace(id.value)),
-    queryFn: ({ signal }) => api<ExtractionResult & { trace: Trace }>(
+    queryFn: ({ signal }) => api<RecognitionSnapshot & { trace: Trace }>(
       `/extraction/traces/${encodeURIComponent(id.value)}`, undefined, 'GET', { signal },
     ),
     staleTime: 0,
@@ -60,7 +60,7 @@ export function useTraceRemoval(afterDelete: () => Promise<unknown>) {
     try {
       const accepted = await confirmAction({
         title: '清理这条识别历史？',
-        description: `清理「${name(trace.path)}」本次执行的轨迹和步骤？不会删除文件或影响工作区识别结果，清理后无法撤销。`,
+        description: `清理「${name(trace.path)}」本次识别快照？不会删除文件或影响工作区识别结果，清理后无法撤销。`,
         confirmLabel: '确认清理', destructive: true,
       })
       if (!accepted) return

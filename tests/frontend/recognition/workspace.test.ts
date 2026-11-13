@@ -23,9 +23,9 @@ function file(
       episodes: [],
     },
     entry: null,
-    candidates: [],
     selected: false,
     removed: false,
+    edited: false,
     reason: '',
   }
 }

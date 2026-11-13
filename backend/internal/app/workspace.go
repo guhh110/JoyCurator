@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"sync"
 	"time"
 
 	"joycurator/internal/matching"
@@ -14,16 +15,17 @@ import (
 )
 
 type WorkspaceService struct {
-	store       WorkspaceStore
-	settings    SettingsReader
-	factory     matching.Factory
-	extract     *recognition.Service
-	files       WorkspaceFiles
-	coordinator *organizer.Coordinator
+	recognitionFailures sync.Map
+	store               WorkspaceStore
+	settings            SettingsReader
+	factory             matching.Factory
+	extract             *recognition.Service
+	files               WorkspaceFiles
+	coordinator         *organizer.Coordinator
 }
 
 func NewWorkspace(store WorkspaceStore, settings SettingsReader, factory matching.Factory, extract *recognition.Service, files WorkspaceFiles, c *organizer.Coordinator) *WorkspaceService {
-	return &WorkspaceService{store, settings, factory, extract, files, c}
+	return &WorkspaceService{store: store, settings: settings, factory: factory, extract: extract, files: files, coordinator: c}
 }
 func (a *WorkspaceService) Read(id string) (matching.Workspace, error) {
 	task, err := a.store.Workspace(id)
@@ -33,6 +35,9 @@ func (a *WorkspaceService) Read(id string) (matching.Workspace, error) {
 	return a.project(task)
 }
 func (a *WorkspaceService) project(task matching.Workspace) (matching.Workspace, error) {
+	if message, ok := a.recognitionFailures.Load(task.ID); ok && task.State == "running" {
+		task.State, task.Error = "failed", message.(string)
+	}
 	states, err := a.store.FileExecutions(task.ID)
 	if err != nil {
 		return task, err
@@ -84,13 +89,7 @@ func (a *WorkspaceService) Start(paths []string, retryID, purpose string) (match
 	if err != nil {
 		return matching.Workspace{}, err
 	}
-	client, err := a.factory(s, nil)
-	if err != nil {
-		return matching.Workspace{}, err
-	}
-	if s.Token == "" {
-		return matching.Workspace{}, errors.New("请先配置 TMDB API Read Access Token")
-	}
+
 	if purpose != "organize" && purpose != "scrape" {
 		return matching.Workspace{}, errors.New("工作区用途无效")
 	}
@@ -103,9 +102,6 @@ func (a *WorkspaceService) Start(paths []string, retryID, purpose string) (match
 		if task.Purpose != purpose {
 			return task, errors.New("工作区用途不符")
 		}
-		if task.State == "running" {
-			return task, errors.New("识别任务仍在运行")
-		}
 		if len(paths) > 0 {
 			for _, item := range task.Items {
 				if item.State == "reidentifying" {
@@ -114,6 +110,7 @@ func (a *WorkspaceService) Start(paths []string, retryID, purpose string) (match
 			}
 		}
 		task.State, task.Error = "running", ""
+		task.Completed, task.Total = 0, 0
 		if len(paths) > 0 {
 			seen := map[string]bool{}
 			for _, path := range task.Paths {
@@ -172,11 +169,12 @@ func (a *WorkspaceService) Start(paths []string, retryID, purpose string) (match
 	if err = a.store.SaveWorkspace(&task); err != nil {
 		return task, err
 	}
+	a.recognitionFailures.Delete(task.ID)
 	ctx, cancel := context.WithCancel(context.Background())
 	a.coordinator.TrackRecognitionLocked(task.ID, cancel)
 	var workerTask matching.Workspace
 	_ = json.Unmarshal([]byte(jsonText(task)), &workerTask)
-	go a.recognize(ctx, cancel, workerTask, s, client)
+	go a.recognize(ctx, cancel, workerTask, s)
 	return task, nil
 }
 func (a *WorkspaceService) Cancel(id string) error { return a.coordinator.CancelRecognition(id) }

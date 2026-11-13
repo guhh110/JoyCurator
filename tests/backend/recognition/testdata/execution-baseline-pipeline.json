@@ -1,0 +1,387 @@
+{
+  "tokenizer": {
+    "id": "tokenizer",
+    "name": "分词",
+    "stage": "tokenize",
+    "order": 0,
+    "enabled": true,
+    "kind": "script",
+    "config": {
+      "code": "// 仅拆分文本，所有位置均为 UTF-16。\nfunction extract(ctx) {\n  const han = [\n    [0x2e80, 0x2e99],\n    [0x2e9b, 0x2ef3],\n    [0x2f00, 0x2fd5],\n    [0x3005, 0x3005],\n    [0x3007, 0x3007],\n    [0x3021, 0x3029],\n    [0x3038, 0x303b],\n    [0x3400, 0x4dbf],\n    [0x4e00, 0x9fff],\n    [0xf900, 0xfa6d],\n    [0xfa70, 0xfad9],\n    [0x16fe2, 0x16fe3],\n    [0x16ff0, 0x16ff1],\n    [0x20000, 0x2a6df],\n    [0x2a700, 0x2b739],\n    [0x2b740, 0x2b81d],\n    [0x2b820, 0x2cea1],\n    [0x2ceb0, 0x2ebe0],\n    [0x2ebf0, 0x2ee5d],\n    [0x2f800, 0x2fa1d],\n    [0x30000, 0x3134a],\n    [0x31350, 0x323af],\n  ]\n  const result = [],\n    opens = { '[': ']', '【': '】', '(': ')', '（': '）', '{': '}' }\n  for (const source of ctx.sources) {\n    const text = source.text,\n      pairs = new Map(),\n      stack = []\n    for (let i = 0; i \u003c text.length; i++) {\n      const ch = text[i]\n      if (opens[ch]) stack.push(i)\n      else if (stack.length \u0026\u0026 opens[text[stack[stack.length - 1]]] === ch)\n        pairs.set(stack.pop(), i)\n    }\n    function isWord(ch) {\n      const code = ch.codePointAt(0)\n      return (\n        /[A-Za-z0-9]/.test(ch) ||\n        han.some(([lo, hi]) =\u003e code \u003e= lo \u0026\u0026 code \u003c= hi)\n      )\n    }\n    function add(type, start, end, parentId) {\n      const token = {\n        id: 't' + result.length,\n        sourceId: source.id,\n        parentId,\n        kind: type,\n        text: text.slice(start, end),\n        start,\n        end,\n      }\n      result.push(token)\n      return token.id\n    }\n    function walk(start, end, parentId, depth) {\n      if (depth \u003e 16) throw new Error('分组深度超过 16 层')\n      let i = start\n      while (i \u003c end) {\n        const close = pairs.get(i)\n        if (close !== undefined \u0026\u0026 close \u003c end) {\n          const id = add('group', i, close + 1, parentId)\n          walk(i + 1, close, id, depth + 1)\n          i = close + 1\n          continue\n        }\n        const ch = String.fromCodePoint(text.codePointAt(i)),\n          word = isWord(ch)\n        let j = i + ch.length\n        while (j \u003c end \u0026\u0026 !pairs.has(j)) {\n          const next = String.fromCodePoint(text.codePointAt(j))\n          if (isWord(next) !== word) break\n          j += next.length\n        }\n        const type = word\n          ? /^[0-9]+$/.test(text.slice(i, j))\n            ? 'number'\n            : 'text'\n          : 'separator'\n        add(type, i, j, parentId)\n        i = j\n      }\n    }\n    walk(0, text.length, null, 0)\n  }\n  trace('分词完成', { sources: ctx.sources.length, tokens: result.length })\n  return result\n}\n"
+    },
+    "examples": [
+      {
+        "paths": [
+          "/source/Film.mkv"
+        ],
+        "root": "/source",
+        "targets": [
+          "/source/Film.mkv"
+        ],
+        "expected": [
+          [
+            {
+              "id": "t0",
+              "sourceId": "name",
+              "parentId": null,
+              "kind": "text",
+              "text": "Film",
+              "start": 0,
+              "end": 4
+            }
+          ]
+        ]
+      },
+      {
+        "paths": [
+          "/source/第3集.HD1080P.mkv"
+        ],
+        "root": "/source",
+        "targets": [
+          "/source/第3集.HD1080P.mkv"
+        ],
+        "expected": [
+          [
+            {
+              "id": "t0",
+              "sourceId": "name",
+              "parentId": null,
+              "kind": "text",
+              "text": "第3集",
+              "start": 0,
+              "end": 3
+            },
+            {
+              "id": "t1",
+              "sourceId": "name",
+              "parentId": null,
+              "kind": "separator",
+              "text": ".",
+              "start": 3,
+              "end": 4
+            },
+            {
+              "id": "t2",
+              "sourceId": "name",
+              "parentId": null,
+              "kind": "text",
+              "text": "HD1080P",
+              "start": 4,
+              "end": 11
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "annotators": [
+    {
+      "id": "tmdb-id",
+      "name": "TMDB ID",
+      "stage": "annotate",
+      "target": "tmdbId",
+      "source": "all",
+      "order": 10,
+      "enabled": true,
+      "kind": "script",
+      "config": {
+        "code": "// 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。\nfunction item(source, start, end, value, strength, reason, status) {\n  return {\n    value,\n    spans: [{ sourceId: source.id, start, end }],\n    strength: strength || 'explicit',\n    status: status || 'valid',\n    reason,\n  }\n}\nfunction runs(ctx, source) {\n  const parents = new Map(),\n    result = []\n  for (const t of ctx.tokens)\n    if (t.sourceId === source.id) {\n      const key = t.parentId,\n        list = parents.get(key) || []\n      list.push(t)\n      parents.set(key, list)\n    }\n  for (const [parentId, list] of parents) {\n    list.sort((a, b) =\u003e a.start - b.start)\n    let sequence = []\n    function flush() {\n      if (sequence.length)\n        result.push({\n          parentId,\n          words: sequence,\n          start: sequence[0].start,\n          end: sequence[sequence.length - 1].end,\n        })\n      sequence = []\n    }\n    for (const t of list) {\n      if (t.kind === 'group') flush()\n      else if (t.kind === 'text' || t.kind === 'number') sequence.push(t)\n    }\n    flush()\n  }\n  return result.sort((a, b) =\u003e a.start - b.start)\n}\nfunction scan(ctx, source, pattern) {\n  const result = []\n  for (const run of runs(ctx, source))\n    for (const m of source.text.slice(run.start, run.end).matchAll(pattern)) {\n      m.index += run.start\n      result.push(m)\n    }\n  return result.sort((a, b) =\u003e a.index - b.index)\n}\n\nfunction extract(ctx) {\n  const out = []\n  for (const s of ctx.sources)\n    for (const m of scan(ctx, s, /tmdb[-= ]?(\\d+)/gi)) {\n      const n = Number(m[1]),\n        valid = n \u003e 0 \u0026\u0026 n \u003c= 999999999\n      out.push(\n        item(\n          s,\n          m.index,\n          m.index + m[0].length,\n          n,\n          'explicit',\n          valid ? 'TMDB 标记' : 'tmdbId 提取值类型或范围无效',\n          valid ? 'valid' : 'invalid',\n        ),\n      )\n    }\n  return out\n}\n"
+      },
+      "examples": [
+        {
+          "paths": [
+            "/source/Film.tmdb-7.mkv"
+          ],
+          "root": "/source",
+          "targets": [
+            "/source/Film.tmdb-7.mkv"
+          ],
+          "expected": [
+            [
+              {
+                "id": "tmdb-id:0",
+                "ruleId": "tmdb-id",
+                "role": "tmdbId",
+                "value": 7,
+                "spans": [
+                  {
+                    "sourceId": "name",
+                    "start": 5,
+                    "end": 11
+                  }
+                ],
+                "strength": "explicit",
+                "status": "valid",
+                "reason": "TMDB 标记"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "season",
+      "name": "季号",
+      "stage": "annotate",
+      "target": "season",
+      "source": "all",
+      "order": 20,
+      "enabled": true,
+      "kind": "script",
+      "config": {
+        "code": "// 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。\nfunction item(source, start, end, value, strength, reason, status) {\n  return {\n    value,\n    spans: [{ sourceId: source.id, start, end }],\n    strength: strength || 'explicit',\n    status: status || 'valid',\n    reason,\n  }\n}\nfunction words(ctx, source) {\n  return ctx.tokens\n    .filter(\n      (t) =\u003e\n        t.sourceId === source.id \u0026\u0026 (t.kind === 'text' || t.kind === 'number'),\n    )\n    .sort((a, b) =\u003e a.start - b.start)\n}\nfunction runs(ctx, source) {\n  const parents = new Map(),\n    result = []\n  for (const t of ctx.tokens)\n    if (t.sourceId === source.id) {\n      const key = t.parentId,\n        list = parents.get(key) || []\n      list.push(t)\n      parents.set(key, list)\n    }\n  for (const [parentId, list] of parents) {\n    list.sort((a, b) =\u003e a.start - b.start)\n    let sequence = []\n    function flush() {\n      if (sequence.length)\n        result.push({\n          parentId,\n          words: sequence,\n          start: sequence[0].start,\n          end: sequence[sequence.length - 1].end,\n        })\n      sequence = []\n    }\n    for (const t of list) {\n      if (t.kind === 'group') flush()\n      else if (t.kind === 'text' || t.kind === 'number') sequence.push(t)\n    }\n    flush()\n  }\n  return result.sort((a, b) =\u003e a.start - b.start)\n}\nfunction scan(ctx, source, pattern) {\n  const result = []\n  for (const run of runs(ctx, source))\n    for (const m of source.text.slice(run.start, run.end).matchAll(pattern)) {\n      m.index += run.start\n      result.push(m)\n    }\n  return result.sort((a, b) =\u003e a.index - b.index)\n}\nfunction number(text) {\n  if (/^\\d+$/.test(text)) return Number(text)\n  const digits = {\n      零: 0,\n      〇: 0,\n      一: 1,\n      二: 2,\n      两: 2,\n      三: 3,\n      四: 4,\n      五: 5,\n      六: 6,\n      七: 7,\n      八: 8,\n      九: 9,\n    },\n    units = { 十: 10, 百: 100, 千: 1000 }\n  if (!/[十百千]/.test(text))\n    return Number(\n      text\n        .split('')\n        .map((c) =\u003e digits[c])\n        .join(''),\n    )\n  let total = 0,\n    digit = null,\n    previous = 10000,\n    zero = false\n  for (let i = 0; i \u003c text.length; i++) {\n    let c = text[i],\n      u = units[c]\n    if (u) {\n      if (u \u003e= previous || zero || (digit === null \u0026\u0026 !(u === 10 \u0026\u0026 i === 0)))\n        throw Error('中文集号无效')\n      total += (digit === null ? 1 : digit) * u\n      previous = u\n      digit = null\n    } else if (digits[c] === 0) {\n      if (\n        !total ||\n        digit !== null ||\n        zero ||\n        previous === 10 ||\n        i === text.length - 1\n      )\n        throw Error('中文集号无效')\n      zero = true\n    } else {\n      if (digit !== null || digits[c] === undefined) throw Error('中文集号无效')\n      digit = digits[c]\n      zero = false\n    }\n  }\n  return total + (digit === null ? 0 : digit)\n}\n\nfunction extract(ctx) {\n  const out = []\n  for (const s of ctx.sources) {\n    for (const m of scan(\n      ctx,\n      s,\n      /s(\\d+)e(\\d+)((?:\\s*(?:-\\s*e?|e)\\d+)*)|\\b(\\d+)x(\\d+)/gi,\n    )) {\n      let n = Number(m[1] || m[4]),\n        episode = m[2] || m[5],\n        valid = n \u003c= 999 \u0026\u0026 episode.length \u003c= 4\n      out.push(\n        item(\n          s,\n          m.index,\n          m.index + m[0].length,\n          n,\n          'explicit',\n          valid ? '季集标记' : '季集标记中的数字超出范围',\n          valid ? 'valid' : 'invalid',\n        ),\n      )\n    }\n    for (const m of scan(\n      ctx,\n      s,\n      /(?:^|[ ._\\-\\[【(])s(\\d{1,3})(?=$|[ ._\\-\\]】)])/gi,\n    ))\n      out.push(\n        item(\n          s,\n          m.index,\n          m.index + m[0].length,\n          Number(m[1]),\n          'explicit',\n          '独立季标记',\n        ),\n      )\n    for (const m of scan(\n      ctx,\n      s,\n      /第\\s*([0-9零〇一二两三四五六七八九十百千]+)\\s*季|season\\s*(\\d+)/gi,\n    )) {\n      let n\n      try {\n        n = number(m[1] || m[2])\n      } catch (e) {\n        out.push(\n          item(\n            s,\n            m.index,\n            m.index + m[0].length,\n            null,\n            'explicit',\n            e.message,\n            'invalid',\n          ),\n        )\n        continue\n      }\n      out.push(\n        item(\n          s,\n          m.index,\n          m.index + m[0].length,\n          n,\n          'explicit',\n          '中文或英文季标记',\n          n \u003c= 999 ? 'valid' : 'invalid',\n        ),\n      )\n    }\n    if (\n      s.kind === 'directories' \u0026\u0026\n      /^(?:specials?|特别篇|特別篇)$/i.test(\n        words(ctx, s)\n          .map((t) =\u003e t.text)\n          .join(' '),\n      )\n    )\n      out.push(item(s, 0, s.text.length, 0, 'explicit', '特别篇目录'))\n  }\n  return out\n}\n"
+      },
+      "examples": []
+    },
+    {
+      "id": "year",
+      "name": "年份",
+      "stage": "annotate",
+      "target": "year",
+      "source": "all",
+      "order": 30,
+      "enabled": true,
+      "kind": "script",
+      "config": {
+        "code": "// 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。\nfunction item(source, start, end, value, strength, reason, status) {\n  return {\n    value,\n    spans: [{ sourceId: source.id, start, end }],\n    strength: strength || 'explicit',\n    status: status || 'valid',\n    reason,\n  }\n}\nfunction words(ctx, source) {\n  return ctx.tokens\n    .filter(\n      (t) =\u003e\n        t.sourceId === source.id \u0026\u0026 (t.kind === 'text' || t.kind === 'number'),\n    )\n    .sort((a, b) =\u003e a.start - b.start)\n}\nfunction runs(ctx, source) {\n  const parents = new Map(),\n    result = []\n  for (const t of ctx.tokens)\n    if (t.sourceId === source.id) {\n      const key = t.parentId,\n        list = parents.get(key) || []\n      list.push(t)\n      parents.set(key, list)\n    }\n  for (const [parentId, list] of parents) {\n    list.sort((a, b) =\u003e a.start - b.start)\n    let sequence = []\n    function flush() {\n      if (sequence.length)\n        result.push({\n          parentId,\n          words: sequence,\n          start: sequence[0].start,\n          end: sequence[sequence.length - 1].end,\n        })\n      sequence = []\n    }\n    for (const t of list) {\n      if (t.kind === 'group') flush()\n      else if (t.kind === 'text' || t.kind === 'number') sequence.push(t)\n    }\n    flush()\n  }\n  return result.sort((a, b) =\u003e a.start - b.start)\n}\nfunction scan(ctx, source, pattern) {\n  const result = []\n  for (const run of runs(ctx, source))\n    for (const m of source.text.slice(run.start, run.end).matchAll(pattern)) {\n      m.index += run.start\n      result.push(m)\n    }\n  return result.sort((a, b) =\u003e a.index - b.index)\n}\n\nfunction extract(ctx) {\n  const min = ctx.params.min ?? 1900,\n    max = ctx.params.max ?? 2099,\n    out = []\n  if (min \u003c 1 || max \u003e 9999 || min \u003e max) throw Error('年份参数 min/max 无效')\n  for (const s of ctx.sources)\n    for (const m of scan(ctx, s, /\\b\\d{4}\\b/g)) {\n      const n = Number(m[0]),\n        before = words(ctx, s).some(\n          (t) =\u003e\n            t.parentId === null \u0026\u0026\n            t.start \u003c m.index,\n        )\n      if (n \u003e= min \u0026\u0026 n \u003c= max \u0026\u0026 before)\n        out.push(item(s, m.index, m.index + 4, n, 'explicit', '片名后年份'))\n    }\n  return out\n}\n",
+        "params": {
+          "min": 1900,
+          "max": 2099
+        }
+      },
+      "examples": []
+    },
+    {
+      "id": "episodes",
+      "name": "集数",
+      "stage": "annotate",
+      "target": "episodes",
+      "source": "all",
+      "order": 40,
+      "enabled": true,
+      "kind": "script",
+      "config": {
+        "code": "// 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。\nfunction item(source, start, end, value, strength, reason, status) {\n  return {\n    value,\n    spans: [{ sourceId: source.id, start, end }],\n    strength: strength || 'explicit',\n    status: status || 'valid',\n    reason,\n  }\n}\nfunction words(ctx, source) {\n  return ctx.tokens\n    .filter(\n      (t) =\u003e\n        t.sourceId === source.id \u0026\u0026 (t.kind === 'text' || t.kind === 'number'),\n    )\n    .sort((a, b) =\u003e a.start - b.start)\n}\nfunction runs(ctx, source) {\n  const parents = new Map(),\n    result = []\n  for (const t of ctx.tokens)\n    if (t.sourceId === source.id) {\n      const key = t.parentId,\n        list = parents.get(key) || []\n      list.push(t)\n      parents.set(key, list)\n    }\n  for (const [parentId, list] of parents) {\n    list.sort((a, b) =\u003e a.start - b.start)\n    let sequence = []\n    function flush() {\n      if (sequence.length)\n        result.push({\n          parentId,\n          words: sequence,\n          start: sequence[0].start,\n          end: sequence[sequence.length - 1].end,\n        })\n      sequence = []\n    }\n    for (const t of list) {\n      if (t.kind === 'group') flush()\n      else if (t.kind === 'text' || t.kind === 'number') sequence.push(t)\n    }\n    flush()\n  }\n  return result.sort((a, b) =\u003e a.start - b.start)\n}\nfunction scan(ctx, source, pattern) {\n  const result = []\n  for (const run of runs(ctx, source))\n    for (const m of source.text.slice(run.start, run.end).matchAll(pattern)) {\n      m.index += run.start\n      result.push(m)\n    }\n  return result.sort((a, b) =\u003e a.index - b.index)\n}\nfunction isYear(n) {\n  return n \u003e= 1900 \u0026\u0026 n \u003c= 2099\n}\nfunction number(text) {\n  if (/^\\d+$/.test(text)) return Number(text)\n  const digits = {\n      零: 0,\n      〇: 0,\n      一: 1,\n      二: 2,\n      两: 2,\n      三: 3,\n      四: 4,\n      五: 5,\n      六: 6,\n      七: 7,\n      八: 8,\n      九: 9,\n    },\n    units = { 十: 10, 百: 100, 千: 1000 }\n  if (!/[十百千]/.test(text))\n    return Number(\n      text\n        .split('')\n        .map((c) =\u003e digits[c])\n        .join(''),\n    )\n  let total = 0,\n    digit = null,\n    previous = 10000,\n    zero = false\n  for (let i = 0; i \u003c text.length; i++) {\n    let c = text[i],\n      u = units[c]\n    if (u) {\n      if (u \u003e= previous || zero || (digit === null \u0026\u0026 !(u === 10 \u0026\u0026 i === 0)))\n        throw Error('中文集号无效')\n      total += (digit === null ? 1 : digit) * u\n      previous = u\n      digit = null\n    } else if (digits[c] === 0) {\n      if (\n        !total ||\n        digit !== null ||\n        zero ||\n        previous === 10 ||\n        i === text.length - 1\n      )\n        throw Error('中文集号无效')\n      zero = true\n    } else {\n      if (digit !== null || digits[c] === undefined) throw Error('中文集号无效')\n      digit = digits[c]\n      zero = false\n    }\n  }\n  return total + (digit === null ? 0 : digit)\n}\n\nfunction extract(ctx) {\n  const out = [],\n    s = ctx.sources[0]\n  let marked = false\n  for (const m of scan(\n    ctx,\n    s,\n    /s(\\d+)e(\\d+)((?:\\s*(?:-\\s*e?|e)\\d+)*)|\\b(\\d+)x(\\d+)/gi,\n  )) {\n    marked = true\n    let values = [Number(m[2] || m[5])],\n      reason = '季集标记',\n      status = 'valid'\n    try {\n      if ((m[2] || m[5]).length \u003e 4 || Number(m[1] || m[4]) \u003e 999)\n        throw Error('季集标记中的数字超出范围')\n      for (const part of (m[3] || '').matchAll(/(-?)\\s*e?(\\d+)/gi)) {\n        const n = Number(part[2]),\n          last = values[values.length - 1]\n        if (n \u003e 9999) throw Error('季集标记中的数字超出范围')\n        if (part[1]) {\n          if (n \u003c= last || n - values[0] \u003e= 1000) throw Error('合并集范围无效')\n          for (let x = last + 1; x \u003c= n; x++) values.push(x)\n        } else values.push(n)\n      }\n      if (new Set(values).size !== values.length)\n        throw Error('集数超出范围或重复')\n    } catch (e) {\n      reason = e.message\n      status = 'invalid'\n    }\n    out.push(\n      item(\n        s,\n        m.index,\n        m.index + m[0].length,\n        values,\n        'explicit',\n        reason,\n        status,\n      ),\n    )\n  }\n\n  if (marked) return out\n  for (const m of scan(\n    ctx,\n    s,\n    /第\\s*([0-9零〇一二两三四五六七八九十百千]{1,16})\\s*[集话話]/g,\n  )) {\n    try {\n      out.push(\n        item(\n          s,\n          m.index,\n          m.index + m[0].length,\n          [number(m[1])],\n          'explicit',\n          '中文集号',\n        ),\n      )\n    } catch (e) {\n      out.push(\n        item(\n          s,\n          m.index,\n          m.index + m[0].length,\n          null,\n          'explicit',\n          e.message,\n          'invalid',\n        ),\n      )\n    }\n  }\n  if (out.length) return out\n  // E/EP 和数字加“集/话”是明确标记；裸数字留给目录裁决。\n  for (const run of runs(ctx, s)) {\n    const text = s.text.slice(run.start, run.end)\n    for (const m of text.matchAll(/(?:^|[ ._-])(ep?[ ._-]*(\\d+)|((?:\\d)+)[集话話])(?=$|[ ._-])/gi)) {\n      const raw = m[2] || m[3],\n        start = run.start + m.index + m[0].length - m[1].length,\n        end = start + m[1].length\n      out.push(item(s, start, end, raw.length \u003c= 4 ? [Number(raw)] : null,\n        'explicit', raw.length \u003c= 4 ? '显式集号' : '集数超出范围',\n        raw.length \u003c= 4 ? 'valid' : 'invalid'))\n    }\n  }\n  if (out.length) return out\n  function guess(start, raw) {\n    const n = Number(raw)\n    if (raw.length \u003e 4 || isYear(n)) return\n    if (out.some((c) =\u003e c.spans[0].start === start \u0026\u0026 c.spans[0].end === start + raw.length)) return\n    out.push(item(s, start, start + raw.length, [n], 'heuristic', '数字片段，待目录裁决'))\n  }\n  for (const t of words(ctx, s)) {\n    if (t.kind === 'number') guess(t.start, t.text)\n    // 季标记后的紧邻数字是可解释的位置，不扫描其他混合词中的数字。\n    for (const m of t.text.matchAll(/第[0-9零〇一二两三四五六七八九十百千]+季(\\d+)/g))\n      guess(t.start + m.index + m[0].length - m[1].length, m[1])\n  }\n  return out\n}\n"
+      },
+      "examples": [
+        {
+          "paths": [
+            "/source/作品第一季03.mp4"
+          ],
+          "root": "/source",
+          "targets": [
+            "/source/作品第一季03.mp4"
+          ],
+          "expected": [
+            [
+              {
+                "id": "episodes:0",
+                "ruleId": "episodes",
+                "role": "episodes",
+                "value": [
+                  3
+                ],
+                "spans": [
+                  {
+                    "sourceId": "name",
+                    "start": 5,
+                    "end": 7
+                  }
+                ],
+                "strength": "heuristic",
+                "status": "valid",
+                "reason": "数字片段，待目录裁决"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "title",
+      "name": "片名",
+      "stage": "annotate",
+      "target": "title",
+      "source": "all",
+      "order": 50,
+      "enabled": true,
+      "kind": "script",
+      "config": {
+        "code": "// 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。\nfunction item(source, start, end, value, strength, reason, status) {\n  return {\n    value,\n    spans: [{ sourceId: source.id, start, end }],\n    strength: strength || 'explicit',\n    status: status || 'valid',\n    reason,\n  }\n}\nfunction words(ctx, source) {\n  return ctx.tokens\n    .filter(\n      (t) =\u003e\n        t.sourceId === source.id \u0026\u0026 (t.kind === 'text' || t.kind === 'number'),\n    )\n    .sort((a, b) =\u003e a.start - b.start)\n}\nfunction runs(ctx, source) {\n  const parents = new Map(),\n    result = []\n  for (const t of ctx.tokens)\n    if (t.sourceId === source.id) {\n      const key = t.parentId,\n        list = parents.get(key) || []\n      list.push(t)\n      parents.set(key, list)\n    }\n  for (const [parentId, list] of parents) {\n    list.sort((a, b) =\u003e a.start - b.start)\n    let sequence = []\n    function flush() {\n      if (sequence.length)\n        result.push({\n          parentId,\n          words: sequence,\n          start: sequence[0].start,\n          end: sequence[sequence.length - 1].end,\n        })\n      sequence = []\n    }\n    for (const t of list) {\n      if (t.kind === 'group') flush()\n      else if (t.kind === 'text' || t.kind === 'number') sequence.push(t)\n    }\n    flush()\n  }\n  return result.sort((a, b) =\u003e a.start - b.start)\n}\nfunction extract(ctx) {\n  const out = []\n  for (const s of ctx.sources) {\n    if (\n      s.kind === 'directories' \u0026\u0026\n      /^(?:specials?|特别篇|特別篇)$/i.test(\n        words(ctx, s)\n          .map((t) =\u003e t.text)\n          .join(' '),\n      )\n    )\n      continue\n    const occupied = ctx.candidates\n        .filter((c) =\u003e c.role !== 'title' \u0026\u0026\n          !(c.role === 'episodes' \u0026\u0026 c.strength === 'heuristic' \u0026\u0026 c.status === 'valid'))\n        .flatMap((c) =\u003e c.spans.filter((p) =\u003e p.sourceId === s.id))\n        .sort((a, b) =\u003e a.start - b.start),\n      root = [],\n      grouped = []\n    for (const run of runs(ctx, s)) {\n      const parts = []\n      for (const t of run.words) {\n        let pos = t.start\n        for (const p of occupied) {\n          if (p.end \u003c= pos || p.start \u003e= t.end) continue\n          if (p.start \u003e pos) parts.push({ start: pos, end: p.start })\n          pos = Math.max(pos, p.end)\n          if (pos \u003e= t.end) break\n        }\n        if (pos \u003c t.end) parts.push({ start: pos, end: t.end })\n      }\n      let sequence = []\n      function flush() {\n        if (sequence.length) {\n          const start = sequence[0].start,\n            end = sequence[sequence.length - 1].end,\n            value = sequence.map((p) =\u003e s.text.slice(p.start, p.end)).join(' '),\n            target = run.parentId === null ? root : grouped\n          target.push(\n            item(\n              s,\n              start,\n              end,\n              value,\n              'contextual',\n              run.parentId === null ? '来源片名' : '括号片名',\n            ),\n          )\n        }\n        sequence = []\n      }\n      for (const p of parts) {\n        const previous = sequence[sequence.length - 1]\n        if (\n          previous \u0026\u0026\n          occupied.some((x) =\u003e x.start \u003c p.start \u0026\u0026 x.end \u003e previous.end)\n        )\n          flush()\n        sequence.push(p)\n      }\n      flush()\n    }\n    out.push(...(root.length ? root : grouped))\n  }\n  return out\n}\n"
+      },
+      "examples": []
+    }
+  ],
+  "resolver": {
+    "id": "resolver",
+    "name": "建议脚本",
+    "stage": "resolve",
+    "order": 0,
+    "enabled": true,
+    "kind": "script",
+    "config": {
+      "code": "// 先确定季集，再从保留原文的片名候选中排除已确认的集数。\nfunction extract(ctx) {\n  const rank = { explicit: 0, contextual: 1, heuristic: 2 },\n    states = new Map()\n  const norm = (s) =\u003e (s || '').toLowerCase().replace(/[\\s._-]/g, '')\n  const ref = (f, c) =\u003e ({ fileId: f.fileId, candidateId: c.id })\n  const unique = (refs) =\u003e [...new Map(refs.map((r) =\u003e\n    [r.fileId + '/' + r.candidateId, r])).values()]\n  const depth = (f, c) =\u003e Math.min(...c.spans.map((p) =\u003e\n    f.sources.find((s) =\u003e s.id === p.sourceId).depth))\n  const compare = (f, a, b) =\u003e rank[a.strength] - rank[b.strength] ||\n    depth(f, a) - depth(f, b) || a.spans[0].start - b.spans[0].start ||\n    a.ruleId.localeCompare(b.ruleId) || a.id.localeCompare(b.id)\n  const overlap = (a, b) =\u003e a.spans.some((x) =\u003e b.spans.some((y) =\u003e\n    x.sourceId === y.sourceId \u0026\u0026 x.start \u003c y.end \u0026\u0026 x.end \u003e y.start))\n  function eligible(f, c) {\n    const ids = f.candidates.filter((x) =\u003e x.role === 'tmdbId')\n    if (['season', 'episodes', 'year'].includes(c.role) \u0026\u0026 ids.some((x) =\u003e overlap(c, x)))\n      return false\n    if (c.role === 'year' \u0026\u0026 f.candidates.some((x) =\u003e\n      ['season', 'episodes'].includes(x.role) \u0026\u0026 x.strength !== 'heuristic' \u0026\u0026\n      !ids.some((id) =\u003e overlap(x, id)) \u0026\u0026 overlap(c, x))) return false\n    if (c.role === 'episodes' \u0026\u0026 c.strength === 'heuristic' \u0026\u0026\n        f.candidates.some((x) =\u003e ['season', 'year'].includes(x.role) \u0026\u0026\n          eligible(f, x) \u0026\u0026 overlap(c, x))) return false\n    return true\n  }\n  const ordered = (f, role) =\u003e f.candidates.filter((c) =\u003e c.role === role \u0026\u0026 eligible(f, c))\n    .slice().sort((a, b) =\u003e compare(f, a, b))\n  function first(f, role) {\n    const c = ordered(f, role)[0]\n    return c \u0026\u0026 c.status === 'valid' ? c : null\n  }\n  function set(state, role, c, f, reason) {\n    state.metadata[role] = c.value\n    state.decisions[role] = { candidates: [ref(f, c)], reason: reason || c.reason }\n  }\n  for (const f of ctx.files) {\n    const state = { metadata: { tmdbId: null, title: null, mediaType: null,\n      year: null, season: null, episodes: [] }, decisions: {},\n      episode: null, blocked: f.candidates.some((c) =\u003e c.role === 'episodes' \u0026\u0026\n        c.strength !== 'heuristic' \u0026\u0026 c.status === 'invalid' \u0026\u0026 eligible(f, c)) }\n    for (const role of ['tmdbId', 'year', 'season', 'mediaType']) {\n      const c = first(f, role)\n      if (c) set(state, role, c, f)\n    }\n    const c = first(f, 'episodes')\n    if (c \u0026\u0026 c.strength !== 'heuristic') {\n      state.episode = c\n      set(state, 'episodes', c, f)\n    }\n    states.set(f.fileId, state)\n  }\n  function signature(f, c) {\n    if (c.spans.some((p) =\u003e p.sourceId !== 'name')) return null\n    const source = f.sources.find((s) =\u003e s.id === 'name'),\n      ranges = c.spans.map((p) =\u003e ({ ...p, label: '#episode', priority: 0 }))\n    for (const other of f.candidates) {\n      if (other.status !== 'valid' || other.role !== 'season' || !eligible(f, other)) continue\n      for (const p of other.spans)\n        if (p.sourceId === 'name' \u0026\u0026 !c.spans.some((x) =\u003e\n          p.start \u003c x.end \u0026\u0026 p.end \u003e x.start))\n          ranges.push({ ...p, label: '',\n            priority: 1 })\n    }\n    ranges.sort((a, b) =\u003e a.start - b.start || a.priority - b.priority || b.end - a.end)\n    let text = '', end = 0\n    for (const p of ranges) {\n      if (p.start \u003c end) continue\n      text += source.text.slice(end, p.start) + p.label\n      end = p.end\n    }\n    return norm(text + source.text.slice(end))\n  }\n  // 使用命名结构建立索引，避免依赖尚未确定的片名或两两比较文件。\n  const buckets = new Map()\n  for (const f of ctx.files) {\n    const state = states.get(f.fileId)\n    if (state.blocked) continue\n    const list = state.episode ? [state.episode] : ordered(f, 'episodes')\n      .filter((c) =\u003e c.status === 'valid' \u0026\u0026 c.strength === 'heuristic')\n    for (const c of list) {\n      const shape = signature(f, c)\n      if (shape === null) continue\n      const key = JSON.stringify([f.directory, shape]), nodes = buckets.get(key) || []\n      nodes.push({ f, c, state, value: JSON.stringify(c.value) })\n      buckets.set(key, nodes)\n    }\n  }\n  const supported = new Map()\n  for (const nodes of buckets.values()) {\n    const seasons = new Set(nodes.map((n) =\u003e n.state.metadata.season).filter((v) =\u003e v !== null)),\n      ids = new Set(nodes.map((n) =\u003e n.state.metadata.tmdbId).filter((v) =\u003e v !== null)),\n      season = seasons.size === 1 ? [...seasons][0] : null,\n      id = ids.size === 1 ? [...ids][0] : null,\n      groups = new Map()\n    for (const n of nodes) {\n      // 无身份的文件仅在组内身份唯一时参与，不能连接不同作品或季。\n      const key = JSON.stringify([n.state.metadata.season ?? season,\n        n.state.metadata.tmdbId ?? id]), group = groups.get(key) || []\n      group.push(n)\n      groups.set(key, group)\n    }\n    for (const group of groups.values()) {\n      group.sort((a, b) =\u003e a.f.path \u003c b.f.path ? -1 : a.f.path \u003e b.f.path ? 1 :\n        a.c.spans[0].start - b.c.spans[0].start || a.c.id.localeCompare(b.c.id))\n      const anchor = group.find((n) =\u003e n.state.metadata.season !== null ||\n        n.c.strength !== 'heuristic')\n      if (!anchor) continue\n      // 每个值保留两个不同文件，提供有界且可重建的不同集号佐证。\n      const values = new Map()\n      for (const n of group) {\n        const representatives = values.get(n.value) || []\n        if (representatives.length \u003c 2 \u0026\u0026 !representatives.some((x) =\u003e x.f.fileId === n.f.fileId))\n          representatives.push(n)\n        values.set(n.value, representatives)\n      }\n      if (values.size \u003c 2) continue\n      const representatives = [...values.values()].slice(0, 2).flat(),\n        anchorCandidate = anchor.state.metadata.season !== null\n          ? first(anchor.f, 'season') : anchor.c\n      for (const n of group) {\n        if (n.c.strength !== 'heuristic') continue\n        const peer = representatives.find((x) =\u003e x.value !== n.value \u0026\u0026 x.f.fileId !== n.f.fileId)\n        if (!peer) continue\n        const choices = supported.get(n.f.fileId) || new Map(),\n          key = JSON.stringify([n.c.spans, n.c.value])\n        if (!choices.has(key)) choices.set(key, { c: n.c, refs: unique([\n          ref(n.f, n.c), ref(peer.f, peer.c), ref(anchor.f, anchorCandidate)]) })\n        supported.set(n.f.fileId, choices)\n      }\n    }\n  }\n  for (const f of ctx.files) {\n    const state = states.get(f.fileId), choices = supported.get(f.fileId)\n    if (state.episode || state.blocked || !choices || choices.size !== 1) continue\n    const picked = [...choices.values()][0]\n    state.episode = picked.c\n    state.metadata.episodes = picked.c.value\n    state.decisions.episodes = { candidates: picked.refs,\n      reason: '明确季集依据下，同目录唯一数字位置随文件变化' }\n  }\n  function titles(f, episode) {\n    const output = []\n    for (const c of ordered(f, 'title')) {\n      if (c.status !== 'valid' || !episode || !c.spans.some((p) =\u003e\n        episode.spans.some((x) =\u003e x.sourceId === p.sourceId \u0026\u0026 x.start \u003c p.end \u0026\u0026 x.end \u003e p.start))) {\n        output.push(c)\n        continue\n      }\n      for (const p of c.spans) {\n        const cuts = episode.spans.filter((x) =\u003e x.sourceId === p.sourceId)\n          .sort((a, b) =\u003e a.start - b.start), remaining = []\n        let start = p.start\n        for (const cut of cuts) {\n          if (cut.end \u003c= start || cut.start \u003e= p.end) continue\n          if (cut.start \u003e start) remaining.push({ start, end: cut.start })\n          start = Math.max(start, cut.end)\n        }\n        if (start \u003c p.end) remaining.push({ start, end: p.end })\n        const source = f.sources.find((s) =\u003e s.id === p.sourceId)\n        for (const part of remaining) {\n          // 按原有词及括号边界取剩余区段，不跨被移除的数字拼接。\n          let words = [], parent\n          function flush() {\n            if (words.length) output.push({ ...c, trimmed: true,\n              value: words.map((w) =\u003e source.text.slice(w.start, w.end)).join(' '),\n              spans: [{ sourceId: p.sourceId, start: words[0].start,\n                end: words[words.length - 1].end }] })\n            words = []\n          }\n          for (const t of f.tokens) {\n            if (t.sourceId !== p.sourceId || t.end \u003c= part.start || t.start \u003e= part.end) continue\n            if (t.kind === 'group') { flush(); continue }\n            if (t.kind !== 'text' \u0026\u0026 t.kind !== 'number') continue\n            if (words.length \u0026\u0026 t.parentId !== parent) flush()\n            parent = t.parentId\n            words.push({ start: Math.max(t.start, part.start), end: Math.min(t.end, part.end) })\n          }\n          flush()\n        }\n      }\n    }\n    return output.sort((a, b) =\u003e compare(f, a, b))\n  }\n  for (const f of ctx.files) {\n    const state = states.get(f.fileId), list = titles(f, state.episode),\n      names = list.filter((c) =\u003e c.status === 'valid' \u0026\u0026 depth(f, c) === 0),\n      folders = list.filter((c) =\u003e c.status === 'valid' \u0026\u0026 depth(f, c) \u003e 0),\n      matched = names.length \u003e 1 \u0026\u0026 names.find((c) =\u003e\n        folders.some((d) =\u003e norm(d.value) === norm(c.value))),\n      c = matched || list[0]\n    if (c \u0026\u0026 c.status === 'valid') {\n      set(state, 'title', c, f, c.trimmed ? '片名排除目录确认的集数' : c.reason)\n      if (c.trimmed) state.decisions.title.candidates = unique([\n        ...state.decisions.title.candidates, ...state.decisions.episodes.candidates])\n    }\n  }\n  const local = new Map()\n  for (const f of ctx.files) {\n    const m = states.get(f.fileId).metadata\n    if (m.title === null || m.season === null) continue\n    const key = JSON.stringify([f.directory, norm(m.title)]), peers = local.get(key) || []\n    peers.push(f)\n    local.set(key, peers)\n  }\n  for (const f of ctx.files) {\n    const state = states.get(f.fileId), m = state.metadata\n    if (m.season === null \u0026\u0026 m.title !== null \u0026\u0026\n        !f.candidates.some((c) =\u003e c.role === 'season' \u0026\u0026 c.status === 'invalid' \u0026\u0026 eligible(f, c))) {\n      const peers = (local.get(JSON.stringify([f.directory, norm(m.title)])) || [])\n        .filter((p) =\u003e m.tmdbId === null || states.get(p.fileId).metadata.tmdbId === null ||\n          m.tmdbId === states.get(p.fileId).metadata.tmdbId),\n        ids = new Set(peers.map((p) =\u003e states.get(p.fileId).metadata.tmdbId).filter((v) =\u003e v !== null)),\n        seasons = new Set(peers.map((p) =\u003e states.get(p.fileId).metadata.season))\n      if (peers.length \u0026\u0026 ids.size \u003c= 1 \u0026\u0026 seasons.size === 1)\n        set(state, 'season', first(peers[0], 'season'), peers[0], '同目录同片名唯一明确季号')\n    }\n    if (m.mediaType === null \u0026\u0026 (m.season !== null || m.episodes.length)) {\n      m.mediaType = 'tv'\n      state.decisions.mediaType = { candidates: unique([\n        ...(state.decisions.season?.candidates || []),\n        ...(state.decisions.episodes?.candidates || [])]), reason: '季号或集数提供剧集依据' }\n    }\n  }\n  const results = ctx.targetFileIds.map((fileId) =\u003e ({ fileId,\n    metadata: states.get(fileId).metadata, decisions: states.get(fileId).decisions }))\n  trace('裁决完成', { contextFiles: ctx.files.length, targets: results.length })\n  return results\n}\n"
+    },
+    "examples": [
+      {
+        "paths": [
+          "/source/Show.S00E01.mkv"
+        ],
+        "root": "/source",
+        "targets": [
+          "/source/Show.S00E01.mkv"
+        ],
+        "expected": [
+          {
+            "fileId": "file-0",
+            "path": "/source/Show.S00E01.mkv",
+            "metadata": {
+              "tmdbId": null,
+              "title": "Show",
+              "mediaType": "tv",
+              "year": null,
+              "season": 0,
+              "episodes": [
+                1
+              ]
+            },
+            "decisions": {
+              "title": {
+                "candidates": [
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "title:0"
+                  }
+                ],
+                "reason": "来源片名"
+              },
+              "season": {
+                "candidates": [
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "season:0"
+                  }
+                ],
+                "reason": "季集标记"
+              },
+              "episodes": {
+                "candidates": [
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "episodes:0"
+                  }
+                ],
+                "reason": "季集标记"
+              },
+              "mediaType": {
+                "candidates": [
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "season:0"
+                  },
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "episodes:0"
+                  }
+                ],
+                "reason": "季号或集数提供剧集依据"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "paths": [
+          "/source/Show.1.S01.mkv",
+          "/source/Show.3.S01.mkv"
+        ],
+        "root": "/source",
+        "targets": [
+          "/source/Show.1.S01.mkv"
+        ],
+        "expected": [
+          {
+            "fileId": "file-0",
+            "path": "/source/Show.1.S01.mkv",
+            "metadata": {
+              "tmdbId": null,
+              "title": "Show",
+              "mediaType": "tv",
+              "year": null,
+              "season": 1,
+              "episodes": [
+                1
+              ]
+            },
+            "decisions": {
+              "season": {
+                "candidates": [
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "season:0"
+                  }
+                ],
+                "reason": "独立季标记"
+              },
+              "episodes": {
+                "candidates": [
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "episodes:0"
+                  },
+                  {
+                    "fileId": "file-1",
+                    "candidateId": "episodes:0"
+                  },
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "season:0"
+                  }
+                ],
+                "reason": "明确季集依据下，同目录唯一数字位置随文件变化"
+              },
+              "title": {
+                "candidates": [
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "title:0"
+                  },
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "episodes:0"
+                  },
+                  {
+                    "fileId": "file-1",
+                    "candidateId": "episodes:0"
+                  },
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "season:0"
+                  }
+                ],
+                "reason": "片名排除目录确认的集数"
+              },
+              "mediaType": {
+                "candidates": [
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "season:0"
+                  },
+                  {
+                    "fileId": "file-0",
+                    "candidateId": "episodes:0"
+                  },
+                  {
+                    "fileId": "file-1",
+                    "candidateId": "episodes:0"
+                  }
+                ],
+                "reason": "季号或集数提供剧集依据"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

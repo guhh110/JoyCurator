@@ -168,11 +168,11 @@ export interface RecognitionItem extends MediaFile {
   traceId?: string
   group: string
   entry: Entry | null
-  candidates: Entry[]
   state: 'pending' | 'reidentifying' | 'ready' | 'review' | 'unmatched' | 'failed'
   reason: string
   selected: boolean
   removed: boolean
+  edited?: boolean
 }
 export interface Recognition {
   purpose: 'organize' | 'scrape'

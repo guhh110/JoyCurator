@@ -1,28 +1,28 @@
 // 仅拆分文本，所有位置均为 UTF-16。
 function extract(ctx) {
   const han = [
-    [0x2e80, 0x2e99],
-    [0x2e9b, 0x2ef3],
-    [0x2f00, 0x2fd5],
-    [0x3005, 0x3005],
-    [0x3007, 0x3007],
-    [0x3021, 0x3029],
-    [0x3038, 0x303b],
-    [0x3400, 0x4dbf],
-    [0x4e00, 0x9fff],
-    [0xf900, 0xfa6d],
-    [0xfa70, 0xfad9],
-    [0x16fe2, 0x16fe3],
-    [0x16ff0, 0x16ff1],
-    [0x20000, 0x2a6df],
-    [0x2a700, 0x2b739],
-    [0x2b740, 0x2b81d],
-    [0x2b820, 0x2cea1],
-    [0x2ceb0, 0x2ebe0],
-    [0x2ebf0, 0x2ee5d],
-    [0x2f800, 0x2fa1d],
-    [0x30000, 0x3134a],
-    [0x31350, 0x323af],
+    0x2e80, 0x2e99,
+    0x2e9b, 0x2ef3,
+    0x2f00, 0x2fd5,
+    0x3005, 0x3005,
+    0x3007, 0x3007,
+    0x3021, 0x3029,
+    0x3038, 0x303b,
+    0x3400, 0x4dbf,
+    0x4e00, 0x9fff,
+    0xf900, 0xfa6d,
+    0xfa70, 0xfad9,
+    0x16fe2, 0x16fe3,
+    0x16ff0, 0x16ff1,
+    0x20000, 0x2a6df,
+    0x2a700, 0x2b739,
+    0x2b740, 0x2b81d,
+    0x2b820, 0x2cea1,
+    0x2ceb0, 0x2ebe0,
+    0x2ebf0, 0x2ee5d,
+    0x2f800, 0x2fa1d,
+    0x30000, 0x3134a,
+    0x31350, 0x323af,
   ]
   const result = [],
     opens = { '[': ']', '【': '】', '(': ')', '（': '）', '{': '}' }
@@ -36,12 +36,13 @@ function extract(ctx) {
       else if (stack.length && opens[text[stack[stack.length - 1]]] === ch)
         pairs.set(stack.pop(), i)
     }
-    function isWord(ch) {
-      const code = ch.codePointAt(0)
-      return (
-        /[A-Za-z0-9]/.test(ch) ||
-        han.some(([lo, hi]) => code >= lo && code <= hi)
-      )
+    function isWord(code) {
+      if ((code >= 48 && code <= 57) || (code >= 65 && code <= 90) ||
+          (code >= 97 && code <= 122)) return true
+      if (code < han[0]) return false
+      for (let n = 0; n < han.length; n += 2)
+        if (code >= han[n] && code <= han[n + 1]) return true
+      return false
     }
     function add(type, start, end, parentId) {
       const token = {
@@ -67,16 +68,17 @@ function extract(ctx) {
           i = close + 1
           continue
         }
-        const ch = String.fromCodePoint(text.codePointAt(i)),
-          word = isWord(ch)
-        let j = i + ch.length
+        const code = text.codePointAt(i), word = isWord(code)
+        let digits = code >= 48 && code <= 57,
+          j = i + (code > 0xffff ? 2 : 1)
         while (j < end && !pairs.has(j)) {
-          const next = String.fromCodePoint(text.codePointAt(j))
+          const next = text.codePointAt(j)
           if (isWord(next) !== word) break
-          j += next.length
+          if (next < 48 || next > 57) digits = false
+          j += next > 0xffff ? 2 : 1
         }
         const type = word
-          ? /^[0-9]+$/.test(text.slice(i, j))
+          ? digits
             ? 'number'
             : 'text'
           : 'separator'

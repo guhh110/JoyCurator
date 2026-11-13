@@ -98,3 +98,12 @@ func (a *Store) LatestWorkspace(purpose string) (*matching.Workspace, error) {
 	v, err := a.Workspace(id)
 	return &v, err
 }
+
+// Progress is a background projection and never changes the edit revision.
+func (a *Store) RecognitionProgress(id string, completed, total int) error {
+	if completed < 0 || total < completed {
+		return errors.New("识别进度无效")
+	}
+	_, err := a.db.Exec("UPDATE recognitions SET f_completed=?,f_total=? WHERE id=? AND f_state='running'", completed, total, id)
+	return err
+}

@@ -1,7 +1,7 @@
 package app
 
 import (
-	"context"
+	"errors"
 	"joycurator/internal/infra/fsops"
 	"joycurator/internal/matching"
 	"joycurator/internal/model"
@@ -19,7 +19,7 @@ func (a *WorkspaceService) allowed(purpose, path string, s model.Settings) bool 
 	}
 	return purpose == "organize" && a.files.SourceAllowed(path, s)
 }
-func (a *WorkspaceService) reusedTarget(ctx context.Context, path string, info os.FileInfo, client matching.Provider) (*matching.Item, error) {
+func (a *WorkspaceService) reusedTarget(path string, info os.FileInfo) (*matching.Item, error) {
 	m, err := a.store.Mapping(path)
 	if err != nil {
 		return nil, err
@@ -27,12 +27,11 @@ func (a *WorkspaceService) reusedTarget(ctx context.Context, path string, info o
 	if m == nil || m.Identity != fsops.Identity(info) || m.Size != info.Size() || m.MTime != info.ModTime().UnixNano() {
 		return nil, nil
 	}
-	memo := matching.NewResolver(client)
-	entry, err := memo.Detail(ctx, m.Type, m.TMDBID)
-	if err != nil {
-		return nil, err
+	entry := m.Entry
+	if entry == nil || entry.Type != m.Type || entry.TMDBID != m.TMDBID {
+		return nil, errors.New("已登记视频缺少已确认作品快照")
 	}
-	item := &matching.Item{File: model.File{Path: path, Size: m.Size, MTime: m.MTime, Season: m.Season, Episodes: m.Episodes}, Identity: m.Identity, Layout: m.Layout, Original: m, Entry: entry, Group: matching.EntryGroup(*entry), Candidates: []model.Entry{}, State: "pending", Reason: "复用已登记信息"}
+	item := &matching.Item{File: model.File{Path: path, Size: m.Size, MTime: m.MTime, Season: m.Season, Episodes: m.Episodes}, Identity: m.Identity, Layout: m.Layout, Original: m, Entry: entry, Group: matching.EntryGroup(*entry), State: "ready", Selected: true, Reason: "复用已登记信息"}
 	item.Confirm("registration", matching.EpisodeBasis{Kind: "manual"})
 	return item, nil
 }

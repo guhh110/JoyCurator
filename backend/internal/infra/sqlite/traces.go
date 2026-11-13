@@ -15,7 +15,7 @@ func (a *Store) StartTrace(t recognition.Trace) error {
 		return writeTraceMetadata(tx, childKey(t.ID, 0), t.ID, t.ID, 0, t.Metadata)
 	})
 }
-func (a *Store) FinishTrace(t recognition.Trace, steps []recognition.Step) error {
+func (a *Store) FinishTrace(t recognition.Trace, snapshot recognition.Snapshot) error {
 	return transaction(a.db, func(tx queryer) error {
 		result, err := tx.Exec("UPDATE extraction_traces SET f_status=?,f_finished_at=?,f_error=? WHERE id=? AND f_status='running'", t.Status, t.FinishedAt, t.Error, t.ID)
 		if err != nil {
@@ -31,9 +31,35 @@ func (a *Store) FinishTrace(t recognition.Trace, steps []recognition.Step) error
 		if err = writeTraceMetadata(tx, childKey(t.ID, 0), t.ID, t.ID, 0, t.Metadata); err != nil {
 			return err
 		}
+		if _, err = tx.Exec("INSERT INTO extraction_snapshots(id,digest) VALUES(?,?)", t.ID, snapshot.Digest); err != nil {
+			return err
+		}
+		for i, rule := range snapshot.Pipeline.Rules() {
+			if err = writeSnapshotRules(tx, childKey(t.ID, i), t.ID, t.ID, i, rule); err != nil {
+				return err
+			}
+		}
 		batch := newTraceBatch(tx)
-		for i, s := range steps {
-			if err = writeExtractionSteps(batch, childKey(t.ID, i), t.ID, t.ID, i, s); err != nil {
+		if err = writeSnapshotContext(batch, childKey(t.ID, 0), t.ID, t.ID, 0, snapshot.Context); err != nil {
+			return err
+		}
+		for i, v := range snapshot.Tree {
+			if err = writeSnapshotTree(batch, childKey(t.ID, i), t.ID, t.ID, i, v); err != nil {
+				return err
+			}
+		}
+		for i, v := range snapshot.Documents {
+			if err = writeSnapshotDocuments(batch, childKey(t.ID, i), t.ID, t.ID, i, v); err != nil {
+				return err
+			}
+		}
+		for i, v := range snapshot.Files {
+			if err = writeSnapshotFiles(batch, childKey(t.ID, i), t.ID, t.ID, i, v); err != nil {
+				return err
+			}
+		}
+		for i, v := range snapshot.Diagnostics {
+			if err = writeSnapshotDiagnostics(batch, childKey(t.ID, i), t.ID, t.ID, i, v); err != nil {
 				return err
 			}
 		}
@@ -67,7 +93,7 @@ func (a *Store) TraceHistory(page int, path, workspace string) ([]recognition.Tr
 	where := " WHERE 1=1"
 	args := []any{}
 	if path != "" {
-		where += " AND (t.f_path=? OR EXISTS(SELECT 1 FROM step_inputs i WHERE i.root=t.id AND i.value=?))"
+		where += " AND (t.f_path=? OR EXISTS(SELECT 1 FROM snapshot_documents i WHERE i.root=t.id AND i.path=?))"
 		args = append(args, path, path)
 	}
 	if workspace != "" {
@@ -79,7 +105,7 @@ func (a *Store) TraceHistory(page int, path, workspace string) ([]recognition.Tr
 		return nil, 0, err
 	}
 	args = append(args, (page-1)*20)
-	rows, err := tx.Query("SELECT id,"+columnsExtractionTraces+",(SELECT COUNT(*) FROM extraction_steps s WHERE s.root=t.id) FROM extraction_traces t"+where+" ORDER BY sequence DESC LIMIT 20 OFFSET ?", args...)
+	rows, err := tx.Query("SELECT id,"+columnsExtractionTraces+" FROM extraction_traces t"+where+" ORDER BY sequence DESC LIMIT 20 OFFSET ?", args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -87,14 +113,12 @@ func (a *Store) TraceHistory(page int, path, workspace string) ([]recognition.Tr
 	for rows.Next() {
 		var v recognition.Trace
 		var id string
-		var count int
-		v, err = scanExtractionTraces(suffixScanner{rows, []any{&id}, []any{&count}})
+		v, err = scanExtractionTraces(prefixScanner{rows, []any{&id}})
 		if err != nil {
 			rows.Close()
 			return nil, 0, err
 		}
 		v.ID = id
-		v.StepCount = count
 		out = append(out, v)
 	}
 	err = rows.Err()
@@ -162,49 +186,91 @@ func (a *Store) TraceHistory(page int, path, workspace string) ([]recognition.Tr
 	return out, total, nil
 }
 
-type suffixScanner struct {
-	s              scanner
-	prefix, suffix []any
-}
-
-func (s suffixScanner) Scan(args ...any) error {
-	all := append(s.prefix, args...)
-	return s.s.Scan(append(all, s.suffix...)...)
-}
-func (a *Store) TraceDetail(id string) (recognition.Trace, []recognition.Step, error) {
-	tx, txErr := a.db.Begin()
-	if txErr != nil {
-		return recognition.Trace{}, nil, txErr
+func (a *Store) TraceDetail(id string) (recognition.Trace, recognition.Snapshot, error) {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return recognition.Trace{}, recognition.Snapshot{}, err
 	}
 	defer tx.Rollback()
-
 	v, err := scanExtractionTraces(tx.QueryRow("SELECT "+columnsExtractionTraces+" FROM extraction_traces WHERE id=?", id))
 	v.ID = id
+	out := recognition.Snapshot{Tree: []recognition.TreeNode{}, Documents: []recognition.Document{}, Files: []recognition.FileResult{}, Diagnostics: []recognition.Diagnostic{}}
 	if errors.Is(err, sql.ErrNoRows) {
-		return v, nil, errors.New("轨迹不存在或已清理")
+		return v, out, errors.New("轨迹不存在或已清理")
 	}
 	if err != nil {
-		return v, nil, err
+		return v, out, err
 	}
 	m, err := readTraceMetadata(tx, id)
 	if err != nil {
-		return v, nil, err
+		return v, out, err
 	}
 	if len(m) != 1 {
-		return v, nil, errors.New("轨迹元数据不存在")
+		return v, out, errors.New("轨迹元数据不存在")
 	}
 	v.Metadata = m[0].Value
-	rows, err := readExtractionSteps(tx, id)
+	if v.Status == "running" || v.Status == "interrupted" {
+		var count int
+		if err = tx.QueryRow("SELECT COUNT(*) FROM extraction_snapshots WHERE id=?", id).Scan(&count); err != nil {
+			return v, out, err
+		}
+		if count == 0 {
+			return v, out, tx.Commit()
+		}
+	}
+	if err = tx.QueryRow("SELECT digest FROM extraction_snapshots WHERE id=?", id).Scan(&out.Digest); err != nil {
+		return v, out, err
+	}
+	contexts, err := readSnapshotContext(tx, id)
 	if err != nil {
-		return v, nil, err
+		return v, out, err
 	}
-	steps := []recognition.Step{}
-	for _, r := range rows {
-		steps = append(steps, r.Value)
+	if len(contexts) != 1 {
+		return v, out, errors.New("缺少目录快照")
 	}
-	v.StepCount = len(steps)
-	if err = tx.Commit(); err != nil {
-		return v, nil, err
+	out.Context = contexts[0].Value
+	rules, err := readSnapshotRules(tx, id)
+	if err != nil {
+		return v, out, err
 	}
-	return v, steps, nil
+	out.Pipeline.Annotators = []recognition.Rule{}
+	for _, r := range rules {
+		switch r.Value.Stage {
+		case "tokenize":
+			out.Pipeline.Tokenizer = r.Value
+		case "annotate":
+			out.Pipeline.Annotators = append(out.Pipeline.Annotators, r.Value)
+		case "resolve":
+			out.Pipeline.Resolver = r.Value
+		}
+	}
+	tree, err := readSnapshotTree(tx, id)
+	if err != nil {
+		return v, out, err
+	}
+	for _, r := range tree {
+		out.Tree = append(out.Tree, r.Value)
+	}
+	docs, err := readSnapshotDocuments(tx, id)
+	if err != nil {
+		return v, out, err
+	}
+	for _, r := range docs {
+		out.Documents = append(out.Documents, r.Value)
+	}
+	files, err := readSnapshotFiles(tx, id)
+	if err != nil {
+		return v, out, err
+	}
+	for _, r := range files {
+		out.Files = append(out.Files, r.Value)
+	}
+	diagnostics, err := readSnapshotDiagnostics(tx, id)
+	if err != nil {
+		return v, out, err
+	}
+	for _, r := range diagnostics {
+		out.Diagnostics = append(out.Diagnostics, r.Value)
+	}
+	return v, out, tx.Commit()
 }

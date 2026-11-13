@@ -32,20 +32,3 @@ func TestMetadataIsTheOnlyWorkspaceRepresentation(t *testing.T) {
 		t.Fatal(reloaded.Metadata)
 	}
 }
-
-func TestMatchingDoesNotRewritePathMetadata(t *testing.T) {
-	engine := recognition.DefaultEngine()
-	result, err := engine.Extract(t.Context(), recognition.Input{Path: "/source/The.Matrix.1999.tmdb-603.mkv", Root: "/source"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	before, _ := json.Marshal(result.Metadata)
-	decision := DecideMatch(result.Metadata, nil)
-	if decision.State != "unmatched" {
-		t.Fatal(decision)
-	}
-	after, _ := json.Marshal(result.Metadata)
-	if string(before) != string(after) {
-		t.Fatal("matching rewrote original extraction")
-	}
-}

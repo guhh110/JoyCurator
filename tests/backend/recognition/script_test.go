@@ -2,10 +2,48 @@ package recognition_test
 
 import (
 	"context"
+	"encoding/json"
 	r "joycurator/internal/recognition"
 	"strings"
 	"testing"
 )
+
+func TestScriptsKeepNestedInputsFrozenAndRuntimeIsolated(t *testing.T) {
+	for _, mutation := range []string{
+		`ctx.sources[0].text = "changed"`,
+		`ctx.tokens[0].start = 99`,
+		`ctx.params.nested[0].value = 2`,
+	} {
+		p := r.DefaultPipeline()
+		p.Annotators[0].Config.Params = json.RawMessage(`{"nested":[{"value":1}]}`)
+		p.Annotators[0].Config.Code = `function extract(ctx){` + mutation + `;return []}`
+		e, err := r.Compile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = e.Extract(context.Background(), r.Input{Path: "/source/Film.mkv", Root: "/source"}, nil); err == nil {
+			t.Fatal("nested input was mutable", mutation)
+		}
+	}
+	p := r.DefaultPipeline()
+	p.Annotators[0].Config.Code = `function extract(ctx){
+	 if (globalThis.used) throw Error("runtime was reused");
+	 globalThis.used = true;
+	 Object.keys = () => { throw Error("built-in leaked"); };
+	 return [];
+	}`
+	e, err := r.Compile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{"/source/Film.mkv", "/source/Other.mkv"}
+	for i := 0; i < 2; i++ {
+		got, err := e.ExtractBatch(context.Background(), r.BatchInput{ContextRoot: "/source", SourceBoundary: "/source", Paths: paths, Targets: paths}, nil)
+		if err != nil || len(got.Files) != 2 {
+			t.Fatal("script state escaped its invocation", err)
+		}
+	}
+}
 
 func TestTokenizerLosslessUnicodeGroupsAndLimits(t *testing.T) {
 	got := batch(t, r.DefaultPipeline(), []string{"/source/标题/𠮷[任意(01)] 1080p.mkv"}, nil)

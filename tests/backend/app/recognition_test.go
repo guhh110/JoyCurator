@@ -65,7 +65,7 @@ func TestRecognitionPersistedWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	task = waitRecognition(t, a, task.ID)
-	if task.State != "completed" || task.Completed != 1 || len(task.Items) != 1 || task.Items[0].Selected || task.Items[0].Entry != nil || len(task.Items[0].Candidates) != 1 {
+	if task.State != "completed" || task.Completed != 1 || len(task.Items) != 1 || task.Items[0].Selected || task.Items[0].Entry != nil {
 		t.Fatalf("%+v", task)
 	}
 	update := matching.Update{Revision: task.Revision, Items: []matching.Edit{{Path: file.Path, Group: "custom", Type: "movie", TMDBID: 1, Season: -1, Selected: false}}}

@@ -143,6 +143,23 @@ type FileResult struct {
 	Metadata  Metadata            `json:"metadata"`
 	Decisions map[Target]Decision `json:"decisions"`
 }
+type Diagnostic struct {
+	Stage   string `json:"stage"`
+	FileID  string `json:"fileId"`
+	RuleID  string `json:"ruleId"`
+	Message string `json:"message"`
+	Line    int32  `json:"line"`
+	Column  int32  `json:"column"`
+}
+type Snapshot struct {
+	Context     BatchInput   `json:"context"`
+	Tree        []TreeNode   `json:"tree"`
+	Documents   []Document   `json:"documents"`
+	Files       []FileResult `json:"files"`
+	Pipeline    Pipeline     `json:"pipeline"`
+	Digest      string       `json:"digest"`
+	Diagnostics []Diagnostic `json:"diagnostics"`
+}
 type BatchResult struct {
 	Error     string       `json:"error,omitempty"`
 	Context   BatchInput   `json:"context"`
@@ -194,6 +211,7 @@ type Step struct {
 	DurationMS     float64           `json:"durationMs"`
 }
 type Observer func(context.Context, Step) error
+type Progress func(completed, total int) error
 type Trace struct {
 	ID          string   `json:"id"`
 	Path        string   `json:"path"`
@@ -204,7 +222,6 @@ type Trace struct {
 	FinishedAt  string   `json:"finishedAt,omitempty"`
 	Metadata    Metadata `json:"metadata"`
 	Error       string   `json:"error,omitempty"`
-	StepCount   int      `json:"stepCount"`
 }
 type TestRequest struct {
 	BatchInput

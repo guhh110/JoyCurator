@@ -101,10 +101,17 @@ func confirmedTarget(t *testing.T, a *App, path string) matching.Workspace {
 	}
 	groups := map[string][]matching.ConfirmItem{}
 	for _, it := range w.Items {
-		if it.Confirmed() || len(it.Candidates) == 0 {
+		if it.Confirmed() {
 			continue
 		}
-		e := it.Candidates[0]
+		e := model.Entry{Type: "movie", TMDBID: 1}
+		if it.Metadata.MediaType != nil && *it.Metadata.MediaType == "tv" {
+			e.Type, e.TMDBID = "tv", 2
+		} else if strings.Contains(it.Path, "FilmB") {
+			e.TMDBID = 3
+		} else if strings.Contains(it.Path, "Unknown") {
+			continue
+		}
 		season := it.Season
 		if e.Type == "movie" {
 			season = -1
@@ -265,7 +272,7 @@ func TestDirectoryScrapeRejectsStaleAcceptance(t *testing.T) {
 				_ = a.store.SaveSettings(s)
 			case "mapping":
 				info, _ := os.Stat(video)
-				_ = a.store.SaveMapping(model.MediaMapping{Path: video, Type: "movie", TMDBID: 99, RunID: "external", Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano()})
+				_ = a.store.SaveMapping(model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 99, Title: "fixture"}, Path: video, Type: "movie", TMDBID: 99, RunID: "external", Identity: fsops.Identity(info), Size: info.Size(), MTime: info.ModTime().UnixNano()})
 			case "ancestor":
 				moved := filepath.Dir(video) + "-moved"
 				if e := os.Rename(filepath.Dir(video), moved); e != nil {
@@ -485,43 +492,28 @@ func TestDirectoryScrapeSkippedVideoStillInvalidatesPreview(t *testing.T) {
 	}
 }
 
-type blockedDirectoryProvider struct {
-	*directoryProvider
-	entered chan struct{}
-}
-
-func (p blockedDirectoryProvider) Search(ctx context.Context, kind, title string, year int) ([]model.Entry, error) {
-	select {
-	case p.entered <- struct{}{}:
-	default:
-	}
-	<-ctx.Done()
-	return nil, ctx.Err()
-}
 func TestDirectoryScanCancellationRetriesWithinTarget(t *testing.T) {
-	a, root, provider := directoryFixture(t)
+	a, root, _ := directoryFixture(t)
 	video := targetVideo(t, root, "FilmA/FilmA.2024.mkv")
-	entered := make(chan struct{}, 1)
-	a.dependencies.Workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) {
-		return blockedDirectoryProvider{provider, entered}, nil
-	}
+	gate := gateRecognition(t, a, nil)
 	w, e := a.dependencies.Workspace.Start([]string{filepath.Dir(video)}, "", "scrape")
 	if e != nil {
 		t.Fatal(e)
 	}
 	select {
-	case <-entered:
+	case <-gate.entered:
 	case <-time.After(5 * time.Second):
-		t.Fatal("matching did not start")
+		t.Fatal("local recognition did not start")
 	}
 	if e = a.dependencies.Workspace.Cancel(w.ID); e != nil {
 		t.Fatal(e)
 	}
+	close(gate.release)
 	w = waitRecognition(t, a, w.ID)
 	if w.State != "cancelled" || w.Purpose != "scrape" {
 		t.Fatal(w)
 	}
-	a.dependencies.Workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) { return provider, nil }
+	a.dependencies.Workspace.extract = a.dependencies.Recognition
 	if _, e = a.dependencies.Workspace.Start(nil, w.ID, "scrape"); e != nil {
 		t.Fatal(e)
 	}

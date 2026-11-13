@@ -111,7 +111,6 @@ func readMappings(q queryer, where string, args ...any) ([]model.MediaMapping, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	index := map[string]int{}
 	for i := range out {
 		index[out[i].Path] = i
@@ -125,7 +124,22 @@ func readMappings(q queryer, where string, args ...any) ([]model.MediaMapping, e
 		}
 		out[index[owner]].Episodes = append(out[index[owner]].Episodes, n)
 	}
-	return out, rows.Err()
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	works, err := readWorks(q, "mapping", "media_mappings", "id", where, args...)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Entry = works[out[i].Path]
+		if out[i].Entry == nil {
+			return nil, errors.New("已登记视频缺少已确认作品快照")
+		}
+	}
+	return out, nil
 }
 func mapping(q queryer, path string) (*model.MediaMapping, error) {
 	items, err := readMappings(q, "WHERE id=?", path)

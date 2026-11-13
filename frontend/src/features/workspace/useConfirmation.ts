@@ -48,7 +48,7 @@ export function useConfirmation(options: {
   const rowByPath = computed(() => new Map(rows.value.map(row => [row.file.path, row])))
   const scopedRows = computed(() => scopedFiles.value.flatMap(file => { const row = rowByPath.value.get(file.path); return row ? [row] : [] }))
   const chosen = computed(() => scopedRows.value.filter(row => row.included))
-  const entryFor = (file: RecognitionItem) => rowByPath.value.get(file.path)?.entry ?? (rowByPath.value.has(file.path) ? null : file.confirmation ? file.entry : null)
+  const entryFor = (file: RecognitionItem) => rowByPath.value.get(file.path)?.entry ?? (rowByPath.value.has(file.path) ? null : file.entry)
   const groups = computed(() => {
     const grouped = new Map<string, { key: string; entry: Entry | null; files: RecognitionItem[] }>()
     for (const file of scopedFiles.value) {
@@ -118,12 +118,13 @@ export function useConfirmation(options: {
       const added = usable.map(file => {
         const view = byPath.get(file.path)
         if (!view) throw new Error('文件缺少候选快照，请重新读取')
-        const values = file.episodes.length ? file.episodes : file.metadata.episodes
-        const basis: EpisodeBasis = file.confirmation || !file.traceId || JSON.stringify(values) !== JSON.stringify(file.metadata.episodes)
+        const hasDraft = !!file.entry || file.edited || !!file.confirmation
+        const values = hasDraft ? file.episodes : file.metadata.episodes
+        const basis: EpisodeBasis = hasDraft || !file.traceId || JSON.stringify(values) !== JSON.stringify(file.metadata.episodes)
           ? manualBasis() : { kind: 'suggestion', traceId: file.traceId, index: 0, offset: 0 }
-        const entry = file.confirmation ? file.entry : null
+        const entry = file.entry
         if (entry) works.value.set(confirmationWorkKey(entry), entry)
-        const row: ConfirmationRow = { file, view, entry, included: select(file), season: file.season >= 0 ? file.season : file.metadata.season ?? -1, text: values.join(','), basis, original: values.join(','), error: '' }
+        const row: ConfirmationRow = { file, view, entry, included: select(file), season: hasDraft ? file.season : file.metadata.season ?? -1, text: values.join(','), basis, original: values.join(','), error: '' }
         initial.set(file.path, snapshot(row))
         return row
       })

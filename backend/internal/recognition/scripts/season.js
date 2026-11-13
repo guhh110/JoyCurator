@@ -1,3 +1,4 @@
+const cachedWords = new Map(), cachedRuns = new Map()
 // 标注只读取词和同组相邻词；范围始终指向原文（UTF-16）。
 function item(source, start, end, value, strength, reason, status) {
   return {
@@ -9,14 +10,18 @@ function item(source, start, end, value, strength, reason, status) {
   }
 }
 function words(ctx, source) {
-  return ctx.tokens
+  if (cachedWords.has(source.id)) return cachedWords.get(source.id)
+  const result = ctx.tokens
     .filter(
       (t) =>
         t.sourceId === source.id && (t.kind === 'text' || t.kind === 'number'),
     )
     .sort((a, b) => a.start - b.start)
+  cachedWords.set(source.id, result)
+  return result
 }
 function runs(ctx, source) {
+  if (cachedRuns.has(source.id)) return cachedRuns.get(source.id)
   const parents = new Map(),
     result = []
   for (const t of ctx.tokens)
@@ -45,7 +50,9 @@ function runs(ctx, source) {
     }
     flush()
   }
-  return result.sort((a, b) => a.start - b.start)
+  result.sort((a, b) => a.start - b.start)
+  cachedRuns.set(source.id, result)
+  return result
 }
 function scan(ctx, source, pattern) {
   const result = []

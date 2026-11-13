@@ -22,6 +22,7 @@ const maxScriptBytes = 32768
 const scriptTimeout = 250 * time.Millisecond
 
 type scriptRun struct {
+	capture   bool
 	phase     string
 	events    []ScriptEvent
 	truncated bool
@@ -56,6 +57,9 @@ func compileScript(name, code string) (*goja.Program, error) {
 }
 
 func (s *scriptRun) record(vm *goja.Runtime, operation, message string, data any) {
+	if !s.capture {
+		return
+	}
 	if len(message) > 4096 {
 		message = message[:4096] + "…"
 	}
@@ -153,27 +157,18 @@ func scriptBuiltins(vm *goja.Runtime, run *scriptRun) {
 					output = entries[0]
 				}
 			}
-			run.record(vm, operation, "正则执行", map[string]any{"pattern": pattern, "input": text, "replacement": replacement, "output": output})
+			if run.capture {
+				run.record(vm, operation, "正则执行", map[string]any{"pattern": pattern, "input": text, "replacement": replacement, "output": output})
+			}
 			return vm.ToValue(output)
 		})
 	}
 }
 
-// Only JSON data crosses the boundary: scripts never receive reflected Go objects.
-const inputFactory = `(function(raw) {
- const value = JSON.parse(raw);
- function freeze(v) {
-  if (v !== null && typeof v === "object") {
-   Object.keys(v).forEach(k => freeze(v[k]));
-   Object.freeze(v);
-  }
-  return v;
- }
- return freeze(value);
-})`
+var extractProgram = goja.MustCompile("entry.js", "extract", true)
 
-func executeScript(ctx context.Context, program *goja.Program, values map[string]any, phase string) (matchValue, error) {
-	run := &scriptRun{phase: phase, events: []ScriptEvent{}}
+func executeScript(ctx context.Context, program *goja.Program, values map[string]any, phase string, capture bool) (matchValue, error) {
+	run := &scriptRun{phase: phase, capture: capture}
 	vm := goja.New()
 	vm.SetParserOptions(parser.WithDisableSourceMaps)
 	vm.SetMaxCallStackSize(256)
@@ -193,13 +188,17 @@ func executeScript(ctx context.Context, program *goja.Program, values map[string
 			err = fmt.Errorf("%s 脚本超过 %s", phase, timeout)
 		}
 		run.record(nil, "error", err.Error(), nil)
+		var line, column int32
 		var stackError interface{ Stack() []goja.StackFrame }
 		if errors.As(err, &stackError) {
 			for _, frame := range stackError.Stack() {
 				pos := frame.Position()
-				if pos.Line > 0 && !run.truncated {
-					event := &run.events[len(run.events)-1]
-					event.Line, event.Column, event.Function = int32(pos.Line), int32(pos.Column), frame.FuncName()
+				if pos.Line > 0 {
+					line, column = int32(pos.Line), int32(pos.Column)
+					if run.capture && !run.truncated {
+						event := &run.events[len(run.events)-1]
+						event.Line, event.Column, event.Function = int32(pos.Line), int32(pos.Column), frame.FuncName()
+					}
 					break
 				}
 			}
@@ -209,37 +208,26 @@ func executeScript(ctx context.Context, program *goja.Program, values map[string
 			err = errors.New(exception.String())
 		}
 
-		return matchValue{trace: run.events}, err
+		return matchValue{trace: run.events, line: line, column: column}, err
 	}
 	if ctx.Err() != nil {
 		return finish(ctx.Err())
-	}
-	raw, err := json.Marshal(values)
-	if err != nil {
-		return finish(err)
 	}
 	limit := 4 << 20
 	if phase == "resolve" {
 		limit = 64 << 20
 	}
-	if len(raw) > limit {
-		return finish(errors.New("脚本输入超过阶段大小限制"))
-	}
-	// Parse and freeze input before user code can replace built-in JSON/Object functions.
-	factory, err := vm.RunString(inputFactory)
+	input, inputBytes, err := makeScriptInput(deadline, vm, values, limit)
 	if err != nil {
 		return finish(err)
 	}
-	makeInput, _ := goja.AssertFunction(factory)
-	input, err := makeInput(goja.Undefined(), vm.ToValue(string(raw)))
-	if err != nil {
-		return finish(err)
+	if capture {
+		run.record(nil, "input", "脚本输入", map[string]any{"bytes": inputBytes, "phase": phase})
 	}
-	run.record(nil, "input", "脚本输入", map[string]any{"bytes": len(raw), "phase": phase})
 	if _, err = vm.RunProgram(program); err != nil {
 		return finish(err)
 	}
-	extractValue, err := vm.RunString("extract")
+	extractValue, err := vm.RunProgram(extractProgram)
 	if err != nil {
 		return finish(err)
 	}
@@ -269,18 +257,20 @@ func executeScript(ctx context.Context, program *goja.Program, values map[string
 	if err != nil {
 		return finish(err)
 	}
-	serialized, marshalErr := json.Marshal(value)
 	limit = 4 << 20
 	if phase == "resolve" {
 		limit = 16 << 20
 	}
-	if marshalErr != nil {
-		return finish(marshalErr)
+	outputBytes, err := jsonDataSize(value)
+	if err != nil {
+		return finish(err)
 	}
-	if len(serialized) > limit {
+	if outputBytes > limit {
 		return finish(errors.New("脚本输出超过阶段大小限制"))
 	}
-	run.record(nil, "return", "脚本返回值", map[string]any{"bytes": len(serialized)})
+	if capture {
+		run.record(nil, "return", "脚本返回值", map[string]any{"bytes": outputBytes})
+	}
 	match := matchValue{value: value, trace: run.events}
 	return match, nil
 }

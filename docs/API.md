@@ -33,9 +33,9 @@
 | `POST /extraction/test` | `{paths,targets,contextRoot?,sourceBoundary?,pipeline?}`，返回 `{context,tree,documents,files,steps,error?}` |
 | `POST /extraction/examples` | `{pipeline}`，返回各规则样例的 `{ruleId,paths,expected,actual,passed,error}` 数组；`error` 无错误时为空字符串，整条链任一规则执行报错均判为失败，即使 `actual` 与 `expected` 都为 `null` |
 | `GET /extraction/traces?page=&path=&workspaceId=` | 每页 20 条执行摘要，返回 `{items,total,page}`；路径为精确筛选 |
-| `GET /extraction/traces/{id}` | `{trace,metadata,steps}`，含执行时规则快照 |
-| `DELETE /extraction/traces/{id}` | 手动清理已结束轨迹及步骤，不修改工作区结果 |
-| `GET /recognitions/{id}` | 识别进度、候选、匹配依据、文件分组及选中状态 |
+| `GET /extraction/traces/{id}` | `{trace,context,tree,documents,files,pipeline,digest,diagnostics,error?}`，含本次规则快照 |
+| `DELETE /extraction/traces/{id}` | 手动清理未被引用的已结束轨迹及快照，不修改工作区结果 |
+| `GET /recognitions/{id}` | 识别进度、本地建议、文件分组及选中状态 |
 | `PUT /recognitions/{id}` | `{revision,items}`，只提交变更文件，保存草稿、勾选和布局，不能授予确认；拒绝过期版本及已锁定／完成文件 |
 | `POST /recognitions/{id}/candidates` | `{revision,paths}`，1–2000 个文件；读取既有轨迹，返回 `{path,traceId,document,suggestion}[]`，不重新运行脚本 |
 | `POST /recognitions/{id}/confirm` | `{revision,items:[{path,type,tmdbId,season,episodes,basis}]}`，一次确认同一作品的 1–2000 个文件；逐行校验后原子保存并默认选中 |
@@ -69,7 +69,7 @@
 
 ## 自动识别工作区
 
-识别任务返回 `purpose`、`id`、`revision`、`state`、`paths`、`items`、`completed`、`total`、`error`、`created`。任务状态为 `running`、`completed`、`failed`、`cancelled`、`interrupted`。每个文件在扫描字段之外包含可选 `traceId`、`metadata`、`group`、`entry`、`candidates`、`state`、`reason`、`selected`、`removed`；文件状态为 `pending`、`reidentifying`、`ready`、`review`、`unmatched`、`failed`。新文件均待确认，推荐匹配不写 entry。只有 `ready` 且确认记录与最终值、文件快照一致的选中文件可进入预览与提交。
+识别任务返回 `purpose`、`id`、`revision`、`state`、`paths`、`items`、`completed`、`total`、`error`、`created`。任务状态为 `running`、`completed`、`failed`、`cancelled`、`interrupted`。每个文件在扫描字段之外包含可选 `traceId`、`metadata`、`group`、`entry`、`state`、`reason`、`selected`、`removed`；文件状态为 `pending`、`reidentifying`、`ready`、`review`、`unmatched`、`failed`。新文件均待确认，entry 只保存人工草稿或确认作品，工作区不含自动 TMDB 作品候选。只有 `ready` 且确认记录与最终值、文件快照一致的选中文件可进入预览与提交。
 
 保存修正只提交变更文件，保留 revision 检查；每项为 `{path,group,type,tmdbId,season,episodes,selected,removed,layout}`；`layout={workDir,seasonDir,moviePrefix,manual}`，刮削目录须在 Target 内并包含视频，空季目录表示平铺布局。大小和修改时间由服务端保留，不接受前端修改。`tmdbId:0` 表示尚未选定作品。服务端校验季集，并自动取消无效文件的选择。预览绑定工作区版本，人工保存或识别增量保存后要求重新预览。执行进度不修改编辑 revision，不使无关预览过期。
 
@@ -77,7 +77,7 @@
 
 视频完成安全落盘及身份核验后，操作检查点与媒体映射同事务提交，随后即能手动选择刮削。跳过已有视频也先核验并登记；尚在发布或状态不明的视频不能刮削。整理最终保存、取消及重试不会重置同一身份视频的已完成刮削状态。
 
-识别不运行媒体探测；整理目录推断止于当前 `sourceRoot`，刮削止于 `targetRoot`。同批搜索去重、限制请求速率并复用 TMDB 缓存；年份回退及模糊候选需确认。缺少季号时，仅在唯一常规季时提供季度建议，用户确认后保存。 TMDB ID 标记在提取后不再参与集数识别；同一 ID 在电影和剧集类型中均存在时，仅在片名／原名及已知年份唯一匹配时自动消歧，所有结果均须用户确认。
+识别不运行媒体探测；整理目录推断止于当前 `sourceRoot`，刮削止于 `targetRoot`。导入、重新识别和重试均离线生成候选与目录建议，不要求 Token、不创建 TMDB 客户端。TMDB 仅用于主动搜索、选择作品后的季集校验及刮削。已登记目标通过本地映射和已确认作品快照恢复。
 
 ## 路径识别流水线
 
@@ -87,7 +87,7 @@
 
 `POST /extraction/examples` 使用完整 pipeline 运行各条规则的多路径样例；任何执行错误使样例失败。`PUT /extraction/rules` 完整校验并事务保存配置，保存失败保持当前引擎。当前格式不接受旧规则数组、来源清理和覆盖字段。
 
-正式导入按目录树共享 traceId。历史详情返回 `{trace,context,tree,documents,files,steps,error}`，保留原始文本、结构片段、候选、规则快照和逐文件裁决引用。可清理未被工作区或确认记录引用的已结束轨迹，级联删除步骤，不修改工作区文件。
+正式导入按目录树共享 traceId。历史详情返回 `{trace,context,tree,documents,files,pipeline,digest,diagnostics,error?}`，保留原始文本、结构片段、候选、规则快照和逐文件裁决引用。可清理未被工作区或确认记录引用的已结束轨迹，级联删除快照子记录，不修改工作区文件。
 
 ## 目录与分类
 
@@ -113,7 +113,7 @@
 
 `POST /recognitions/{id}/reidentify` 的 `paths` 必须来自当前工作区且无重复；整个请求在提交前检查 revision、路径授权及文件可用性，任一项无效则整体拒绝。提交事务只更新指定条目及工作区摘要，成功后才注册后台任务。`reidentifying` 标记随条目持久化；工作区变为 running，取消／关闭后保留未完成标记，通过现有 retry 入口继续，不重扫其他来源。存在未完成重新识别时不允许再提交新的重跑或补充来源。
 
-成功重跑写入新的原始 Metadata 和 traceId，保留旧轨迹。未人工编辑的文件按当前提取结果重新匹配；Edited 文件保留作品快照、分组、季集及整理选择，重新校验无效时取消选择。未指定文件及已提交文件不修改。匹配失败仍保留重跑标记，工作区报告 failed，可继续重试。
+成功重跑写入新的原始 Metadata 和 traceId，保留旧轨迹；不搜索 TMDB 或校验季集。保留所选文件的人工作品、分组、季集和选择状态；文件身份、大小或修改时间变化时撤销确认并取消选择，保留草稿等待重新确认。未指定文件及已提交文件不修改。识别或快照保存失败仍保留重跑标记，工作区报告 failed，可继续重试。
 
 刮削 `content` 必填且只能为 `all/nfo/images`；`onlyMissing` 为布尔值，默认 false。返回的 `ScrapePlan` 新增 `content/onlyMissing/skipped`，其中 `artifacts` 只含本次计划生成的文件，`skipped` 为按路径排序的同名已有普通文件。不选 NFO 时不生成 NFO 内容，不选图片时不查询作品图片候选。已有目录或符号链接仍作为冲突，不作为可保留产物。
 

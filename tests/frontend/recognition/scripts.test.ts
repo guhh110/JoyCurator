@@ -5,7 +5,7 @@ import ScriptCode from '../../../frontend/src/features/extraction/ScriptCode.vue
 import RuleEditor from '../../../frontend/src/features/extraction/RuleEditor.vue'
 import ExtractionResult from '../../../frontend/src/features/extraction/ExtractionResult.vue'
 import { createRuleDraft } from '../../../frontend/src/features/extraction/useRuleDraft'
-import { annotation, extraction } from '../fixtures/pipeline'
+import { annotation, extraction, pipeline } from '../fixtures/pipeline'
 describe('editable scripts and trace evidence', () => {
   it('renders script editor with parameters and stage contract', async () => {
     const html = await renderToString(
@@ -87,4 +87,18 @@ describe('editable scripts and trace evidence', () => {
     expect(html).toContain('标题候选')
     expect(html).toContain('脚本快照')
   })
+  it('renders normal snapshot evidence and rules without execution steps', async () => {
+    const { steps, ...output } = extraction()
+    output.documents[0]!.sources = [{ id: 'name', kind: 'filename', text: 'Film', depth: 0 }]
+    const result = { ...output, pipeline: pipeline(), digest: 'rules-digest', diagnostics: [] }
+    const evidence = await renderToString(h(ExtractionResult, { result, view: 'metadata' }))
+    expect(evidence).toContain('识别建议')
+    expect(evidence).toContain('来源原文')
+    expect(evidence).not.toContain('执行过程')
+    const rules = await renderToString(h(ExtractionResult, { result, view: 'rules' }))
+    expect(rules).toContain('建议脚本')
+    expect(rules).toContain('function extract(ctx)')
+    expect(rules).not.toContain('执行过程')
+  })
+
 })

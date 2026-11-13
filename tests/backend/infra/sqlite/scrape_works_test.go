@@ -23,7 +23,7 @@ func TestScrapeWorksSearchAndCursor(t *testing.T) {
 			if id == 90 && version == 1 {
 				path = filepath.Join(settings.TargetRoot, "Film 090", "needle.mkv")
 			}
-			if err := store.SaveMapping(model.MediaMapping{Path: path, Type: "movie", TMDBID: id, State: state, RunID: "seed"}); err != nil {
+			if err := store.SaveMapping(model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: id, Title: "fixture"}, Path: path, Type: "movie", TMDBID: id, State: state, RunID: "seed"}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -60,7 +60,7 @@ func TestScrapeWorksSearchAndCursor(t *testing.T) {
 			t.Fatal(search, result, err)
 		}
 	}
-	if err := store.SaveMapping(model.MediaMapping{Path: filepath.Join(settings.TargetRoot, "Series", "Season 01", "episode.mkv"), Type: "tv", TMDBID: 2, State: "pending", RunID: "seed"}); err != nil {
+	if err := store.SaveMapping(model.MediaMapping{Entry: &model.Entry{Type: "tv", TMDBID: 2, Title: "fixture"}, Path: filepath.Join(settings.TargetRoot, "Series", "Season 01", "episode.mkv"), Type: "tv", TMDBID: 2, State: "pending", RunID: "seed"}); err != nil {
 		t.Fatal(err)
 	}
 	last, err := store.ScrapeWorks("", "movie:105")

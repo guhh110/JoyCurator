@@ -38,6 +38,10 @@ func batch(t *testing.T, p r.Pipeline, paths, targets []string) r.BatchResult {
 	if err != nil {
 		t.Fatal(err)
 	}
+	light, err := e.Snapshot(context.Background(), got.Context)
+	if err != nil || !r.Equal(light.Documents, got.Documents) || !r.Equal(light.Files, got.Files) || !reflect.DeepEqual(light.Tree, got.Tree) {
+		t.Fatal("light/debug parity", err)
+	}
 	return got
 }
 func TestCandidatesRetainConflictsAndOrder(t *testing.T) {

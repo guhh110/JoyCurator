@@ -19,8 +19,7 @@ func cleanupTrace(t *testing.T, s *Store, id, status string, finished time.Time)
 		return
 	}
 	v.Status = status
-	step := recognition.Step{RuleConfig: recognition.DefaultPipeline().Tokenizer, Inputs: []string{"b", "a"}, Captures: map[string]string{"x": "y"}, Attempts: []recognition.Attempt{{Captures: map[string]string{"x": "y"}, Trace: []recognition.ScriptEvent{{Message: "event"}}}}}
-	if err := s.FinishTrace(v, []recognition.Step{step}); err != nil {
+	if err := s.FinishTrace(v, sampleSnapshot(t)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -58,7 +57,7 @@ func TestCleanupPreviewAndAtomicDeletion(t *testing.T) {
 	if counts, err := s.Cleanup(p.Request); err == nil || counts != (model.CleanupCounts{}) {
 		t.Fatal("partial deletion reported", counts, err)
 	}
-	if _, steps, err := s.TraceDetail("completed"); err != nil || len(steps) != 1 || len(steps[0].Attempts[0].Trace) != 1 {
+	if _, steps, err := s.TraceDetail("completed"); err != nil || len(steps.Documents) != 2 {
 		t.Fatal("trace children did not roll back", err)
 	}
 	if _, err := s.db.Exec("DROP TRIGGER reject_cleanup"); err != nil {
@@ -72,7 +71,7 @@ func TestCleanupPreviewAndAtomicDeletion(t *testing.T) {
 		if _, _, err := s.TraceDetail(id); err == nil {
 			t.Fatal("expired trace survived", id)
 		}
-		for _, table := range []string{"trace_metadata", "trace_episodes", "extraction_steps", "step_rules", "step_rule_examples", "step_inputs", "step_attempts", "step_captures", "attempt_captures", "attempt_events"} {
+		for _, table := range []string{"trace_metadata", "trace_episodes", "snapshot_documents", "snapshot_rules", "snapshot_rule_examples", "snapshot_context", "snapshot_candidates", "snapshot_sources", "snapshot_decisions", "snapshot_references"} {
 			var n int
 			if err := s.db.QueryRow("SELECT COUNT(*) FROM "+table+" WHERE root=?", id).Scan(&n); err != nil || n != 0 {
 				t.Fatal(table, n, err)

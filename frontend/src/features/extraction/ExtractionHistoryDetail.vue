@@ -14,13 +14,13 @@ const detailQuery = useHistoryDetail(toRef(props, 'traceId'))
 const detail = detailQuery.data
 const back = computed(() => ({ name: 'extraction-history', query: historyContext(route.query) }))
 const { remove, pendingId } = useTraceRemoval(() => router.replace(back.value))
-const view = ref<'steps' | 'metadata' | 'json'>('steps')
-const tabs = [{ value: 'steps', label: '执行过程' }, { value: 'metadata', label: '识别建议' }, { value: 'json', label: '原始 JSON' }] as const
+const view = ref<'rules' | 'metadata' | 'json'>('metadata')
+const tabs = [{ value: 'metadata', label: '识别建议' }, { value: 'rules', label: '规则快照' }, { value: 'json', label: '原始 JSON' }] as const
 </script>
 
 <template>
   <section class="history-detail" aria-label="识别历史详情">
-    <PageHeader title="识别历史详情" eyebrow="RECOGNITION TRACE" description="本次执行的结果与规则快照。">
+    <PageHeader title="识别历史详情" eyebrow="RECOGNITION TRACE">
       <template #actions>
         <RouterLink class="button" :to="back">返回识别历史</RouterLink>
         <button v-if="detail && !detailQuery.error.value && detail.trace.status !== 'running'" class="button danger" :disabled="!!pendingId" @click="remove(detail.trace)">{{ pendingId ? '处理中…' : '清理本条历史' }}</button>
@@ -34,7 +34,6 @@ const tabs = [{ value: 'steps', label: '执行过程' }, { value: 'metadata', la
           <dl>
             <div><dt>开始时间</dt><dd>{{ historyTime(detail.trace.startedAt) }}</dd></div>
             <div><dt>结束时间</dt><dd>{{ historyTime(detail.trace.finishedAt) }}</dd></div>
-            <div><dt>执行步骤</dt><dd>{{ detail.trace.stepCount }} 步</dd></div>
             <div class="trace-root"><dt>解析边界</dt><dd><EliText :text="detail.trace.root || '—'" ellipsis="start" /></dd></div>
           </dl>
           <p v-if="detail.trace.error" class="notice error" role="alert">{{ detail.trace.error }}</p>

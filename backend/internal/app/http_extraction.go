@@ -54,16 +54,15 @@ func extractionRoutes(a Dependencies, add func(string, endpoint)) {
 		return respond(w, map[string]any{"items": items, "total": total, "page": page}, e)
 	})
 	add("GET /api/extraction/traces/{id}", func(w http.ResponseWriter, r *http.Request) error {
-		v, steps, e := a.Recognition.Detail(r.PathValue("id"))
+		v, result, e := a.Recognition.Detail(r.PathValue("id"))
 		if e != nil {
 			return e
 		}
-		result, e := recognition.RestoreBatch(steps)
-		if e != nil {
-			return e
-		}
-		result.Error = v.Error
-		reply(w, map[string]any{"trace": v, "context": result.Context, "tree": result.Tree, "documents": result.Documents, "files": result.Files, "steps": steps, "error": result.Error})
+		reply(w, struct {
+			Trace recognition.Trace `json:"trace"`
+			recognition.Snapshot
+			Error string `json:"error,omitempty"`
+		}{v, result, v.Error})
 		return e
 	})
 	add("DELETE /api/extraction/traces/{id}", func(w http.ResponseWriter, r *http.Request) error {

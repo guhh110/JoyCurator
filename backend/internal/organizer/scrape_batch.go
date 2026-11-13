@@ -41,7 +41,7 @@ func (a *Service) ScrapeBatchPreview(ctx context.Context, in ScrapeBatchPreviewR
 		if err = matching.ValidateLayout(it.Layout, it.Path, it.Entry.Type, settings.TargetRoot); err != nil {
 			return ScrapePlan{}, fmt.Errorf("%s：%w", it.Path, err)
 		}
-		m := model.MediaMapping{Path: it.Path, Source: it.Path, Type: it.Entry.Type, TMDBID: it.Entry.TMDBID, Season: it.Season, Episodes: it.Episodes, State: "pending", Identity: it.Identity, Size: it.Size, MTime: it.MTime, Layout: it.Layout, Original: it.Original}
+		m := model.MediaMapping{Entry: it.Entry, Path: it.Path, Source: it.Path, Type: it.Entry.Type, TMDBID: it.Entry.TMDBID, Season: it.Season, Episodes: it.Episodes, State: "pending", Identity: it.Identity, Size: it.Size, MTime: it.MTime, Layout: it.Layout, Original: it.Original}
 		if m.Original != nil {
 			m.RunID = m.Original.RunID
 			m.Source = m.Original.Source

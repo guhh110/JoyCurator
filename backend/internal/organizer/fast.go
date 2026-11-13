@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -126,7 +125,7 @@ func (e *Engine) fastRun(ctx context.Context, op *Operation, save func() error) 
 			created, err = temp.Stat()
 			var copied int64
 			if err == nil {
-				copied, err = io.Copy(temp, contextReader{ctx: ctx, r: source})
+				copied, err = fsops.Copy(ctx, temp, source)
 			}
 			if err == nil && copied != op.Size {
 				err = errors.New("复制期间源文件大小发生变化")
@@ -268,7 +267,7 @@ func (e *Engine) fastUndo(ctx context.Context, op *Operation, save func() error)
 			if createErr != nil {
 				return createErr
 			}
-			copied, copyErr := io.Copy(to, contextReader{ctx: ctx, r: from})
+			copied, copyErr := fsops.Copy(ctx, to, from)
 			err = copyErr
 			if err == nil && copied != opened.Size() {
 				err = errors.New("撤销复制期间目标文件大小发生变化")

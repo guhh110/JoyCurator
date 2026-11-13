@@ -16,7 +16,7 @@ import (
 func TestScrapeWorkRoutes(t *testing.T) {
 	a, root := fixture(t)
 	path := filepath.Join(root, "target", "Film", "movie.mkv")
-	if err := a.store.SaveMapping(model.MediaMapping{Path: path, Type: "movie", TMDBID: 42, State: "pending", RunID: "fixture"}); err != nil {
+	if err := a.store.SaveMapping(model.MediaMapping{Entry: &model.Entry{Type: "movie", TMDBID: 42, Title: "fixture"}, Path: path, Type: "movie", TMDBID: 42, State: "pending", RunID: "fixture"}); err != nil {
 		t.Fatal(err)
 	}
 	handler := a.Handler(nil)

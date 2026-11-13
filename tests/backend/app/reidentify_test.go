@@ -48,7 +48,7 @@ func reidentifyFixture(t *testing.T) (*App, matching.Workspace) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		w.Items = append(w.Items, matching.Item{File: file, Metadata: result.Metadata, TraceID: id, Group: "old", State: "unmatched", Candidates: []model.Entry{}})
+		w.Items = append(w.Items, matching.Item{File: file, Metadata: result.Metadata, TraceID: id, Group: "old", State: "unmatched"})
 	}
 	seedConfirmedFiles(t, a, &w)
 	if err := a.store.SaveWorkspace(&w); err != nil {
@@ -90,10 +90,10 @@ func TestReidentifyOnlySelectedRowsAndPreserveManualSnapshots(t *testing.T) {
 		t.Fatal(reply, err)
 	}
 	final := waitRecognition(t, a, w.ID)
-	if final.State != "completed" || final.Completed != 3 {
+	if final.State != "completed" || final.Completed != 2 || final.Total != 2 {
 		t.Fatal(final)
 	}
-	if final.Items[0].Entry != nil || len(final.Items[0].Candidates) != 1 || final.Items[0].Candidates[0].TMDBID != 99 || final.Items[0].Selected || *final.Items[0].Metadata.Title != "Fresh" {
+	if final.Items[0].Entry != nil || final.Items[0].Selected || *final.Items[0].Metadata.Title != "Fresh" {
 		t.Fatal(final.Items[0])
 	}
 	manual := final.Items[1]
@@ -109,11 +109,11 @@ func TestReidentifyOnlySelectedRowsAndPreserveManualSnapshots(t *testing.T) {
 			t.Fatal("old trace reused")
 		}
 		_, oldSteps, err := a.dependencies.Recognition.Detail(w.Items[i].TraceID)
-		if err != nil || len(oldSteps) != len(recognition.DefaultPipeline().Rules()) {
+		if err != nil || len(oldSteps.Pipeline.Rules()) != len(recognition.DefaultPipeline().Rules()) {
 			t.Fatal("old trace overwritten", err)
 		}
 		_, steps, err := a.dependencies.Recognition.Detail(final.Items[i].TraceID)
-		if err != nil || len(steps) != 7 || steps[1].RuleID != "new-title" {
+		if err != nil || len(steps.Pipeline.Annotators) != 1 || steps.Pipeline.Annotators[0].ID != "new-title" {
 			t.Fatal(steps, err)
 		}
 	}
@@ -121,7 +121,7 @@ func TestReidentifyOnlySelectedRowsAndPreserveManualSnapshots(t *testing.T) {
 
 func TestReidentifyRejectsStaleMissingDuplicateAndLockedFiles(t *testing.T) {
 	a, w := reidentifyFixture(t)
-	r := organizer.Run{ID: "reserved", Purpose: "organize", State: "queued", RecognitionID: w.ID, Mappings: []model.MediaMapping{{Path: "/target/file", Source: w.Items[1].Path}}}
+	r := organizer.Run{ID: "reserved", Purpose: "organize", State: "queued", RecognitionID: w.ID, Mappings: []model.MediaMapping{{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: "/target/file", Source: w.Items[1].Path}}}
 	if err := a.store.SaveRun(r); err != nil {
 		t.Fatal(err)
 	}
@@ -145,81 +145,98 @@ func TestReidentifyRejectsStaleMissingDuplicateAndLockedFiles(t *testing.T) {
 	}
 }
 
+// Block the local snapshot boundary, independent of any TMDB client.
+type gatedRecognitionStore struct {
+	recognition.Store
+	entered, release chan struct{}
+	failure          error
+}
+
+func (s *gatedRecognitionStore) StartTrace(v recognition.Trace) error {
+	if err := s.Store.StartTrace(v); err != nil {
+		return err
+	}
+	close(s.entered)
+	<-s.release
+	return nil
+}
+func (s *gatedRecognitionStore) FinishTrace(v recognition.Trace, snapshot recognition.Snapshot) error {
+	if s.failure != nil {
+		return s.failure
+	}
+	return s.Store.FinishTrace(v, snapshot)
+}
+func gateRecognition(t *testing.T, a *App, failure error) *gatedRecognitionStore {
+	t.Helper()
+	gate := &gatedRecognitionStore{Store: a.store, entered: make(chan struct{}), release: make(chan struct{}), failure: failure}
+	service, err := recognition.New(gate, a.coordinator.IsClosing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.dependencies.Workspace.extract = service
+	return gate
+}
 func TestReidentifyCancellationAndFailureRetainRetryScope(t *testing.T) {
 	for _, mode := range []string{"cancel", "failed"} {
 		t.Run(mode, func(t *testing.T) {
 			a, w := reidentifyFixture(t)
-			entered := make(chan struct{}, 1)
-			a.dependencies.Workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) {
-				return reidentifyProvider{search: func(ctx context.Context, _ string, _ string, _ int) ([]model.Entry, error) {
-					select {
-					case entered <- struct{}{}:
-					default:
-					}
-					if mode == "cancel" {
-						<-ctx.Done()
-						return nil, ctx.Err()
-					}
-					return nil, errors.New("upstream unavailable")
-				}}, nil
+			var failure error
+			if mode == "failed" {
+				failure = errors.New("disk full")
 			}
+			gate := gateRecognition(t, a, failure)
 			if _, err := a.dependencies.Workspace.Reidentify(w.ID, w.Revision, []string{w.Items[0].Path}); err != nil {
 				t.Fatal(err)
 			}
 			select {
-			case <-entered:
+			case <-gate.entered:
 			case <-time.After(3 * time.Second):
-				t.Fatal("matching did not start")
+				t.Fatal("local extraction did not start")
 			}
 			if mode == "cancel" {
 				if err := a.dependencies.Workspace.Cancel(w.ID); err != nil {
 					t.Fatal(err)
 				}
 			}
+			close(gate.release)
 			stopped := waitRecognition(t, a, w.ID)
-			if stopped.Items[0].State != "reidentifying" || stopped.State == "completed" {
+			if stopped.State == "completed" || stopped.Items[0].State != "reidentifying" {
 				t.Fatal(stopped)
 			}
-			a.dependencies.Workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) { return reidentifyProvider{}, nil }
+			a.dependencies.Workspace.extract = a.dependencies.Recognition
 			if _, err := a.dependencies.Workspace.Start(nil, w.ID, "organize"); err != nil {
 				t.Fatal(err)
 			}
 			final := waitRecognition(t, a, w.ID)
-			if final.State != "completed" || final.Items[0].State != "review" || final.Items[1].TraceID != w.Items[1].TraceID || final.Items[2].TraceID != w.Items[2].TraceID {
+			if final.State != "completed" || final.Completed != 1 || final.Total != 1 || final.Items[0].State != "review" || final.Items[1].TraceID != w.Items[1].TraceID || final.Items[2].TraceID != w.Items[2].TraceID {
 				t.Fatal(final)
 			}
 		})
 	}
 }
-
 func TestReidentifyRestartRetriesMarkedRowsWithoutRescanningOtherSources(t *testing.T) {
 	a, w := reidentifyFixture(t)
 	s, _ := a.dependencies.Config.Load()
 	w.Paths = []string{w.Items[0].Path, w.Items[1].Path, w.Items[2].Path}
-	seedConfirmedFiles(t, a, &w)
 	if err := a.store.SaveWorkspace(&w); err != nil {
 		t.Fatal(err)
 	}
-	entered := make(chan struct{}, 1)
-	a.dependencies.Workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) {
-		return reidentifyProvider{search: func(ctx context.Context, _ string, _ string, _ int) ([]model.Entry, error) {
-			select {
-			case entered <- struct{}{}:
-			default:
-			}
-			<-ctx.Done()
-			return nil, ctx.Err()
-		}}, nil
-	}
+	gate := gateRecognition(t, a, nil)
 	if _, err := a.dependencies.Workspace.Reidentify(w.ID, w.Revision, []string{w.Items[0].Path}); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("matching did not start")
+	<-gate.entered
+	closed := make(chan error, 1)
+	go func() { closed <- a.Close() }()
+	deadline := time.Now().Add(3 * time.Second)
+	for !a.coordinator.IsClosing() {
+		if time.Now().After(deadline) {
+			t.Fatal("close did not start")
+		}
+		time.Sleep(time.Millisecond)
 	}
-	if err := a.Close(); err != nil {
+	close(gate.release)
+	if err := <-closed; err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(w.Items[1].Path); err != nil {
@@ -231,16 +248,37 @@ func TestReidentifyRestartRetriesMarkedRowsWithoutRescanningOtherSources(t *test
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = restarted.Close() })
-	restarted.dependencies.Workspace.factory = func(model.Settings, *trace.Recorder) (matching.Provider, error) { return reidentifyProvider{}, nil }
 	current, err := restarted.dependencies.Workspace.Read(w.ID)
 	if err != nil || current.State != "interrupted" || current.Items[0].State != "reidentifying" {
 		t.Fatal(current, err)
 	}
-	if _, err := restarted.dependencies.Workspace.Start(nil, w.ID, "organize"); err != nil {
+	if _, err = restarted.dependencies.Workspace.Start(nil, w.ID, "organize"); err != nil {
 		t.Fatal(err)
 	}
 	final := waitRecognition(t, restarted, w.ID)
-	if final.State != "completed" || final.Items[0].State != "review" || final.Items[1].TraceID != w.Items[1].TraceID {
+	if final.State != "completed" || final.Completed != 1 || final.Total != 1 || final.Items[0].State != "review" || final.Items[1].TraceID != w.Items[1].TraceID {
+		t.Fatal(final)
+	}
+}
+
+func TestScrapeReidentifyDoesNotWriteUnselectedRows(t *testing.T) {
+	a, root, _ := directoryFixture(t)
+	targetVideo(t, root, "FilmA/FilmA.2024.mkv")
+	targetVideo(t, root, "FilmB/FilmB.2024.mkv")
+	w := confirmedTarget(t, a, filepath.Join(root, "target"))
+	w, err := a.store.Workspace(w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	untouched := w.Items[1]
+	if _, err := testDB(t, a).Exec(`CREATE TRIGGER protect_scrape_unselected BEFORE INSERT ON workspace_items WHEN NEW.root='` + w.ID + `' AND NEW.position=1 BEGIN SELECT RAISE(ABORT,'unselected row rewritten'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.dependencies.Workspace.Reidentify(w.ID, w.Revision, []string{w.Items[0].Path}); err != nil {
+		t.Fatal(err)
+	}
+	final := waitRecognition(t, a, w.ID)
+	if final.State != "completed" || !reflect.DeepEqual(final.Items[1], untouched) {
 		t.Fatal(final)
 	}
 }

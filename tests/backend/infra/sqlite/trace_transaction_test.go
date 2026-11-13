@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestTraceFinalizationRollsBackStepsAndSummaryTogether(t *testing.T) {
+func TestTraceFinalizationRollsBackSnapshotAndSummaryTogether(t *testing.T) {
 	store := openStore(t)
 	trace := recognition.Trace{ID: "atomic", Path: "/file.mkv", Root: "/", Status: "running"}
 	if err := store.StartTrace(trace); err != nil {
@@ -17,12 +17,12 @@ func TestTraceFinalizationRollsBackStepsAndSummaryTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	trace.Status = "completed"
-	steps := []recognition.Step{{RuleID: "one"}, {RuleID: "two"}}
+	steps := sampleSnapshot(t)
 	if err := store.FinishTrace(trace, steps); err == nil {
 		t.Fatal("failed commit accepted")
 	}
 	current, saved, err := store.TraceDetail(trace.ID)
-	if err != nil || current.Status != "running" || len(saved) != 0 {
+	if err != nil || current.Status != "running" || len(saved.Documents) != 0 {
 		t.Fatal("partial trace committed", current, saved, err)
 	}
 	if _, err := store.db.Exec("DROP TRIGGER reject_trace"); err != nil {
@@ -32,7 +32,7 @@ func TestTraceFinalizationRollsBackStepsAndSummaryTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	current, saved, err = store.TraceDetail(trace.ID)
-	if err != nil || current.Status != "completed" || len(saved) != 2 {
+	if err != nil || current.Status != "completed" || len(saved.Documents) != 2 {
 		t.Fatal(current, saved, err)
 	}
 	if err := store.FinishTrace(trace, steps); err == nil {

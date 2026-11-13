@@ -137,8 +137,9 @@ func TestExplicitFormatsAndExactMatchesRemainSuggestions(t *testing.T) {
 			if it.Entry != nil || it.Confirmation != nil || it.Selected || it.State == "ready" {
 				t.Fatal(it)
 			}
-			if len(it.Candidates) == 0 {
-				t.Fatal("catalog suggestions lost")
+			views, err := a.dependencies.Workspace.Candidates(w.ID, CandidateRequest{Revision: w.Revision, Paths: []string{it.Path}})
+			if err != nil || len(views[0].Document.Candidates) == 0 {
+				t.Fatal("local suggestions lost", err)
 			}
 		})
 	}

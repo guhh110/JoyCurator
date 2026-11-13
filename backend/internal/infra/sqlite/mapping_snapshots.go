@@ -1,6 +1,9 @@
 package sqlite
 
-import "joycurator/internal/model"
+import (
+	"errors"
+	"joycurator/internal/model"
+)
 
 // Snapshots use the same scalar schema as mappings and relational episode rows.
 // The scope is internal, never supplied by HTTP input.
@@ -20,7 +23,7 @@ func writeMappingSnapshot(q queryer, scope, owner, root string, v *model.MediaMa
 			return err
 		}
 	}
-	return nil
+	return writeWork(q, scope+"_original", owner, v.Entry)
 }
 func readMappingSnapshots(q queryer, scope, root string) (map[string]*model.MediaMapping, error) {
 	rows, err := q.Query("SELECT owner,"+columnsMediaMappings+" FROM "+scope+"_originals WHERE root=?", root)
@@ -47,7 +50,6 @@ func readMappingSnapshots(q queryer, scope, root string) (map[string]*model.Medi
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var key string
 		var ep int
@@ -56,5 +58,20 @@ func readMappingSnapshots(q queryer, scope, root string) (map[string]*model.Medi
 		}
 		out[key].Episodes = append(out[key].Episodes, ep)
 	}
-	return out, rows.Err()
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	works, err := readWorks(q, scope+"_original", scope+"_originals", "owner", "WHERE p.root=?", root)
+	if err != nil {
+		return nil, err
+	}
+	for key, v := range out {
+		v.Entry = works[key]
+		if v.Entry == nil {
+			return nil, errors.New("原登记缺少已确认作品快照")
+		}
+	}
+	return out, nil
 }

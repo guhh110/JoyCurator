@@ -22,7 +22,7 @@ afterEach(() => { cleanup.splice(0).forEach(fn => fn()); if (activeConfirmation.
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status })
 const work: Entry = { type: 'tv', tmdbId: 1, title: '作品', originalTitle: '', year: 2024, overview: '', posterPath: '' }
 function file(path: string, episodes: number[] = []): RecognitionItem {
-  return { path, size: 10, mtime: '1', group: path, state: 'review', selected: false, removed: false, reason: '待确认', season: -1, episodes: [], entry: null, candidates: [work], traceId: 'trace', metadata: { title: '作品', year: 2024, tmdbId: 1, mediaType: 'tv', season: 1, episodes } }
+  return { path, size: 10, mtime: '1', group: path, state: 'review', selected: false, edited: false, removed: false, reason: '待确认', season: -1, episodes: [], entry: null,  traceId: 'trace', metadata: { title: '作品', year: 2024, tmdbId: 1, mediaType: 'tv', season: 1, episodes } }
 }
 function confirmed(item: RecognitionItem): RecognitionItem {
   return { ...item, group: 'tv:1', season: 1, episodes: [1], entry: work, state: 'ready', selected: true, confirmation: { source: 'user', at: '', identity: '', size: 10, mTime: 1, type: 'tv', tmdbId: 1, season: 1, episodes: [1], basis: { kind: 'manual', index: 0, offset: 0 } } }
@@ -47,7 +47,7 @@ async function fixture(items = [file('/source/a/1.mp4'), file('/source/a/3.mp4')
       stored = { ...stored, revision: stored.revision + 1, items: stored.items.map(item => {
         const edit = body.items.find((value: any) => value.path === item.path)
         if (!edit) return item
-        const entry = stored.items.flatMap(item => [...item.candidates, ...(item.entry ? [item.entry] : [])]).find(entry => entry.type === edit.type && entry.tmdbId === edit.tmdbId) || { ...work, type: edit.type, tmdbId: edit.tmdbId }
+        const entry = stored.items.flatMap(item => (item.entry ? [item.entry] : [])).find(entry => entry.type === edit.type && entry.tmdbId === edit.tmdbId) || { ...work, type: edit.type, tmdbId: edit.tmdbId }
         const saved = confirmed(item)
         return { ...saved, entry, group: `${entry.type}:${entry.tmdbId}`, season: edit.season, episodes: edit.episodes, confirmation: { ...saved.confirmation!, type: edit.type, tmdbId: edit.tmdbId, season: edit.season, episodes: edit.episodes, basis: edit.basis } }
       }) }

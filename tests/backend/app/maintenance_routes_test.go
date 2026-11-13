@@ -50,7 +50,7 @@ func TestMaintenanceRoutesAndRecordFilters(t *testing.T) {
 	}
 	v.Status = "completed"
 	v.FinishedAt = "2000-01-01T00:00:00Z"
-	if err := a.store.FinishTrace(v, nil); err != nil {
+	if err := a.store.FinishTrace(v, recognition.Snapshot{Pipeline: recognition.DefaultPipeline()}); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.store.SaveCache(context.Background(), "expired", []byte("{}"), time.Now().Unix()-100); err != nil {

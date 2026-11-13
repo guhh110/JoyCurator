@@ -10,13 +10,15 @@ import {
   statuses,
   valueText,
   type ExtractionResult,
+  type RecognitionSnapshot,
+  pipelineRules,
   type ScriptEvent,
   type Target,
 } from './model'
 const props = withDefaults(
   defineProps<{
-    result: ExtractionResult
-    view?: 'all' | 'metadata' | 'steps' | 'json'
+    result: ExtractionResult | RecognitionSnapshot
+    view?: 'all' | 'metadata' | 'steps' | 'rules' | 'json'
     editable?: boolean
     initialPath?: string
     ruleId?: string
@@ -47,8 +49,10 @@ const doc = computed(() =>
   file = computed(() =>
     props.result.files.find((f) => f.fileId === fileId.value),
   )
+const steps = computed(() => 'steps' in props.result ? props.result.steps : [])
+const savedRules = computed(() => 'pipeline' in props.result && props.result.digest ? pipelineRules(props.result.pipeline) : [])
 const visible = computed(() =>
-  props.result.steps.filter(
+  steps.value.filter(
     (s) =>
       (!s.fileId || s.fileId === fileId.value) &&
       (!props.ruleId || s.ruleId === props.ruleId) &&
@@ -59,7 +63,7 @@ const visible = computed(() =>
 const snapshots = computed(
   () =>
     new Map(
-      props.result.steps
+      steps.value
         .filter((s) => s.ruleConfig.id)
         .map((s) => [s.ruleId, s.ruleConfig]),
     ),
@@ -67,7 +71,7 @@ const snapshots = computed(
 const ruleOptions = computed(() =>
   Array.from(
     new Map(
-      props.result.steps.map((s) => [
+      steps.value.map((s) => [
         s.ruleId,
         { value: s.ruleId, label: s.ruleName },
       ]),
@@ -96,6 +100,9 @@ async function copy() {
 <template>
   <div class="output">
     <p v-if="result.error" class="notice error">{{ result.error }}</p>
+    <template v-if="'diagnostics' in result">
+      <p v-for="(error, index) in result.diagnostics" :key="index" class="notice error">{{ error.ruleId }} · {{ error.fileId }}<span v-if="error.line"> · L{{ error.line }}:{{ error.column }}</span> · {{ error.message }}</p>
+    </template>
     <label class="file-select"
       >文件<Select
         label="选择文件"
@@ -158,6 +165,10 @@ async function copy() {
           </article>
         </details>
         <details class="padding">
+          <summary>来源原文</summary>
+          <p v-for="source in doc.sources" :key="source.id">{{ source.id }} · {{ source.text }}</p>
+        </details>
+        <details class="padding">
           <summary>分词（{{ doc.tokens.length }}）</summary>
           <div class="tokens">
             <span
@@ -171,7 +182,7 @@ async function copy() {
         </details></template
       >
     </section>
-    <section v-if="view === 'all' || view === 'steps'" class="pane">
+    <section v-if="'steps' in result && (view === 'all' || view === 'steps')" class="pane">
       <header class="pane-head">
         <h2>执行过程</h2>
         <Select
@@ -235,6 +246,13 @@ async function copy() {
             :active-line="activeLine[s.ruleId]"
           />
         </details>
+      </details>
+    </section>
+    <section v-if="view === 'rules'" class="pane padding">
+      <details v-for="rule in savedRules" :key="rule.id">
+        <summary>{{ stages[rule.stage] }} · {{ rule.name }}</summary>
+        <ScriptCode v-if="rule.config.code" :model-value="rule.config.code" readonly />
+        <pre>{{ JSON.stringify(rule, null, 2) }}</pre>
       </details>
     </section>
     <section v-if="view === 'all' || view === 'json'" class="pane padding">
