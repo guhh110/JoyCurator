@@ -99,7 +99,7 @@ main.main
 
 当前识别架构、脚本契约、边界与存储规范统一见 [RECOGNITION.md](RECOGNITION.md)。核心入口为 `Compile(Pipeline)`、`ExtractBatch(BatchInput)`；应用通过 `extractContexts` 收集完整目录树，再调用 `Service.ExtractTree`，每树固定配置快照和共享历史。默认分词按非中英文数字字符分隔，保留完整词及括号结构；标注消费词和相邻词，正则逐词匹配。片名标注最后从排除元信息后的连续区段生成候选，保留推测集数文字，词间统一空格；裁决脚本按同目录命名结构、明确季集依据和不同数字值佐证唯一集数位置，再裁剪片名并逐目标输出 Metadata。单文件裸数字及无剧集依据的数字变化保留歧义，派生片名引用原片名与集数依据。下游匹配和整理接口继续消费 Metadata。
 
-规则 API 仅接受 `{pipeline:{tokenizer,annotators,resolver}}`。调试输入多路径文本快照及 targets；样例使用 paths/root/targets/expected。旧数组、覆盖与来源清理格式均拒绝。存储格式为 6，不迁移或重建旧库；全部验证使用临时空目录。
+规则 API 仅接受 `{pipeline:{tokenizer,annotators,resolver}}`。调试输入多路径文本快照及 targets；样例使用 paths/root/targets/expected。旧数组、覆盖与来源清理格式均拒绝。存储格式为 7，不迁移或重建旧库；全部验证使用临时空目录。
 
 ## 6. 编辑与历史
 
@@ -334,9 +334,9 @@ python3 tests/run_backend.py test -tags production ./internal/webui ./internal/a
 
 刮削预览新增必填 content（all/nfo/images）及 onlyMissing（布尔）；前端调用和测试均使用当前请求。跳过已有产物不会登记归属，只有实际计划生成项才参加撤销；全跳过不会创建任务或改写映射状态。部分内容刮削已完成不代表全部 NFO／图片齐全，完整行为见 API 文档。
 
-整理与目录刮削共用添加文件／确认／预览三步页，编辑选择和执行选择分别出现在对应步骤。useConfirmation／ConfirmationForm 支持批量选作品、季度及原文数字位置取集号；按各文件快照生成行，不依赖排序补号。确认记录独立于 Edited，普通 Update 不授予确认。存储格式 6，验证用独立临时目录。
+整理与目录刮削共用添加文件／确认／预览三步页，编辑选择和执行选择分别出现在对应步骤。useConfirmation／ConfirmationForm 支持批量选作品、季度及原文数字位置取集号；按各文件快照生成行，不依赖排序补号。确认记录独立于 Edited，普通 Update 不授予确认。存储格式 7，验证用独立临时目录。
 
 
 ## 离线识别执行器
 
-普通识别固定规则与文件身份后，以 `min(4, GOMAXPROCS, 文件数)` 路处理文件，文件内阶段仍串行；按路径顺序合并并提交进度，成功后只执行一次整树建议。调试／Observer 保持串行，复用相同文件核心。规则编译时准备参数、固定输出与摘要；输入直接构造并逐层冻结原生 JS 数据，返回值有界读取后直接转换，调用仍使用独立运行时。既有规则只应用执行器优化，新默认源码只用于新配置与主动恢复默认。HTTP、快照与格式 6 不变。冻结结果回归和完整测量见 [识别说明](RECOGNITION.md) 与 [性能记录](PERFORMANCE.md)。
+普通识别固定规则与文件身份后，以 `min(4, GOMAXPROCS, 文件数)` 路处理文件，文件内阶段仍串行；按路径顺序合并并提交进度，成功后只执行一次整树建议。调试／Observer 保持串行，复用相同文件核心。规则编译时准备参数、固定输出与摘要；输入直接构造并逐层冻结原生 JS 数据，返回值有界读取后直接转换，调用仍使用独立运行时。既有规则只应用执行器优化，新默认源码只用于新配置与主动恢复默认。HTTP 与识别快照结构不变。冻结结果回归和完整测量见 [识别说明](RECOGNITION.md) 与 [性能记录](PERFORMANCE.md)。

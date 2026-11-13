@@ -1444,12 +1444,12 @@ func writeMediaMappings(q queryer, key, root, owner string, position int, v mode
 	return nil
 }
 
-const columnsOperations = "f_id,f_kind,f_source,f_target,f_mode,f_size,f_m_time,f_content,f_url,f_convert_jpeg,f_status,f_error,f_hash,f_temp,f_replace_hold,f_remove_hold,f_source_remove_hold,f_identity,f_source_identity,f_replace,f_replace_identity,f_replace_size,f_replace_m_time,f_owner,f_reused"
+const columnsOperations = "f_id,f_kind,f_source,f_target,f_mode,f_size,f_m_time,f_content,f_url,f_convert_jpeg,f_status,f_error,f_hash,f_temp,f_replace_hold,f_remove_hold,f_source_remove_hold,f_identity,f_source_identity,f_replace,f_replace_identity,f_replace_size,f_replace_m_time,f_owner,f_reused,f_duration_ms,f_speed_bps"
 
 func scanOperations(s scanner) (organizer.Work, error) {
 	var v organizer.Work
 	var err error
-	err = s.Scan(&v.ID, &v.Kind, &v.Source, &v.Target, &v.Mode, &v.Size, &v.MTime, &v.Content, &v.URL, &v.ConvertJPEG, &v.Status, &v.Error, &v.Hash, &v.Temp, &v.ReplaceHold, &v.RemoveHold, &v.SourceRemoveHold, &v.Identity, &v.SourceIdentity, &v.Replace, &v.ReplaceIdentity, &v.ReplaceSize, &v.ReplaceMTime, &v.Owner, &v.Reused)
+	err = s.Scan(&v.ID, &v.Kind, &v.Source, &v.Target, &v.Mode, &v.Size, &v.MTime, &v.Content, &v.URL, &v.ConvertJPEG, &v.Status, &v.Error, &v.Hash, &v.Temp, &v.ReplaceHold, &v.RemoveHold, &v.SourceRemoveHold, &v.Identity, &v.SourceIdentity, &v.Replace, &v.ReplaceIdentity, &v.ReplaceSize, &v.ReplaceMTime, &v.Owner, &v.Reused, &v.DurationMs, &v.SpeedBps)
 	if err != nil {
 		return v, err
 	}
@@ -1457,7 +1457,7 @@ func scanOperations(s scanner) (organizer.Work, error) {
 }
 
 func putOperations(q queryer, key, root, owner string, position int, v organizer.Work, undoParent any) error {
-	_, err := q.Exec("INSERT INTO operations(k,root,owner,position,undo_parent,f_id,f_kind,f_source,f_target,f_mode,f_size,f_m_time,f_content,f_url,f_convert_jpeg,f_status,f_error,f_hash,f_temp,f_replace_hold,f_remove_hold,f_source_remove_hold,f_identity,f_source_identity,f_replace,f_replace_identity,f_replace_size,f_replace_m_time,f_owner,f_reused) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,undo_parent=excluded.undo_parent,f_id=excluded.f_id,f_kind=excluded.f_kind,f_source=excluded.f_source,f_target=excluded.f_target,f_mode=excluded.f_mode,f_size=excluded.f_size,f_m_time=excluded.f_m_time,f_content=excluded.f_content,f_url=excluded.f_url,f_convert_jpeg=excluded.f_convert_jpeg,f_status=excluded.f_status,f_error=excluded.f_error,f_hash=excluded.f_hash,f_temp=excluded.f_temp,f_replace_hold=excluded.f_replace_hold,f_remove_hold=excluded.f_remove_hold,f_source_remove_hold=excluded.f_source_remove_hold,f_identity=excluded.f_identity,f_source_identity=excluded.f_source_identity,f_replace=excluded.f_replace,f_replace_identity=excluded.f_replace_identity,f_replace_size=excluded.f_replace_size,f_replace_m_time=excluded.f_replace_m_time,f_owner=excluded.f_owner,f_reused=excluded.f_reused", key, root, owner, position, undoParent, v.ID, v.Kind, v.Source, v.Target, v.Mode, v.Size, v.MTime, v.Content, v.URL, v.ConvertJPEG, v.Status, v.Error, v.Hash, v.Temp, v.ReplaceHold, v.RemoveHold, v.SourceRemoveHold, v.Identity, v.SourceIdentity, v.Replace, v.ReplaceIdentity, v.ReplaceSize, v.ReplaceMTime, v.Owner, v.Reused)
+	_, err := q.Exec("INSERT INTO operations(k,root,owner,position,undo_parent,f_id,f_kind,f_source,f_target,f_mode,f_size,f_m_time,f_content,f_url,f_convert_jpeg,f_status,f_error,f_hash,f_temp,f_replace_hold,f_remove_hold,f_source_remove_hold,f_identity,f_source_identity,f_replace,f_replace_identity,f_replace_size,f_replace_m_time,f_owner,f_reused,f_duration_ms,f_speed_bps) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(k) DO UPDATE SET root=excluded.root,owner=excluded.owner,position=excluded.position,undo_parent=excluded.undo_parent,f_id=excluded.f_id,f_kind=excluded.f_kind,f_source=excluded.f_source,f_target=excluded.f_target,f_mode=excluded.f_mode,f_size=excluded.f_size,f_m_time=excluded.f_m_time,f_content=excluded.f_content,f_url=excluded.f_url,f_convert_jpeg=excluded.f_convert_jpeg,f_status=excluded.f_status,f_error=excluded.f_error,f_hash=excluded.f_hash,f_temp=excluded.f_temp,f_replace_hold=excluded.f_replace_hold,f_remove_hold=excluded.f_remove_hold,f_source_remove_hold=excluded.f_source_remove_hold,f_identity=excluded.f_identity,f_source_identity=excluded.f_source_identity,f_replace=excluded.f_replace,f_replace_identity=excluded.f_replace_identity,f_replace_size=excluded.f_replace_size,f_replace_m_time=excluded.f_replace_m_time,f_owner=excluded.f_owner,f_reused=excluded.f_reused,f_duration_ms=excluded.f_duration_ms,f_speed_bps=excluded.f_speed_bps", key, root, owner, position, undoParent, v.ID, v.Kind, v.Source, v.Target, v.Mode, v.Size, v.MTime, v.Content, v.URL, v.ConvertJPEG, v.Status, v.Error, v.Hash, v.Temp, v.ReplaceHold, v.RemoveHold, v.SourceRemoveHold, v.Identity, v.SourceIdentity, v.Replace, v.ReplaceIdentity, v.ReplaceSize, v.ReplaceMTime, v.Owner, v.Reused, v.DurationMs, v.SpeedBps)
 	return err
 }
 
@@ -1472,7 +1472,7 @@ func readOperations(q queryer, root string) ([]rowOperations, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.Query("SELECT k,owner,position,f_id,f_kind,f_source,f_target,f_mode,f_size,f_m_time,f_content,f_url,f_convert_jpeg,f_status,f_error,f_hash,f_temp,f_replace_hold,f_remove_hold,f_source_remove_hold,f_identity,f_source_identity,f_replace,f_replace_identity,f_replace_size,f_replace_m_time,f_owner,f_reused FROM operations WHERE root=? ORDER BY owner,position", root)
+	rows, err := q.Query("SELECT k,owner,position,f_id,f_kind,f_source,f_target,f_mode,f_size,f_m_time,f_content,f_url,f_convert_jpeg,f_status,f_error,f_hash,f_temp,f_replace_hold,f_remove_hold,f_source_remove_hold,f_identity,f_source_identity,f_replace,f_replace_identity,f_replace_size,f_replace_m_time,f_owner,f_reused,f_duration_ms,f_speed_bps FROM operations WHERE root=? ORDER BY owner,position", root)
 	if err != nil {
 		return nil, err
 	}

@@ -47,3 +47,12 @@ export function operationNeedsAttention(op: { status: string; error: string }, r
   return !!op.error || ['failed', 'manual_review'].includes(op.status) ||
     (!['running', 'queued'].includes(runState) && ['preparing', 'staged', 'published', 'cleanup', 'undoing'].includes(op.status))
 }
+
+export function operationTiming(op: { durationMs: number | null; speedBps: number | null }) {
+  if (op.durationMs == null) return ''
+  const duration = op.durationMs < 1 ? '<1 毫秒'
+    : op.durationMs < 1000 ? `${Math.round(op.durationMs)} 毫秒`
+      : `${(op.durationMs / 1000).toFixed(1)} 秒`
+  const speed = op.speedBps == null ? '—' : `${(op.speedBps / 1_000_000).toFixed(1)} MB/s`
+  return `${duration} · ${speed}`
+}

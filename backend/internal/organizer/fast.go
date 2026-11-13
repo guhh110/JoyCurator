@@ -37,7 +37,7 @@ func (e *Engine) discardFastTemp(op *Operation, identity string, save func() err
 	return save()
 }
 
-func (e *Engine) fastRun(ctx context.Context, op *Operation, save func() error) error {
+func (e *Engine) fastRun(ctx context.Context, op *Operation, save func() error, written *int64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -126,6 +126,7 @@ func (e *Engine) fastRun(ctx context.Context, op *Operation, save func() error) 
 			var copied int64
 			if err == nil {
 				copied, err = fsops.Copy(ctx, temp, source)
+				*written += copied
 			}
 			if err == nil && copied != op.Size {
 				err = errors.New("复制期间源文件大小发生变化")

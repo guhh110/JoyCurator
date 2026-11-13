@@ -74,8 +74,9 @@ func TestRelationalWorkspaceSnapshotsAndCheckpoint(t *testing.T) {
 
 func TestRelationalOperationsUndoAndAtomicCheckpoint(t *testing.T) {
 	s := openStore(t)
+	duration, speed := 42.3, 118600000.0
 	r := organizer.Run{ID: "run", Purpose: "organize", State: "running", Ops: []organizer.Work{
-		{Operation: organizer.Operation{ID: 99, Kind: "video", Target: "/target", Content: []byte{0, 255, 1}, Status: "published", Undo: &organizer.Operation{ID: 99, Status: "pending", Undo: &organizer.Operation{Status: "preparing"}}}, Owner: "/source", Owners: []string{"/b", "/a"}},
+		{Operation: organizer.Operation{ID: 99, Kind: "video", Target: "/target", Content: []byte{0, 255, 1}, Status: "published", DurationMs: &duration, SpeedBps: &speed, Undo: &organizer.Operation{ID: 99, Status: "pending", Undo: &organizer.Operation{Status: "preparing"}}}, Owner: "/source", Owners: []string{"/b", "/a"}},
 		{Operation: organizer.Operation{ID: 99, Target: "/second", Status: "pending", Undo: &organizer.Operation{Status: "pending"}}},
 	}, Mappings: []model.MediaMapping{{Entry: &model.Entry{Type: "movie", TMDBID: 1, Title: "fixture"}, Path: "/target", Source: "/source", Episodes: []int{0, 2}, State: "pending"}}}
 	if err := s.SaveRun(r); err != nil {
@@ -94,6 +95,8 @@ func TestRelationalOperationsUndoAndAtomicCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Ops[0].Status = "completed"
+	updatedDuration, updatedSpeed := 50.25, 100000000.0
+	r.Ops[0].DurationMs, r.Ops[0].SpeedBps = &updatedDuration, &updatedSpeed
 	r.Ops[0].Undo = nil
 	r.Completed = 1
 	r.Mappings[0].RunID = r.ID
@@ -105,6 +108,9 @@ func TestRelationalOperationsUndoAndAtomicCheckpoint(t *testing.T) {
 	if err != nil || current.Completed != 0 || current.Ops[0].Status != "published" || current.Mappings[0].RunID != "" {
 		t.Fatal(current, err)
 	}
+	if current.Ops[0].DurationMs == nil || *current.Ops[0].DurationMs != duration || current.Ops[0].SpeedBps == nil || *current.Ops[0].SpeedBps != speed {
+		t.Fatal("failed checkpoint changed metrics", current.Ops[0])
+	}
 	if _, err = s.db.Exec("DROP TRIGGER reject_registration"); err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +121,55 @@ func TestRelationalOperationsUndoAndAtomicCheckpoint(t *testing.T) {
 	mapped, e := s.Mapping("/target")
 	if err != nil || e != nil || mapped == nil || current.Ops[0].Undo != nil || current.Completed != 1 || !reflect.DeepEqual(mapped.Episodes, []int{0, 2}) {
 		t.Fatal(current, mapped, err, e)
+	}
+	if current.Ops[0].DurationMs == nil || *current.Ops[0].DurationMs != updatedDuration || current.Ops[0].SpeedBps == nil || *current.Ops[0].SpeedBps != updatedSpeed || current.Ops[1].DurationMs != nil || current.Ops[1].SpeedBps != nil {
+		t.Fatal("checkpoint did not save metrics only for the changed item", current.Ops)
+	}
+}
+
+func TestOperationMetricsSurviveRestartWithoutEstimatingUnfinishedItems(t *testing.T) {
+	dir := t.TempDir()
+	settings := model.DefaultSettings()
+	settings.SourceRoot, settings.TargetRoot = "/source", "/target"
+	s, err := Open(dir, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duration, speed, failedDuration := 42300.25, 118600000.0, 17.5
+	r := organizer.Run{ID: "metrics", Purpose: "organize", State: "queued", Ops: []organizer.Work{
+		{Operation: organizer.Operation{Status: "completed", DurationMs: &duration, SpeedBps: &speed}},
+		{Operation: organizer.Operation{Status: "preparing"}},
+		{Operation: organizer.Operation{Status: "pending", DurationMs: &failedDuration}},
+	}}
+	if err = s.Enqueue([]organizer.Run{r}); err != nil {
+		s.Close()
+		t.Fatal(err)
+	}
+	r.State = "running"
+	if err = s.SaveCheckpoint(r, nil, nil, nil); err != nil {
+		s.Close()
+		t.Fatal(err)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(dir, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	got, err := s.Run(r.ID)
+	if err != nil || got.State != "interrupted" {
+		t.Fatal(got, err)
+	}
+	wantOps, _ := json.Marshal(r.Ops)
+	gotOps, _ := json.Marshal(got.Ops)
+	if !bytes.Equal(wantOps, gotOps) {
+		t.Fatal("restart changed or invented item metrics", string(gotOps))
+	}
+	var version int
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 7 {
+		t.Fatal(version, err)
 	}
 }
 
@@ -205,7 +260,7 @@ func TestStorageFormatRejectionDoesNotRewriteDatabase(t *testing.T) {
 				}
 				statement := "DROP INDEX runs_state"
 				if kind == "previous-version" {
-					statement = "PRAGMA user_version=5"
+					statement = "PRAGMA user_version=6"
 				}
 				if _, err = s.db.Exec(statement); err != nil {
 					t.Fatal(err)

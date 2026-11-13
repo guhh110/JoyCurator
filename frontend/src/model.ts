@@ -76,6 +76,8 @@ export interface Operation {
   target: string
   status: string
   error: string
+  durationMs: number | null
+  speedBps: number | null
   owner: string
   replaceIdentity?: string
 }

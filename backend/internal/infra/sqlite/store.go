@@ -17,7 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const formatVersion = 6
+const formatVersion = 7
 
 type Store struct{ db *sql.DB }
 
@@ -56,7 +56,7 @@ func Open(dir string, initial model.Settings) (*Store, error) {
 			if _, e := tx.Exec(schema); e != nil {
 				return e
 			}
-			if _, e := tx.Exec("PRAGMA user_version=6; INSERT INTO rule_chain(id) VALUES('current')"); e != nil {
+			if _, e := tx.Exec("PRAGMA user_version=7; INSERT INTO rule_chain(id) VALUES('current')"); e != nil {
 				return e
 			}
 			if e := writeConfig(tx, "1", "1", "", 0, initial); e != nil {

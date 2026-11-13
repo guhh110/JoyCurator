@@ -50,6 +50,7 @@ func TestCancelPartialCopyKeepsSourceAndRemovesStaging(t *testing.T) {
 			if !errors.Is(err, context.Canceled) || op.Status != "pending" || op.Temp != "" {
 				t.Fatal("partial copy was not cleaned up", op.Status, op.Temp, err)
 			}
+			requireMeasured(t, op, 0)
 			if got, err := os.ReadFile(op.Source); err != nil || !bytes.Equal(got, body) {
 				t.Fatal("cancelled copy changed source", err)
 			}

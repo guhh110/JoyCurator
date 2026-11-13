@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"joycurator/internal/infra/fsops"
 )
@@ -66,19 +67,35 @@ func (e *Engine) Check(ctx context.Context, path, identity, checksum string) err
 	}
 	return nil
 }
-func (e *Engine) Run(ctx context.Context, op *Operation, save func() error) error {
+func (e *Engine) Run(ctx context.Context, op *Operation, save func() error) (err error) {
+	var written int64
+	// Completed items may be visited again on retry. Keep their original metrics.
+	if op.Status != "completed" {
+		op.DurationMs, op.SpeedBps = nil, nil
+		started := time.Now()
+		// The worker's existing post-Run checkpoint saves these final values.
+		defer func() {
+			elapsed := time.Since(started)
+			duration := float64(elapsed) / float64(time.Millisecond)
+			op.DurationMs = &duration
+			if err == nil && written > 0 && elapsed > 0 {
+				speed := float64(written) / elapsed.Seconds()
+				op.SpeedBps = &speed
+			}
+		}()
+	}
 	// Windows FileInfo does not provide a stable file ID for recovery checks.
 	// Fail before creating or moving files rather than writing unowned temp files.
 	if runtime.GOOS == "windows" {
 		return errors.New("Windows 暂不支持安全地执行文件整理")
 	}
 	if op.Kind == "video" || op.Kind == "subtitle" {
-		return e.fastRun(ctx, op, save)
+		return e.fastRun(ctx, op, save, &written)
 	}
-	return e.run(ctx, op, save)
+	return e.run(ctx, op, save, &written)
 }
 
-func (e *Engine) run(ctx context.Context, op *Operation, save func() error) error {
+func (e *Engine) run(ctx context.Context, op *Operation, save func() error, written *int64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -93,7 +110,7 @@ func (e *Engine) run(ctx context.Context, op *Operation, save func() error) erro
 			return err
 		}
 		if op.Status == "published" {
-			return e.run(ctx, op, save)
+			return e.run(ctx, op, save, written)
 		}
 		if op.SourceRemoveHold != "" {
 			return errors.New("来源正在隔离，停止重新暂存：" + op.Source)
@@ -107,7 +124,7 @@ func (e *Engine) run(ctx context.Context, op *Operation, save func() error) erro
 				if err = save(); err != nil {
 					return err
 				}
-				return e.run(ctx, op, save)
+				return e.run(ctx, op, save, written)
 			}
 		}
 		if op.Temp != "" {
@@ -240,7 +257,9 @@ func (e *Engine) run(ctx context.Context, op *Operation, save func() error) erro
 				return err
 			}
 			h := sha256.New()
-			if _, err = io.Copy(io.MultiWriter(temp, h), contextReader{ctx, reader}); err != nil {
+			n, err := io.Copy(io.MultiWriter(temp, h), contextReader{ctx, reader})
+			*written += n
+			if err != nil {
 				return err
 			}
 			if err = temp.Sync(); err != nil {
@@ -287,7 +306,7 @@ func (e *Engine) run(ctx context.Context, op *Operation, save func() error) erro
 			return err
 		}
 		if op.Status == "published" {
-			return e.run(ctx, op, save)
+			return e.run(ctx, op, save, written)
 		}
 		if _, err := e.FS.Stat(op.Target); err == nil {
 			if err = e.Check(ctx, op.Target, op.Identity, op.Hash); err != nil {

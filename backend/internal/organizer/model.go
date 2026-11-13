@@ -79,6 +79,8 @@ type Operation struct {
 	ConvertJPEG      bool       `json:"convertJpeg,omitempty"`
 	Status           string     `json:"status"`
 	Error            string     `json:"error"`
+	DurationMs       *float64   `json:"durationMs"`
+	SpeedBps         *float64   `json:"speedBps"`
 	Hash             string     `json:"hash"`
 	Temp             string     `json:"temp"`
 	ReplaceHold      string     `json:"replaceHold,omitempty"`

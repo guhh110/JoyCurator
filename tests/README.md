@@ -68,7 +68,7 @@ python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|Ben
 复制与导入性能回归：`backend/infra/fsops/copy_test.go` 覆盖跨传输块的完整内容、文件偏移、取消与短写，并提供包含 Sync 的 `BenchmarkDurableCopy64MiB`；`backend/organizer/engine_test.go` 验证复制和跨盘移动在部分写入后取消时保留源文件并清理暂存。`backend/app/recognition_context_test.go` 验证目录导入复用初次快照、单文件导入仍读取兄弟文件。`backend/recognition/script_test.go` 验证预编译辅助程序下嵌套输入仍不可写、不同规则与文件的运行时仍隔离。
 
 
-离线识别回归：`backend/app/offline_recognition_test.go` 将 Token 清空并让客户端工厂直接报错，覆盖导入、重新识别、重试、登记视频复用、文件变化撤销确认及工作区终态保存失败重试。`backend/infra/sqlite/snapshot_test.go` 覆盖只有已提交快照可引用、旧确认依据禁止清理、后台进度不增加 revision，以及作品快照／视频映射／操作检查点共同回滚。存储格式为 6，格式 5 库启动失败且内容原样保留；所有测试使用临时库。路径样本和目录推断测试对比同一核心的轻量与完整调试输出。
+离线识别回归：`backend/app/offline_recognition_test.go` 将 Token 清空并让客户端工厂直接报错，覆盖导入、重新识别、重试、登记视频复用、文件变化撤销确认及工作区终态保存失败重试。`backend/infra/sqlite/snapshot_test.go` 覆盖只有已提交快照可引用、旧确认依据禁止清理、后台进度不增加 revision，以及作品快照／视频映射／操作检查点共同回滚。存储格式为 7，格式 6 库启动失败且内容原样保留；所有测试使用临时库。路径样本和目录推断测试对比同一核心的轻量与完整调试输出。
 
 `BenchmarkRecognition2000/LightImport` 与 `FullDebug` 使用相同的 2000 路径，各运行三次；前者记录快照 SQL 行数及数据库净增长，后者记录完整调试 JSON 响应字节。它们的输出介质与执行目的不同，分别报告，不混成同一个历史持久化基准。
 
@@ -76,3 +76,5 @@ python3 tests/run_backend.py test -run '^$' -bench 'BenchmarkRecognition2000|Ben
 离线执行器回归：`backend/recognition/execution_baseline_test.go` 将优化前冻结的 106 组（115 文件）完整 Documents／Files／Tree 与既有脚本、新版默认脚本在 1／4 worker 及完整调试下对比。`execution_test.go` 验证输入字节计数、嵌套冻结、特殊属性、原生 JS 数据、隔离、结果限制、确定性诊断、串行进度及 worker 取消。冻结 fixture 不随新脚本自动生成或覆盖。
 
 `BenchmarkRecognitionSavedRules2000` 使用冻结的旧源码，`BenchmarkRecognition2000` 使用当前默认源码。两者各含 PureRecognition、SnapshotWrite、LightImport、FullDebug；`-cpu=1,4 -benchtime=1x -count=3` 分别测量单线程与最多四路。SnapshotWrite／LightImport 报告 SQL 行变更与 DB+WAL 净增长；FullDebug 报告响应大小；Workspace2000／WorkspaceSavedRules2000 另测两套源码的扫描至保存，并报告 Provider 零调用和数据库净增长。峰值内存使用编译后的测试二进制在独立进程中由 `os.wait4(...).ru_maxrss` 测量（Darwin 字节）；工作区通过 `JOY_BENCH_RULES=saved` 对同名基准设置冻结源码，避免基准名称改变临时路径长度。
+
+整理计时：`backend/organizer/metrics_test.go` 覆盖复制、跨盘移动、重命名、硬链接、生成内容、失败与重试，确认耗时包含检查点且撤销保留正向指标；关系表测试覆盖指标的检查点回滚、空值及重启保留。

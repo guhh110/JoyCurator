@@ -8,6 +8,7 @@ import { useRuntime } from '../../app/runtime'
 import {
   date,
   operationNeedsAttention,
+  operationTiming,
   kindNames,
   modeNames,
   states,
@@ -59,9 +60,9 @@ const operations = computed(() => onlyIssues.value ? issues.value : detail.value
               <p v-if="op.error" class="danger">{{ op.error }}</p>
             </div>
             <span
-              class="tiny"
+              class="tiny operation-result"
               :class="op.status === 'completed' ? 'green' : 'muted'"
-              >{{ states[op.status] || op.status }}</span
+              >{{ states[op.status] || op.status }}<template v-if="op.durationMs != null"> · {{ operationTiming(op) }}</template></span
             >
           </article>
         </div></template
@@ -139,4 +140,5 @@ const operations = computed(() => onlyIssues.value ? issues.value : detail.value
 <style scoped>
 .operation-filter { display:flex; align-items:center; gap:8px; margin:16px 0; font-size:13px; }
 .operation-filter input { width:auto; }
+.operation-list .operation-result { max-width:55%; text-align:right; white-space:normal; }
 </style>
